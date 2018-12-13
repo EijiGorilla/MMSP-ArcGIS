@@ -1,7 +1,7 @@
 # MMSP-ArcGIS
 Useful information on ArcGIS matters
 
-## The following link enables to use ESRI's World Imagery Maps and OpenStreetMap for Offline
+## How To Use ESRI's World Imagery and OpenStreeMap in Collector for ArcGIS Offline
 
 * World Imagery
 1. GO to https://www.arcgis.com/home/search.html?q=for%20export&t=content&focus=layers&start=1&sortOrder=true&sortField=relevance

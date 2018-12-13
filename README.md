@@ -2,8 +2,13 @@
 Useful information on ArcGIS matters
 
 ## The following link enables to use ESRI's World Imagery Maps and OpenStreetMap for Offline
+
 * World Imagery
-https://www.arcgis.com/home/search.html?q=for%20export&t=content&focus=layers&start=1&sortOrder=true&sortField=relevance
+1. GO to https://www.arcgis.com/home/search.html?q=for%20export&t=content&focus=layers&start=1&sortOrder=true&sortField=relevance
+2. Choose World Imagery (for Export)
+3. Open it in a web map of ArcGIS Online
+4. Add feature of your interest
+5. Save As
 
 * OpenStreetMap
 1. Go to the link above and search "OpenStreetMap" and choose "Tile Layer" (Do NOT choose Layer Package: you will not be able to use as a basemap)

@@ -26,13 +26,12 @@ Useful information on ArcGIS matters
 1. WGS84(楕円体経緯度表記)
 2. WGS84 UTM(楕円体座標値表記)
 3. PRS92 PTM(平面直角座標値表記)
-他企業が基準とした標高値は①、当プロジェクトは③における平均海面標高値です。設計を行うために使用する座標系は③です。また、標高値は平均海面の標高値を基準にすることが一般的です。
 
-当プロジェクトの標高にあわせ、他企業が作成した平面図の標高値を変換しました。
-  変換後のCADデータは団内サーバに格納済です。
-  設計は、標高値に相対的な問題が無かった為、標高値の差分のみ考慮すれば可能です。
+他企業が基準とした標高値は1、当プロジェクトは3における平均海面標高値です。設計を行うために使用する座標系は3です。また、標高値は平均海面の標高値を基準にすることが一般的です。
+
+当プロジェクトの標高にあわせ、他企業が作成した平面図の標高値を変換しました。変換後のCADデータは団内サーバに格納済です。設計は、標高値に相対的な問題が無かった為、標高値の差分のみ考慮すれば可能です。
 
 * GIS SpecialistのMike CAULANの情報と合わせると、MMSPで使用する座標系は：
-①　WGS84 UTM Zone 51N (Projected Coordinate System：ArcGIS)
-②　WGS84 (Geographic Coordinate System：ArcGIS)
-③　PRS1992 Philippine Zone III.prj (CADで使用する座標系）
+1. WGS84 UTM Zone 51N (Projected Coordinate System：ArcGIS)
+2. WGS84 (Geographic Coordinate System：ArcGIS)
+3. PRS1992 Philippine Zone III.prj (CADで使用する座標系）

@@ -31,7 +31,7 @@ Useful information on ArcGIS matters
 
 当プロジェクトの標高にあわせ、他企業が作成した平面図の標高値を変換しました。変換後のCADデータは団内サーバに格納済です。設計は、標高値に相対的な問題が無かった為、標高値の差分のみ考慮すれば可能です。
 
-* GIS SpecialistのMike CAULANの情報と合わせると、MMSPで使用する座標系は：
+*GIS SpecialistのMike CAULANの情報と合わせると、MMSPで使用する座標系は：
 1. WGS84 UTM Zone 51N (Projected Coordinate System：ArcGIS)
 2. WGS84 (Geographic Coordinate System：ArcGIS)
 3. PRS1992 Philippine Zone III.prj (CADで使用する座標系）

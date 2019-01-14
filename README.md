@@ -20,6 +20,9 @@
 1. Open the Collector
 2. Choose a Map you saved in Content of ArcGIS Online
 
+* Refer to the following link for Offline Use in Collector for ArcGIS
+https://doc.arcgis.com/en/arcgis-online/manage-data/take-maps-offline.htm
+
 ## 本プロジェクトで使用する座標系
 *座標系に関する情報
 他企業と使用する標高値の基準が異なっていたため、標高値に差異が生じていました。フィリピン国では１つの基準点に対して３つの座標系が存在します。

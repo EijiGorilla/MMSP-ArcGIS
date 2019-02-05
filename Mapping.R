@@ -1,7 +1,9 @@
 library(leaflet)
 library(sf)
 
-wd=setwd("C:/Users/oc3512/Documents/ArcGIS/Projects/MMSP/R")
+
+wd=getwd()
+
 files1="C:/Users/oc3512/Documents/ArcGIS/Projects/MMSP/MMSP.gdb"
 files2="C:/Users/oc3512/Documents/ArcGIS/Projects/MMSP/MMSP(20181005).gdb"
 
@@ -17,16 +19,16 @@ ML=as(ml_noZ,"Spatial")
 
 ### use "leaflet"
 ## Basemap
+## Collect providers
+esri <- grep("^Esri", providers, value = TRUE)
+esri=c(esri,"MtbMap","Stamen.TonerLines","Stamen.TonerLabels")
+
 TEST=leaflet() %>% 
   addAwesomeMarkers(data=stations,label=~as.character(stations$Name),group="Stations",
                     labelOptions=labelOptions(noHide=TRUE,textOnly=TRUE)) %>%
   addScaleBar(position="bottomleft") %>%
   addMiniMap(tiles=esri[[1]],zoomLevelOffset = -5,toggleDisplay = TRUE, position="bottomright") %>%
   addPolylines(data=ML,group="Main Line")
-
-## Collect providers
-esri <- grep("^Esri", providers, value = TRUE)
-esri=c(esri,"MtbMap","Stamen.TonerLines","Stamen.TonerLabels")
 
 ## Add each provider map to TEST
 for (provider in esri) {
@@ -36,9 +38,6 @@ for (provider in esri) {
     TEST <- TEST %>% addProviderTiles(provider, group = provider)  
   }
 }
-
-library(htmlwidgets)
-saveWidget(TEST,file="TEST.html")
 
 ## 
 TEST %>%
@@ -53,9 +52,7 @@ TEST %>%
           myMap.minimap.changeLayer(L.tileLayer.provider(e.name));
         })
     }")
-  install.packages('spDataLarge', repos='https://nowosad.github.io/drat/', type='source')
-  
-  
+
   
   
 ### Use "mapview"

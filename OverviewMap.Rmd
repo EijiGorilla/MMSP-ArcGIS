@@ -14,14 +14,16 @@ This is an R Markdown format used for publishing markdown documents to GitHub. W
 ## Including Code
 
 You can include R code in the document as follows:
-```{r}
+```{r,echo=FALSE}
 library(leaflet)
 library(mapview)
 library(sf)
 library(dplyr)
+library(htmlwidgets)
+library(bindrcpp)
 ```
 
-```{r}
+```{r,echo=FALSE}
 wd=getwd()
 
 files1="C:/Users/oc3512/Documents/ArcGIS/Projects/MMSP/MMSP.gdb"
@@ -44,7 +46,7 @@ ML=as(ml_noZ,"Spatial")
 
 You can also embed plots, for example:
 
-```{r pressure, echo=FALSE}
+```{r TEST, echo=FALSE}
 #####################
 ### use "leaflet"####
 #####################
@@ -70,36 +72,16 @@ for (provider in esri) {
   }
 }
 
-## Final map
-TEST %>%
-  setView(121.07,14.61,zoom=12) %>%
-  addLayersControl(baseGroups = names(esri),options = layersControlOptions(collapsed = TRUE),
-                   overlayGroups = c("Stations", "Main Line"))
-  htmlwidgets::onRender("
-    function(el, x) {
-      var myMap = this;
-      myMap.on('baselayerchange',
-        function (e) {
-          myMap.minimap.changeLayer(L.tileLayer.provider(e.name));
-        })
-    }")
+#TEST %>%
+ # setView(121.07,14.61,zoom=12) %>%
+  #addLayersControl(baseGroups = names(esri),options = layersControlOptions(collapsed = TRUE),
+   #                overlayGroups = c("Stations", "Main Line"))
+  
 ```
 
 Note that the `echo = FALSE` parameter was added to the code chunk to prevent printing of the R code that generated the plot.
 
-```{r,echo=FALSE}
-#####################  
-### Use "mapview" ###
-#####################
+```{r}
 
-stNames=unique(stations$Name)
-depot$Contract="CP101"
-
-MMSP=stations %>% mutate(Contract=factor(ifelse(stNames %in% stNames[1:3],"CP101",
-                                           ifelse(stNames %in% stNames[4:8],"CP102",
-                                                  ifelse(stNames %in% stNames[9:16],"CP103","CP109"))))) %>%
-  mapview(zcol="Contract",burst=TRUE,layer.name="Stations") + 
-  mapview(depot,zcol="Contract",burst=TRUE,layer.name="Depot (CP101)") +
-  mapview(ml,color="red",lwd=0.5,layer.name="Main Line")
 ```
 

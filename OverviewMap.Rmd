@@ -16,72 +16,37 @@ This is an R Markdown format used for publishing markdown documents to GitHub. W
 You can include R code in the document as follows:
 ```{r,echo=FALSE}
 library(leaflet)
-library(mapview)
 library(sf)
-library(dplyr)
-library(htmlwidgets)
-library(bindrcpp)
+
 ```
 
-```{r,echo=FALSE}
+```{r}
 wd=getwd()
 
-files1="C:/Users/oc3512/Documents/ArcGIS/Projects/MMSP/MMSP.gdb"
-files2="C:/Users/oc3512/Documents/ArcGIS/Projects/MMSP/MMSP(20181005).gdb"
+files1<-"C:/Users/oc3512/Documents/ArcGIS/Projects/MMSP/MMSP.gdb"
+files2<-"C:/Users/oc3512/Documents/ArcGIS/Projects/MMSP/MMSP(20181005).gdb"
 
 # Check layers in the gdb
-layers1=st_layers(files1)
-layers2=st_layers(files2)
+layers1<-st_layers(files1)
+layers2<-st_layers(files2)
 
 # Read stations and main lines
-stations=st_read(files2,layers2$name[1])
-ml=st_read(files2,layers2$name[2])
-depot=st_read(files2,layers2$name[4])
-ml_noZ=st_zm(ml,drop=TRUE,what="ZM")
-ML=as(ml_noZ,"Spatial")
+stations<-st_read(files2,layers2$name[1])
+ml<-st_read(files2,layers2$name[2])
+depot<-st_read(files2,layers2$name[4])
+ml_noZ<-st_zm(ml,drop=TRUE,what="ZM")
+ML<-as(ml_noZ,"Spatial")
 
-```
-
-## Including Plots
-
-You can also embed plots, for example:
-
-```{r TEST, echo=FALSE}
-#####################
-### use "leaflet"####
-#####################
-
-## Collect providers
 esri <- grep("^Esri", providers, value = TRUE)
-esri=c(esri,"MtbMap","Stamen.TonerLines","Stamen.TonerLabels")
+esri<-c(esri,"MtbMap","Stamen.TonerLines","Stamen.TonerLabels")
 
 ## Base codes
-TEST=leaflet() %>% 
+m <- leaflet() %>% 
   addAwesomeMarkers(data=stations,label=~as.character(stations$Name),group="Stations",
                     labelOptions=labelOptions(noHide=TRUE,textOnly=TRUE)) %>%
   addScaleBar(position="bottomleft") %>%
   addMiniMap(tiles=esri[[1]],zoomLevelOffset = -5,toggleDisplay = TRUE, position="bottomright") %>%
   addPolylines(data=ML,group="Main Line")
-
-## Add each provider map to TEST
-for (provider in esri) {
-  if(provider=="Stamen.TonerLines"){
-    TEST <- TEST %>% addProviderTiles(provider,group=provider,options=providerTileOptions(opacity=0.25))
-  } else {
-    TEST <- TEST %>% addProviderTiles(provider, group = provider)  
-  }
-}
-
-#TEST %>%
- # setView(121.07,14.61,zoom=12) %>%
-  #addLayersControl(baseGroups = names(esri),options = layersControlOptions(collapsed = TRUE),
-   #                overlayGroups = c("Stations", "Main Line"))
-  
 ```
 
-Note that the `echo = FALSE` parameter was added to the code chunk to prevent printing of the R code that generated the plot.
-
-```{r}
-
-```
 

@@ -11,40 +11,23 @@ Including Code
 
 You can include R code in the document as follows:
 
-    ## Warning: package 'leaflet' was built under R version 3.4.4
-
-    ## Warning: package 'mapview' was built under R version 3.4.4
-
-    ## Warning: replacing previous import 'gdalUtils::gdal_rasterize' by
-    ## 'sf::gdal_rasterize' when loading 'mapview'
-
-    ## 
-    ## Attaching package: 'mapview'
-
-    ## The following object is masked from 'package:leaflet':
-    ## 
-    ##     addMapPane
-
     ## Warning: package 'sf' was built under R version 3.4.4
 
     ## Linking to GEOS 3.6.1, GDAL 2.2.3, PROJ 4.9.3
 
-    ## Warning: package 'dplyr' was built under R version 3.4.4
+``` r
+wd=getwd()
 
-    ## 
-    ## Attaching package: 'dplyr'
+files1<-"C:/Users/oc3512/Documents/ArcGIS/Projects/MMSP/MMSP.gdb"
+files2<-"C:/Users/oc3512/Documents/ArcGIS/Projects/MMSP/MMSP(20181005).gdb"
 
-    ## The following objects are masked from 'package:stats':
-    ## 
-    ##     filter, lag
+# Check layers in the gdb
+layers1<-st_layers(files1)
+layers2<-st_layers(files2)
 
-    ## The following objects are masked from 'package:base':
-    ## 
-    ##     intersect, setdiff, setequal, union
-
-    ## Warning: package 'htmlwidgets' was built under R version 3.4.4
-
-    ## Warning: package 'bindrcpp' was built under R version 3.4.4
+# Read stations and main lines
+stations<-st_read(files2,layers2$name[1])
+```
 
     ## Reading layer `Points' from data source `C:\Users\oc3512\Documents\ArcGIS\Projects\MMSP\MMSP(20181005).gdb' using driver `OpenFileGDB'
     ## Simple feature collection with 16 features and 9 fields
@@ -54,6 +37,10 @@ You can include R code in the document as follows:
     ## epsg (SRID):    4326
     ## proj4string:    +proj=longlat +datum=WGS84 +no_defs
 
+``` r
+ml<-st_read(files2,layers2$name[2])
+```
+
     ## Reading layer `Polylines' from data source `C:\Users\oc3512\Documents\ArcGIS\Projects\MMSP\MMSP(20181005).gdb' using driver `OpenFileGDB'
     ## Simple feature collection with 8001 features and 10 fields
     ## geometry type:  MULTILINESTRING
@@ -61,6 +48,10 @@ You can include R code in the document as follows:
     ## bbox:           xmin: 121.0135 ymin: 14.47771 xmax: 121.0706 ymax: 14.70866
     ## epsg (SRID):    4326
     ## proj4string:    +proj=longlat +datum=WGS84 +no_defs
+
+``` r
+depot<-st_read(files2,layers2$name[4])
+```
 
     ## Reading layer `Depot' from data source `C:\Users\oc3512\Documents\ArcGIS\Projects\MMSP\MMSP(20181005).gdb' using driver `OpenFileGDB'
     ## Simple feature collection with 1 feature and 10 fields
@@ -70,9 +61,18 @@ You can include R code in the document as follows:
     ## epsg (SRID):    4326
     ## proj4string:    +proj=longlat +datum=WGS84 +no_defs
 
-Including Plots
----------------
+``` r
+ml_noZ<-st_zm(ml,drop=TRUE,what="ZM")
+ML<-as(ml_noZ,"Spatial")
 
-You can also embed plots, for example:
+esri <- grep("^Esri", providers, value = TRUE)
+esri<-c(esri,"MtbMap","Stamen.TonerLines","Stamen.TonerLabels")
 
-Note that the `echo = FALSE` parameter was added to the code chunk to prevent printing of the R code that generated the plot.
+## Base codes
+m <- leaflet() %>% 
+  addAwesomeMarkers(data=stations,label=~as.character(stations$Name),group="Stations",
+                    labelOptions=labelOptions(noHide=TRUE,textOnly=TRUE)) %>%
+  addScaleBar(position="bottomleft") %>%
+  addMiniMap(tiles=esri[[1]],zoomLevelOffset = -5,toggleDisplay = TRUE, position="bottomright") %>%
+  addPolylines(data=ML,group="Main Line")
+```

@@ -1,7 +1,6 @@
 library(leaflet)
 library(sf)
 
-
 wd=getwd()
 
 files1="C:/Users/oc3512/Documents/ArcGIS/Projects/MMSP/MMSP.gdb"
@@ -43,7 +42,7 @@ for (provider in esri) {
 TEST %>%
   setView(121.07,14.61,zoom=12) %>%
   addLayersControl(baseGroups = names(esri),options = layersControlOptions(collapsed = TRUE),
-                   overlayGroups = c("Stations", "Main Line"))
+                   overlayGroups = c("Stations", "Main Line")) %>%
   htmlwidgets::onRender("
     function(el, x) {
       var myMap = this;
@@ -67,6 +66,9 @@ MMSP=stations %>% mutate(Contract=factor(ifelse(stNames %in% stNames[1:3],"CP101
   mapview(zcol="Contract",burst=TRUE,layer.name="Stations") + 
   mapview(depot,zcol="Contract",burst=TRUE,layer.name="Depot (CP101)") +
   mapview(ml,color="red",lwd=0.5,layer.name="Main Line")
+MMSP
+
+
 
 mapshot(MMSP, url = paste0(getwd(), "/map.html"))
         
@@ -74,6 +76,6 @@ addLogo(MMSP, "C:/Users/oc3512/Desktop/Logo (OCGlobal-JV).png",
         position = "topright",
         offset.x = 5,
         offset.y = 40,
-        width = 200,
-        height = 200)
+        width = 150,
+        height = 50)
 

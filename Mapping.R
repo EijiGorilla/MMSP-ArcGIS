@@ -54,9 +54,7 @@ TEST %>%
           myMap.minimap.changeLayer(L.tileLayer.provider(e.name));
         })
     }")
-saveWidget(TEST,file="MMSP_leaflet-map.html")
 
-  
 ### Use "mapview"
 stNames=unique(stations$Name)
 depot$Contract="CP101"
@@ -67,7 +65,7 @@ MMSP=stations %>% mutate(Contract=factor(ifelse(stNames %in% stNames[1:3],"CP101
   mapview(zcol="Contract",burst=TRUE,layer.name="Stations") + 
   mapview(depot,zcol="Contract",burst=TRUE,layer.name="Depot (CP101)") +
   mapview(ml,color="red",lwd=0.5,layer.name="Main Line")
-
+MMSP
 mapshot(MMSP, url = paste0(getwd(), "/MMSP_Mapview-map.html"))
         
 addLogo(MMSP, "C:/Users/oc3512/Desktop/Logo (OCGlobal-JV).png",

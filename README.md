@@ -4,21 +4,25 @@
 ## How To Use ESRI's World Imagery and OpenStreeMap for Offline Use in Collector for ArcGIS
 
 * World Imagery
-1. GO to https://www.arcgis.com/home/search.html?q=for%20export&t=content&focus=layers&start=1&sortOrder=true&sortField=relevance
-2. Choose World Imagery (for Export)
-3. Open it in a web map of ArcGIS Online
-4. Add feature of your interest
-5. Save As
-
-* OpenStreetMap
-1. Go to the link above and search "OpenStreetMap" and choose "Tile Layer" (Do NOT choose Layer Package: you will not be able to use as a basemap)
-2. Open the OpenStreetMap in a web map of ArcGIS Online
-3. Add feature class (shape files)
-4. Save As
-
-* Upload to Collector for ArcGIS
-1. Open the Collector
-2. Choose a Map you saved in Content of ArcGIS Online
+1. Open ArcGIS Pro
+2. Click Catalogue and Portal (All Portal).
+3. Search for World Image (for export)
+4. Drag and drop the Image into the current map.
+5. Click Download File in the Offline panel
+6. Choose scale of your interest
+7. Once the imagery is shown in the Content, right-click the Imagery file, go to Share, and choose "Share As Web Layer"
+8. Make sure to choose "tile" when Publish.
+9. Open ArcGIS Online and go to Content
+10. Find the Imagery, click "View item details" and Settings.
+11. Adjust the Visible Range
+12. Build Tiles (Make sure to build tiles and % complete is 100%; otherwise, you fail to use the imagery as a basemap)
+13. Make sure to check "Offline"
+14. Open Map Viewer and create a New Map.
+15. Click Add Layer and My Content.
+16. Click the Imagery name and choose "Add a Basemap" (note: if you do not see this option. Something is wrong)
+17. Add feature of your interest for Collector for ArcGIS
+18. Save as
+FYI: https://www.arcgis.com/home/search.html?q=for%20export&t=content&focus=layers&start=1&sortOrder=true&sortField=relevance
 
 * Refer to the following link for Offline Use in Collector for ArcGIS
 https://doc.arcgis.com/en/arcgis-online/manage-data/take-maps-offline.htm

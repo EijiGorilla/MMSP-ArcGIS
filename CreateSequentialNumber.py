@@ -7,13 +7,13 @@ Created on Sat Mar 16 10:22:31 2019
 """
        
 import arcpy
-workSpace=arcpy.GetParameterAsText(0) # if other than feature datasets
-workSpace=arcpy.GetParameterAsText(1) # if feature datasets will be selected
+workSpace=arcpy.GetParameterAsText(0) # Workspace, Optional
+workSpace=arcpy.GetParameterAsText(1) # Workspace, Optional
 
 #arcpy.env.workspace="C:/Users/oc3512/Documents/ArcGIS/Projects/MMSP/MMSP_utm.gdb"
 
-featureClass=arcpy.GetParameterAsText(2)
-fieldName=arcpy.GetParameterAsText(3)
+featureClass=arcpy.GetParameterAsText(2) # Table View
+fieldName=arcpy.GetParameterAsText(3) # Field, Dependency: featureClass
 
 #datasets=arcpy.ListDatasets(feature_type="feature")
 

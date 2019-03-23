@@ -2,6 +2,7 @@
 """
 Created on Sat Mar 16 10:22:31 2019
 "Creating sequential numbers in the Field"
+used for ArcGIS Pro
 
 @author: oc3512
 """

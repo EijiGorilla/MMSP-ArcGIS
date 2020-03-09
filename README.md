@@ -57,4 +57,4 @@ In the illustration above, the green line represents the geoid surface. It rough
 *Conversion from PRS 1992 Philippine Zone III to EGM2008    
 EGM2008 is geoid (gravity-based), and ArcGIS Pro has conversion equation for EGM2008. However, there is no direct way of converting PRS 1992 to EGM2008 Geiod. As such, PRS1992 must be first converted to WGS84 and then to EGM2008. Please refer to steps below using ArcGIS Pro.  
 
-![Conversion Figure](https://github.com/EijiGorilla/MMSP-ArcGIS/blob/master/Geoid%20Height.gif)  
+![Conversion Figure](https://github.com/EijiGorilla/MMSP-ArcGIS/blob/master/Illustration%20of%20VCS%20PRS92%20to%20EGM2008Geoid.png)  

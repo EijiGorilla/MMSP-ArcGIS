@@ -51,9 +51,10 @@ VCS defines the origin for height or depth and is referenced to two types of a s
 
 *Geoid  
 The geoid is an equipotential, or level, surface of the earth’s gravity field.
-![Geoid](https://github.com/EijiGorilla/MMSP-ArcGIS/blob/master/Geoid%20Height.gif)
+![Geoid](https://github.com/EijiGorilla/MMSP-ArcGIS/blob/master/Geoid%20Height.gif)  
 In the illustration above, the green line represents the geoid surface. It roughly curves to follow the topography. The dashed line represents the surface of the spheroid. The **h is the height above the spheroid, or ellipsoid (HAE)**. In this case, the height is a negative value. **Geoid undulation, N**, is the distance between the spheroid and geoid surface. The **orthometric height, H**" is related to the spheroid height by the following:
 
-* Conversion  
-In order to convert
+*Conversion from PRS 1992 Philippine Zone III to EGM2008    
+EGM2008 is geoid (gravity-based), and ArcGIS Pro has conversion equation for EGM2008. However, there is no direct way of converting PRS 1992 to EGM2008 Geiod. As such, PRS1992 must be first converted to WGS84 and then to EGM2008. Please refer to steps below using ArcGIS Pro.  
+1. Spheroid (e.g., WGS84)
 

@@ -48,7 +48,7 @@ https://doc.arcgis.com/en/arcgis-online/manage-data/take-maps-offline.htm
 VCS defines the origin for height or depth and is referenced to two types of a surface: Spheroid (ellipsoid) or Gravity-based (geoid).
 1. Spheroid (e.g., WGS84)
 2. Gravity-based (EGM2008)
-![Geoid](link-to-image)
+![Geoid](Geoid Height.gif)
 
 他企業が基準とした標高値は1、当プロジェクトは3における平均海面標高値です。設計を行うために使用する座標系は3です。また、標高値は平均海面の標高値を基準にすることが一般的です。
 

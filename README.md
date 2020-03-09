@@ -44,17 +44,16 @@ https://doc.arcgis.com/en/arcgis-online/manage-data/take-maps-offline.htm
 3. PRS1992 Philippine Zone III.prj (CADで使用する座標系）
 
 ## Height Conversion: PRS 1992 Philippine Zone III to EGM2008 Geoid
-*Basic information on Vertical Coordinate System (VCS)
+*Vertical Coordinate System (VCS)
 VCS defines the origin for height or depth and is referenced to two types of a surface: Spheroid (ellipsoid) or Gravity-based (geoid).
 1. Spheroid (e.g., WGS84)
 2. Gravity-based (EGM2008)
+
+*Geoid
+The geoid is an equipotential, or level, surface of the earth’s gravity field.
 ![Geoid](https://github.com/EijiGorilla/MMSP-ArcGIS/blob/master/Geoid%20Height.gif)
+In the illustration above, the green line represents the geoid surface. It roughly curves to follow the topography. The dashed line represents the surface of the spheroid. The **h is the height above the spheroid, or ellipsoid (HAE)**. In this case, the height is a negative value. **Geoid undulation, N**, is the distance between the spheroid and geoid surface. The **orthometric height, H**" is related to the spheroid height by the following:
 
-他企業が基準とした標高値は1、当プロジェクトは3における平均海面標高値です。設計を行うために使用する座標系は3です。また、標高値は平均海面の標高値を基準にすることが一般的です。
+* Conversion
+In order to convert
 
-当プロジェクトの標高にあわせ、他企業が作成した平面図の標高値を変換しました。変換後のCADデータは団内サーバに格納済です。設計は、標高値に相対的な問題が無かった為、標高値の差分のみ考慮すれば可能です。
-
-*GIS SpecialistのMike CAULANの情報と合わせると、MMSPで使用する座標系は：
-1. WGS84 UTM Zone 51N (Projected Coordinate System：ArcGIS)
-2. WGS84 (Geographic Coordinate System：ArcGIS)
-3. PRS1992 Philippine Zone III.prj (CADで使用する座標系）

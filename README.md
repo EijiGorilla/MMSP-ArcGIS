@@ -64,14 +64,14 @@ Please follow steps below for using Spyder for Python scripts in ArcGIS Pro.
 1. Open ArcGIS Pro
 2. Go to Python Package Manager
 3. Open Manage Environments
-4. Click "Clone Defaults". If success (name it like **arcgispro-py3-clone**, Go to 7, else follow 5 and 6
-5. If the cloning fails, copy the default base folder ("C:\....\**arcgispro-py3**)
-6. Paste the copied folder into a newly created folder in C directory and rename it (C:\ArcGIS_Pro\Conda\Cloned_Envs\**arcgispro-py3-eiji**)
+4. Click "Clone Defaults". If success (name it like **arcgispro-py3-clone**), Go to 7, else follow 5 and 6
+5. If the cloning fails, navigate to the default base folder (**arcgispro-py3**) and copy it.
+6. Paste the copied folder into a newly created folder under C directory and rename it (C:\ArcGIS_Pro\Conda\Cloned_Envs\_arcgispro-py3-eiji_)
 7. Download spyder in the cloned folder (i.e., **arcgispro-py3-clone** or **arcgis-py3-eiji**)
 8. Make sure to click and activate check-mark beside the cloned folder.
 
 *Open Python Command Prompt
-1. Search and type "Python Command Prompt"
+1. In Search, type "Python Command Prompt" and open it
 2. Make sure that you see the cloned folder directory
 
 *Run Spyder

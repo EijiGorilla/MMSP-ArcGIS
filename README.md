@@ -58,3 +58,21 @@ In the illustration above, the green line represents the geoid surface. It rough
 EGM2008 is geoid (gravity-based), and ArcGIS Pro has conversion equation for EGM2008. However, there is no direct way of converting PRS 1992 to EGM2008 Geiod. As such, PRS1992 must be first converted to WGS84 and then to EGM2008. Please refer to steps below using ArcGIS Pro.  
 ![Conversion Figure](https://github.com/EijiGorilla/MMSP-ArcGIS/blob/master/Illustration%20of%20VCS%20PRS92%20to%20EGM2008Geoid.png)  
 
+## Using Spyder for ArcGIS Pro2.5
+Please follow steps below for using Spyder for Python scripts in ArcGIS Pro.  
+*Setup: Python Package Manager  
+1. Open ArcGIS Pro
+2. Go to Python Package Manager
+3. Open Manage Environments
+4. Click "Clone Defaults". If success (name it like **arcgispro-py3-clone**, Go to 7, else follow 5 and 6
+5. If the cloning fails, copy the default base folder ("C:\....\**arcgispro-py3**)
+6. Paste the copied folder into a newly created folder in C directory and rename it (C:\ArcGIS_Pro\Conda\Cloned_Envs\**arcgispro-py3-eiji**)
+7. Download spyder in the cloned folder (i.e., **arcgispro-py3-clone** or **arcgis-py3-eiji**)
+8. Make sure to click and activate check-mark beside the cloned folder.
+
+*Open Python Command Prompt
+1. Search and type "Python Command Prompt"
+2. Make sure that you see the cloned folder directory
+
+*Run Spyder
+1. type spyder at the end of directory in Python Command Prompt

@@ -1,0 +1,112 @@
+<html>
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="initial-scale=1, maximum-scale=1, user-scalable=no">
+  <title>ArcGIS JavaScript Tutorials: Create a Starter App</title>
+  <style>
+    html, body, #viewDiv {
+      padding: 0;
+      margin: 0;
+      height: 100%;
+      width: 100%;
+    }
+  </style>
+  
+  <link rel="stylesheet" href="https://js.arcgis.com/4.12/esri/css/main.css">
+  <script src="https://js.arcgis.com/4.12/"></script>
+  
+  <script>  
+    require([
+      "esri/Map",
+      "esri/views/MapView",
+      "esri/layers/FeatureLayer"
+    ], function(Map, MapView, FeatureLayer){
+
+      var map = new Map({
+        basemap: "topo-vector"
+      });
+
+      var view = new MapView({
+        container: "viewDiv",
+        map: map,
+        center: [-118.80543,34.02700],
+        zoom: 13
+      });
+
+      // Define Hatched symbol 
+       function createFillSymbolHatch(value, color){
+          return {
+              value: value,
+              symbol: {
+                  color: color,
+                  type: "simple-fill",
+                  style: "diagonal-cross",
+                  outline: {
+                      style: "none"
+                  }                
+              },
+              label: value
+          };
+      }
+      
+      var openSpaceRendererHatch = {
+          type: "unique-value",
+          field: "TYPE",
+          uniqueValueInfos: [
+              createFillSymbolHatch("Natural Areas", "#ffffff"),
+              createFillSymbolHatch("Regional Open Space", "#ffffff"),
+              createFillSymbolHatch("Local Park", "#fffffff"),
+              createFillSymbolHatch("Regional Recreation Park", "ffffff"),
+          ]
+      };
+
+      // Define fill symbol
+      function createFillSymbol(value, color){
+          return {
+              value: value,
+              symbol: {
+                  color: color,
+                  type: "simple-fill",
+                  style: "solid",
+                  outline: {
+                      style: "none"
+                  }
+              },
+              label: value
+          };
+      }
+
+      var openSpaceRenderer = {
+          type: "unique-value",
+          field: "TYPE",
+          uniqueValueInfos: [
+              createFillSymbol("Natural Areas", "#9E559C"),
+              createFillSymbol("Regional Open Space", "#A7C636"),
+              createFillSymbol("Local Park", "#149ECE"),
+              createFillSymbol("Regional Recreation Park", "#ED5151")
+          ]
+      };
+
+      
+      var opensapces = new FeatureLayer({
+          url: "https://services3.arcgis.com/GVgbJbqm8hXASVYi/arcgis/rest/services/Parks_and_Open_Space/FeatureServer/0",
+          renderer: openSpaceRendererHatch,
+          opacity: 0.50
+      });
+      map.add(opensapces, 0);
+
+      var opensapces = new FeatureLayer({
+          url: "https://services3.arcgis.com/GVgbJbqm8hXASVYi/arcgis/rest/services/Parks_and_Open_Space/FeatureServer/0",
+          renderer: openSpaceRenderer,
+          opacity: 0.50
+      });
+      map.add(opensapces, 0);
+
+
+    });
+  </script>
+</head>
+<body>
+  <div id="viewDiv"></div>
+</body>
+</html>

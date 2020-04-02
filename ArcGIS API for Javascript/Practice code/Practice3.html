@@ -1,0 +1,58 @@
+<html>
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="initial-scale=1, maximum-scale=1, user-scalable=no">
+    <title>ArcGIS JavaScript Tutorials: Create a JavaScript starter app</title>
+    <style>
+      html, body, #viewDiv {
+        padding: 0;
+        margin: 0;
+        height: 100%;
+        width: 100%;
+      }
+    </style>
+    <link rel="stylesheet" href="https:js.arcgis.com/4.14/esri/themes/dark/main.css">
+    <script src="https://js.arcgis.com/4.14/"></script>
+    <script>
+    require([
+      "esri/WebMap",
+      "esri/views/MapView",
+      "esri/portal/PortalItem",
+      "esri/portal/Portal"
+    ], function(WebMap, MapView, PortalItem, Portal) {
+        
+        // Set the default portalUrl value to the hostname of the on-premise portal
+       // esriConfig.portalUrl = "https://mmspgc-gis.mmspgc.local/portal/home";
+        // Create the portal instance
+        //var portal = new Portal(); // Takes the default set in the config
+        
+        portal = new Portal();
+        portal.authMode = "immediate";
+        
+        var webmap = new WebMap({
+        portalItem: {
+          //id: "3b872599d8f64f2d89fa21493161aaf9"
+          id: "3b872599d8f64f2d89fa21493161aaf9",
+        
+        portal: {
+            url: "https://mmspgc-gis.mmspgc.local/portal"
+        }
+        }
+      });
+
+      var view = new MapView({
+        container: "viewDiv",
+        //*** UPDATE ***//
+        map: webmap
+        //center: [-118.80500,34.02700],
+        //zoom: 13
+      });
+
+
+      });
+    </script>
+  </head>
+  <body>
+    <div id="viewDiv"></div>
+  </body>
+</html>

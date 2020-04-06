@@ -124,7 +124,7 @@ tool_exec=function(in_params,out_params){
         } else {
           temp[[j]]=gsub("[*]","",temp[[j]])
           temp[[j]]=gsub("\n","",temp[[j]])
-          temp[[j]]=gsub(" ","",temp[[j]])
+          #temp[[j]]=gsub(" ","",temp[[j]])
           temp[[j]]=gsub("[*]","",temp[[j]])
         }
       }

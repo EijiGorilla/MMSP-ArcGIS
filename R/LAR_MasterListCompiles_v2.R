@@ -13,6 +13,16 @@ tool_exec=function(in_params,out_params){
   #
   ##
   
+  ## Functions
+  ## Capitalize the first letter
+  CapStr <- function(y) {
+    c <- strsplit(y, " ")[[1]]
+    c = tolower(c)
+    paste(toupper(substring(c, 1,1)), substring(c, 2),
+          sep="", collapse=" ")
+  }
+  
+  
   # A1:Parameters for ArcGIS Pro----
   workSpace=in_params[[1]] # parameter: workspace
   oldTable=in_params[[2]]
@@ -174,12 +184,26 @@ tool_exec=function(in_params,out_params){
     # Delete a space for Survey No
     TABLE[,which(colnames(TABLE)=="SurveyNo")]=gsub(" ","",TABLE$SurveyNo)
     
+    ## Add space before and after bracket "()"
+    
+    ngrep=grep(")P", TABLE$SurveyNo)
+    id=which(colnames(TABLE)=="SurveyNo")
+    TABLE[ngrep,id]=gsub(")P",") P",TABLE[ngrep,id])
+    
+    
     # Lot No
     ## Delete space before Lot
-    TABLE[,which(colnames(TABLE)=="LotNo")]=gsub(" Lot", "LOT",TABLE$LotNo)
+    TABLE[,which(colnames(TABLE)=="LotNo")]=gsub(" Lot", "Lot",TABLE$LotNo)
     
     ## Replace observations of " " with NA
     TABLE[which(nchar(TABLE$LotNo)==1),which(colnames(TABLE)=="LotNo")]=NA
+    
+    ngrep=grep("LOT|LOTS",TABLE$LotNo)
+    id=which(colnames(TABLE)=="LotNo")
+    TABLE[ngrep,id]=gsub("LOT","Lot",TABLE[ngrep,id])
+    
+  # 8. Capitalize the first letter of Municipality
+    TABLE[,which(colnames(TABLE)=="Municipality")]=CapStr(TABLE$Municipality)
     
 ################ ################# #################
     

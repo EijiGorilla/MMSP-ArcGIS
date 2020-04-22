@@ -170,6 +170,17 @@ tool_exec=function(in_params,out_params){
       
     }
     
+  # 7. Delete Redundant Space for LotNo and SurveyNo
+    # Delete a space for Survey No
+    TABLE[,which(colnames(TABLE)=="SurveyNo")]=gsub(" ","",TABLE$SurveyNo)
+    
+    # Lot No
+    ## Delete space before Lot
+    TABLE[,which(colnames(TABLE)=="LotNo")]=gsub(" Lot", "LOT",TABLE$LotNo)
+    
+    ## Replace observations of " " with NA
+    TABLE[which(nchar(TABLE$LotNo)==1),which(colnames(TABLE)=="LotNo")]=NA
+    
 ################ ################# #################
     
     # Assign correct process to Field Name: Status

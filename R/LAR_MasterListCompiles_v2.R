@@ -8,9 +8,10 @@ tool_exec=function(in_params,out_params){
   library(stringr)
   
   ## RULES:
-  # 1. Field names must matched between old and new master tables
-  # 2. Field names must match between feature layer and master list excel table
-  # 3. Write file names of new master list excel tables using the same field names as in old master list table 
+  # 1. Field names must match between old compiled master list table and new master tables (individual tables by Municipality)
+  # 2. Field names must match between feature layer and compiled master list excel table.
+  # 3. The sheet name of a new master list excel table must have municipality name.(e.g., MINALIN)
+  # 4. Write a file name of new master list excel table using the same field names as in old master list table (e.g., Minalin_20200619.xlsx) 
   #
   ##
   
@@ -43,7 +44,7 @@ tool_exec=function(in_params,out_params){
   # 3. Get names of municipality under the main directory
   ## 3.1 Extract Municipality name from Old Master List File Name:
   ##(Note we need to make sure municipality names match between old and new master list tables)
-  x=read.xlsx(gsub(paste("\\",basename(oldTable),sep=""),"",oldTable,fixed=TRUE))
+  x=read.xlsx(gsub(paste("\\",basename(oldTable),sep=""),"",oldTable,fixed=TRUE)) # In the ArcGIS Pro, it reads the file at the level of a sheet name so need to remove it.
   #x=read.xlsx(oldTable)
   listM=paste0(unique(x$Municipality),collapse="|")
   

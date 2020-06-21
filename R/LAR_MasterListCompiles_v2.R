@@ -5,6 +5,7 @@ tool_exec=function(in_params,out_params){
   library(stringr)
   library(openxlsx)
   library(tools)
+  library(stringr)
   
   ## RULES:
   # 1. Field names must matched between old and new master tables
@@ -30,6 +31,11 @@ tool_exec=function(in_params,out_params){
   joinField=in_params[[4]] # Joine Field to be used between Old and New Master List tables
   result=out_params[[1]] # parameter: Feature Layer
 
+ # workSpace =   "C:/Users/oc3512/OneDrive - Oriental Consultants Global JV/Documents/ArcGIS/Projects/NSCR-EX_envi/01-Environment/N2/Land_Acquisition/Master List/PAB-MASTERLIST/00-MasterList"
+#  oldTable = "C:/Users/oc3512/OneDrive - Oriental Consultants Global JV/Documents/ArcGIS/Projects/NSCR-EX_envi/01-Environment/N2/Land_Acquisition/Master List/PAB-MASTERLIST/00-MasterList/MasterList_Parcellary_Compiled.xlsx"
+#  newTable = "C:\\Users\\oc3512\\OneDrive - Oriental Consultants Global JV\\Documents\\ArcGIS\\Projects\\NSCR-EX_envi\\01-Environment\\N2\\Land_Acquisition\\Master List\\PAB-MASTERLIST\\Minalin\\Minalin_20200619.xlsx"
+#  joinField = "LotID"
+  
   # 1. Set Working Directory:
   dir=workSpace #"C:\\Users\\oc3512\\OneDrive - Oriental Consultants Global JV\\Documents\\ArcGIS\\Projects\\NSCR-EX_envi\\99-Site_Preparation_Works\\Land_Acquisition\\Master List\\PAB-MASTERLIST"
   setwd(dir)
@@ -38,7 +44,10 @@ tool_exec=function(in_params,out_params){
   ## 3.1 Extract Municipality name from Old Master List File Name:
   ##(Note we need to make sure municipality names match between old and new master list tables)
   x=read.xlsx(gsub(paste("\\",basename(oldTable),sep=""),"",oldTable,fixed=TRUE))
+  #x=read.xlsx(oldTable)
   listM=paste0(unique(x$Municipality),collapse="|")
+  
+  print(listM)
 
   ## Extract municipality names from new master list table
   ### Selected municipality
@@ -60,21 +69,23 @@ tool_exec=function(in_params,out_params){
     #a="C:\\Users\\oc3512\\OneDrive - Oriental Consultants Global JV\\Documents\\ArcGIS\\Projects\\NSCR-EX_envi\\99-Site_Preparation_Works\\Land_Acquisition\\Master List\\PAB-MASTERLIST\\00-MasterList\\MasterList_Parcellary_Compiled.xlsx"
     #x=read.xlsx(a)
     
+    #x=read.xlsx(oldTable)
     x=read.xlsx(gsub(paste("\\",basename(oldTable),sep=""),"",oldTable,fixed=TRUE))
     
-    
+
     # 5. Delete Punctuation from New Master List Table and Compile:----
     # Create Empty table:
     TEMP=data.frame()
     
     for(i in municipality){
-      
+ 
       # Extract subject municipality name from the New master list excel table
       table=grep(i,newTable,ignore.case=TRUE,value=TRUE)
       
       # 5.4. Read New Master List Excel Table
       y=read.xlsx(gsub(paste("\\",basename(table),sep=""),"",table,fixed=TRUE)) # Remove [1] later
-      
+      #y=read.xlsx(table) # Remove [1] later
+
       # 5.6. Delete Redundant Punctuations from Observations:
       ## 5.6.1. Create empty table:
       temp=as.data.frame(matrix(data=NA,nrow=nrow(y),ncol=length(colnames(y))))
@@ -141,19 +152,19 @@ tool_exec=function(in_params,out_params){
       
       # Add Municipality
       temp$Municipality=toupper(i)
-      
+
       # End of Delete Punctuation
       
       # 5.7 Compile All Municipalities
       TEMP=bind_rows(TEMP,temp)
       
     }
-    
+
     # 6. Replace Original Master List with New Master List compiled
     
     TABLE=data.frame()
     for(k in toupper(municipality)){
-      
+
       # Join TEMP (new master list) to original
       ## Extract missing field names from New Master List that exist in the original master list
       unFieldN=colnames(x)[!colnames(x) %in% colnames(TEMP)]
@@ -165,7 +176,7 @@ tool_exec=function(in_params,out_params){
       x10=x[,c(joinField,"Municipality",unFieldN)]
       x11=filter(x10,Municipality==k)
       x11=x11[,-which(colnames(x11)=="Municipality")]
-      
+
       ## Join TEMP (new master list) to original for missing
       TEMP_Filter=filter(TEMP,Municipality==k)
       xxx=left_join(TEMP_Filter,x11,by=joinField)
@@ -177,15 +188,14 @@ tool_exec=function(in_params,out_params){
       TABLE$TotalArea=as.numeric(TABLE$TotalArea)
       
       TABLE=bind_rows(TABLE,xxx)
-      
+
     }
     
   # 7. Delete Redundant Space for LotNo and SurveyNo
     # Delete a space for Survey No
     TABLE[,which(colnames(TABLE)=="SurveyNo")]=gsub(" ","",TABLE$SurveyNo)
-    
+
     ## Add space before and after bracket "()"
-    
     ngrep=grep(")P", TABLE$SurveyNo)
     id=which(colnames(TABLE)=="SurveyNo")
     TABLE[ngrep,id]=gsub(")P",") P",TABLE[ngrep,id])
@@ -203,8 +213,8 @@ tool_exec=function(in_params,out_params){
     TABLE[ngrep,id]=gsub("LOT","Lot",TABLE[ngrep,id])
     
   # 8. Capitalize the first letter of Municipality
-    TABLE[,which(colnames(TABLE)=="Municipality")]=CapStr(TABLE$Municipality)
-    
+    #TABLE[,which(colnames(TABLE)=="Municipality")]=CapStr(TABLE$Municipality)
+ 
 ################ ################# #################
     
     # Assign correct process to Field Name: Status

@@ -48,11 +48,13 @@ WGS84 is a geographic coordinate system (GCS), while WGS84 Web Mercator is a Pro
 
 However, WGS84 Web Mercator is a conical, meaning that **it perserves the direction and shape but distorts the size and area.** That is why, mappers often store data in WGS84 (EPSG 4326) but display it in WGS84 Web Mercator (EPSG 3857).
 
-**Esri does not recommend that we use WGS84 Web Mercator in a large-scale mapping or analysis as it distorts the size and area** Given these characteristics, I personally recommend as below:
+**Esri does not recommend that we use WGS84 Web Mercator in a large-scale mapping or analysis as it distorts the size and area**
 
-1. Data Storage: WGS84 (EPSG 4326)
-2. Data Visualization WGS84 Web Mercator (EPSG 3857)
-3. Area Calucation and Size Analysis: WGS84 UTM 51N (EPSG 32651) or (PRS1992 Philippine Zone III if need to be consistent with CAD files)
+For this Project, we use smart maps or web apps for rendering both 2D and 3D. Unless otherwise noted, we display data for visualization purposes, not analytics. This automatically narrows down to which coordinate system to use:
+
+1. Data Storage: WGS84 (EPSG 4326) as GCS
+2. Data Visualization WGS84 Web Mercator (EPSG 3857) as PCS
+3. Area Calucation and Size Analysis: WGS84 UTM 51N (EPSG 32651) as PCS or (PRS1992 Philippine Zone III if need to be consistent with CAD files)
 
 
 ## Height Conversion: PRS 1992 Philippine Zone III to EGM2008 Geoid

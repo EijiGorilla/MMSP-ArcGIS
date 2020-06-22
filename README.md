@@ -39,20 +39,20 @@ https://doc.arcgis.com/en/arcgis-online/manage-data/take-maps-offline.htm
 当プロジェクトの標高にあわせ、他企業が作成した平面図の標高値を変換しました。変換後のCADデータは団内サーバに格納済です。設計は、標高値に相対的な問題が無かった為、標高値の差分のみ考慮すれば可能です。
 
 *GIS SpecialistのMike CAULANの情報と合わせると、MMSPで使用する座標系は：
-**1. WGS84 UTM Zone 51N (Projected Coordinate System：ArcGIS)
-2. WGS84 (Geographic Coordinate System：ArcGIS)
-**3. PRS1992 Philippine Zone III.prj (CADで使用する座標系)
+**1. WGS84 UTM Zone 51N (Projected Coordinate System：ArcGIS)**
+**2. WGS84 (Geographic Coordinate System：ArcGIS)**
+**3. PRS1992 Philippine Zone III.prj (CADで使用する座標系)**
 
 ## WGS84 (EPSG 4326) vs WGS84 Web Mercator (EPSG 3857)
 WGS84 is a geographic coordinate system (GCS), while WGS84 Web Mercator is a Projected Coordinate System (PCS). WGS84 Web Mercator uses the WGS84 (spheroid or ellipsoid) to project a map on the flat surface but strangely on a square. That is why most web maps uses WGS84 Web Mercator for visualizing including Google Earth. Because WGS84 Web Mercator is based on a square, **it is less computer intensive when rendering a 3D model.**
 
 However, WGS84 Web Mercator is a conical, meaning that **it perserves the direction and shape but distorts the size and area.** That is why, mappers often store data in WGS84 (EPSG 4326) but display it in WGS84 Web Mercator (EPSG 3857).
 
-Based on the characteristics of WGS84 Web Mercator, **Esri does not recommend that we use WGS84 Web Mercator in a large-scale mapping or analysis as it distorts the size and area**
+**Esri does not recommend that we use WGS84 Web Mercator in a large-scale mapping or analysis as it distorts the size and area** Given these characteristics, I personally recommend as below:
 
-**1. Data Storage: WGS84 (EPSG 4326)
-2. Data Visualization WGS84 Web Mercator (EPSG 3857)
-**3. Area Calucation and Size Analysis: WGS84 UTM 51N (EPSG 32651) or (PRS1992 Philippine Zone III if need to be consistent with CAD files)
+**1. Data Storage: WGS84 (EPSG 4326)**
+**2. Data Visualization WGS84 Web Mercator (EPSG 3857)**
+**3. Area Calucation and Size Analysis: WGS84 UTM 51N (EPSG 32651) or (PRS1992 Philippine Zone III if need to be consistent with CAD files)**
 
 
 ## Height Conversion: PRS 1992 Philippine Zone III to EGM2008 Geoid

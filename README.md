@@ -41,7 +41,22 @@ https://doc.arcgis.com/en/arcgis-online/manage-data/take-maps-offline.htm
 *GIS SpecialistのMike CAULANの情報と合わせると、MMSPで使用する座標系は：
 1. WGS84 UTM Zone 51N (Projected Coordinate System：ArcGIS)
 2. WGS84 (Geographic Coordinate System：ArcGIS)
-3. PRS1992 Philippine Zone III.prj (CADで使用する座標系）
+3. PRS1992 Philippine Zone III.prj (CADで使用する座標系)
+
+## WGS84 (EPSG 4326) vs WGS84 Web Mercator (EPSG 3857)
+WGS84 is a geographic coordinate system (GCS), while WGS84 Web Mercator is a Projected Coordinate System (PCS). WGS84 Web Mercator uses the WGS84 (spheroid or ellipsoid) to project a map on the flat surface but strangely on a square. That is why most web maps uses WGS84 Web Mercator for visualizing including Google Earth. Because WGS84 Web Mercator is based on a square, **it is less computer intensive when rendering a 3D model.**
+
+However, WGS84 Web Mercator is a conical, meaning that **it perserves the direction and shape but distorts the size and area.** That is why, mappers often store data in WGS84 (EPSG 4326) only (blank in PCS) but display it in WGS84 Web Mercator (EPSG 3857).
+
+**Esri does not recommend that we use WGS84 Web Mercator in a large-scale mapping or analysis as it distorts the size and area.**
+However, we need to render 2D and 3D in web apps (smart maps) for mostly showing working progress, not analytics purposes in a relative small scale. On the other hand, we may want to use WGS84 UTM Zone 51N (EPSG 32651) for static maps in ArcGIS Pro.
+
+Consequently, we take the following protocols
+
+1. Data Storage: EPSG 3857 (PCS) and EPSG 4326 (GCS)
+2. Data Visualization in static maps: Set coordinate system with EPSG 32651 for "Map Projection" (Pro automatically converts to EPSG 32651 on the fly. so no problem in creating static maps)
+3. Area Calucation and Size Analysis: WGS84 UTM 51N (EPSG 32651) as PCS or (PRS1992 Philippine Zone III if need to be consistent with CAD files)
+
 
 ## Height Conversion: PRS 1992 Philippine Zone III to EGM2008 Geoid
 *Vertical Coordinate System (VCS)  

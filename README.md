@@ -57,6 +57,8 @@ Consequently, we take the following protocols
 2. Data Visualization in static maps: Set coordinate system with EPSG 32651 for "Map Projection" (Pro automatically converts to EPSG 32651 on the fly. so no problem in creating static maps)
 3. Area Calucation and Size Analysis: WGS84 UTM 51N (EPSG 32651) as PCS or (PRS1992 Philippine Zone III if need to be consistent with CAD files)
 
+* Refer to the link below:
+https://www.esri.com/arcgis-blog/products/arcgis-pro/mapping/projection-on-the-fly-and-geographic-transformations/#:~:text=Projection%20on%20the%20fly,coordinate%20system%20than%20your%20map.
 
 ## Height Conversion: PRS 1992 Philippine Zone III to EGM2008 Geoid
 *Vertical Coordinate System (VCS)  

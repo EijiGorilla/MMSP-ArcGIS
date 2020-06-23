@@ -48,8 +48,8 @@ WGS84 is a geographic coordinate system (GCS), while WGS84 Web Mercator is a Pro
 
 However, WGS84 Web Mercator is a conical, meaning that **it perserves the direction and shape but distorts the size and area.** That is why, mappers often store data in WGS84 (EPSG 4326) only (blank in PCS) but display it in WGS84 Web Mercator (EPSG 3857).
 
-**Esri does not recommend that we use WGS84 Web Mercator in a large-scale mapping or analysis as it distorts the size and area**
-However, we need to render 2D and 3D in web apps (smart maps) for mostly showing working progress, not analytics purposes. On the other hand, we may want to use WGS84 UTM Zone 51N (EPSG 32651) for static maps in ArcGIS Pro.
+**Esri does not recommend that we use WGS84 Web Mercator in a large-scale mapping or analysis as it distorts the size and area.**
+However, we need to render 2D and 3D in web apps (smart maps) for mostly showing working progress, not analytics purposes in a relative small scale. On the other hand, we may want to use WGS84 UTM Zone 51N (EPSG 32651) for static maps in ArcGIS Pro.
 
 Consequently, we take the following protocols
 

@@ -1,0 +1,391 @@
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <meta
+      name="viewport"
+      content="initial-scale=1,maximum-scale=1,user-scalable=no"
+    />
+    <!--
+  ArcGIS API for JavaScript, https://js.arcgis.com
+  For more information about the views-switch-2d-3d sample, read the original sample description at developers.arcgis.com.
+  https://developers.arcgis.com/javascript/latest/sample-code/views-switch-2d-3d/index.html
+  -->
+<title>D-Wall and Excavation/RC Monitoring</title>
+
+    <style>
+      html,
+      body {
+        width: 100%;
+        height: 100%;
+        padding: 0;
+        margin: 0;
+        background-color: black;       
+      }
+
+      #stationList {
+        background-color: rgb(0, 0, 0);
+      }
+
+      #seasons-filter {
+        height: 10px;
+        width: 100px;
+        visibility: hidden;
+      }
+
+      .season-item {
+        width: 100%;
+        padding: 10px;
+        size: 8px;
+        text-align: center;
+        vertical-align: baseline;
+        cursor: pointer;
+        height: 30px;
+      }
+
+      .season-item:focus {
+        background-color: dimgrey;
+      }
+
+      .season-item:hover {
+        background-color: dimgrey;
+      }
+
+      #date-filter {
+        height: 100px;
+        width: 100px;
+        visibility: hidden;
+      }
+
+      .date-item {
+        width: 100%;
+        padding: 10px;
+        text-align: center;
+        size: 8px;
+        vertical-align: baseline;
+        cursor: pointer;
+        height: 30px;
+      }
+
+      .date-item:focus {
+        background-color: dimgrey;
+      }
+
+      .date-item:hover {
+        background-color: dimgrey;
+      }
+
+
+
+      #applicationDiv {
+        position: absolute;
+        width: 100%;
+        height: 100%;
+        display: flex;
+        flex-direction: column;
+        overflow: hidden;         
+      }
+
+      #viewDiv {
+        padding: 0;
+        margin: 0;
+        height: 100%;
+        width: 100%;
+        background-color: black;
+        flex: 1 1 auto;
+        order: 1;
+        overflow: hidden;
+      }
+
+      #titleDiv {
+        font-weight: 400;
+        font-style: normal;
+        font-size: 25px;
+        color: white;
+        padding: 10px;
+        background-color: rgb(0, 0, 0, 0.5);
+        opacity: 0.9;
+      }
+
+      .panel-container {
+          position: relative;
+          width: 100%;
+          height: 100%;
+          background-color: rgb(0, 0, 0, 0.5);
+      }
+
+      .panel-side {
+      padding: 0px;
+      box-sizing: border-box;
+      width: 150px;
+      height: auto;
+      position: absolute;
+      top: 0;
+      right: 0;
+      color: #fff;
+      background-color: rgb(0, 0, 0, 0.5);
+      overflow: auto;
+      z-index: 60;
+    }
+
+    .panel-side h2 {
+        padding: 5 5px;
+        margin: 0;
+        font-size: 14px;
+        font-weight: 600;
+        color: white;
+        background-color: black;
+      }
+
+      .panel-side ul {
+        list-style: none;
+        margin: 0;
+        padding: 0;
+        font-weight: 100;
+        color: white;
+        background-color: rgb(0, 0, 0, 0.5);
+      }
+
+      .panel-side li {
+        list-style: none;
+        padding: 3px 10px;
+        background-color: rgb(0, 0, 0, 0.5);
+      }
+
+      .panel-result {
+        cursor: pointer;
+        margin: 0px 0;
+        background-color: rgb(0, 0, 0, 0.5);
+      }
+
+      .panel-result:hover,
+      .panel-result:focus,
+      .panel-result.selected {
+        background-color: rgb(0, 0, 0, 0.5);
+      }      
+
+      #optionsDiv {
+        width: 250px;
+        height: 120px;
+        padding: 0 15px 0 15px;
+        font-size: 16px;
+        font-weight: normal;
+        text-align: center;
+        vertical-align: middle;
+        background-color: rgb(71, 150, 7);
+        color: white;
+        padding: 10px;
+        line-height: 0.3;
+      }
+
+      #percentComp {
+        color: white;
+        font-size: 35px;
+        text-align: center;
+        vertical-align: middle;
+        text-align: center;
+        line-height: 0.3;
+      }
+
+      #menu {
+        padding: 3px 3px 3px 3px;
+        background-color: black;
+        color: white;
+      }
+      
+      p {
+        color: white;
+      }
+      
+    </style>
+
+    <link
+      rel="stylesheet"
+      href="https://js.arcgis.com/4.15/esri/themes/dark/main.css"
+    />
+    <script src="https://js.arcgis.com/4.15/"></script>
+
+    <script>
+      require([
+        "esri/Basemap",
+        "esri/Map",
+        "esri/views/MapView",
+        "esri/views/SceneView",
+        "esri/layers/FeatureLayer",
+        "esri/views/layers/support/FeatureFilter",
+        "esri/layers/SceneLayer",
+        "esri/layers/Layer",
+        "esri/layers/TileLayer",
+        "esri/layers/VectorTileLayer",
+        "esri/layers/support/LabelClass",
+        "esri/symbols/LabelSymbol3D",
+        "esri/WebMap",
+        "esri/WebScene",
+        "esri/portal/PortalItem",
+        "esri/portal/Portal",
+        "esri/widgets/TimeSlider",
+        "esri/widgets/Legend",
+        "esri/widgets/LayerList",
+        "esri/widgets/Fullscreen",
+        "esri/tasks/GeometryService",
+        "esri/tasks/support/Query",
+        "esri/tasks/QueryTask",
+        "esri/renderers/smartMapping/statistics/summaryStatistics",
+        "esri/tasks/support/StatisticDefinition",
+        "esri/symbols/WebStyleSymbol",
+        "esri/TimeExtent",
+        "esri/widgets/Expand",
+        "esri/widgets/Editor",
+        "esri/renderers/UniqueValueRenderer",
+        "esri/widgets/support/DatePicker",
+        "esri/widgets/FeatureTable",
+        "esri/widgets/Compass",
+        "esri/TimeExtent"
+      ], function(Basemap, Map, MapView, SceneView, 
+                  FeatureLayer, FeatureFilter,
+                  SceneLayer, Layer, TileLayer, VectorTileLayer,
+                  LabelClass, LabelSymbol3D, WebMap,
+                  WebScene, PortalItem, Portal,
+                  TimeSlider, Legend, LayerList, Fullscreen,
+                  GeometryService, Query, QueryTask, summaryStatistics,
+                  StatisticDefinition, WebStyleSymbol,
+                  TimeExtent, Expand, Editor, UniqueValueRenderer, DatePicker, FeatureTable, Compass, TimeExtent) {
+        let timeLayerView; // for making a list of time periods
+
+        var basemap = new Basemap({
+        baseLayers: [
+          new VectorTileLayer({
+            portalItem: {
+              id: "3a62040541b84f528da3ac7b80cf4a63" 
+            }
+          })
+        ]
+      });
+
+
+         var map = new Map({
+              basemap: basemap, // "streets-night-vector", 
+              ground: "world-elevation"
+        });        //map.ground.surfaceColor = "#FFFF";
+        //map.ground.opacity = 0.1;
+         
+        var view = new SceneView({
+            map: map,
+            container: "viewDiv",
+            viewingMode: "local",
+            camera: {
+                position: {
+                    x: 120.57930,
+                    y: 15.18,
+                    z: 500
+                    },
+                    tilt: 65
+                    },
+            environment: {
+                background: {
+                    type: "color", // autocasts as new ColorBackground()
+                    color: [0, 0, 0, 1]
+                    },
+                    // disable stars
+                    starsEnabled: false,
+                    //disable atmosphere
+                    atmosphereEnabled: false
+                    }
+        });
+
+        // Setup UI
+     
+        var applicationDiv = document.getElementById("applicationDiv");
+        var titleDiv = document.getElementById("titleDiv");
+
+
+        //********** Import Layers**********
+        var dwallLayer = new SceneLayer({
+          portalItem: {
+            id: "a418acc4fcef4840b3abbe22cfe79abd",
+            portal: {
+              url: "https://mmspgc-gis.mmspgc.local/portal"
+              }
+          },
+          elevationInfo: {
+          mode: "absolute-height",
+          offset: 107.5
+        },
+            title: "Viaduct sample",
+            outFields: ["*"]
+            // when filter using date, example below. use this format
+            //definitionExpression: "EndDate = date'2020-6-3'"
+        });
+        map.add(dwallLayer, 1);
+
+ 
+        // LayerList and Add legend to the LayerList
+        // On-off feature layer tab
+        var layerList = new LayerList({
+            view: view,
+            listItemCreatedFunction: function(event) {
+              const item = event.item;
+              if (item.layer.type != "group") {
+                item.panel = {
+                  content: "legend",
+                  open: false
+                };
+              }
+            }
+          });
+
+          view.ui.add(layerList, {
+            position: "bottom-left"
+          });
+        // End of LayerList
+
+
+        // Compass
+
+
+        // See-through-Ground        
+          view.when(function() {
+          // allow navigation above and below the ground
+          map.ground.navigationConstraint = {
+            type: "none"
+          };
+          // the webscene has no basemap, so set a surfaceColor on the ground
+          map.ground.surfaceColor = "#fff";
+          // to see through the ground, set the ground opacity to 0.4
+          map.ground.opacity = 0.1;
+        });
+          
+        // Full screen logo
+        view.ui.add(
+            new Fullscreen({
+                view: view,
+                element: applicationDiv
+            }),
+            "top-left"
+        );
+        
+        // See through Gound
+        document
+          .getElementById("opacityInput")
+          .addEventListener("change", function(event) {
+            map.ground.opacity = event.target.checked ? 0.1 : 1;
+          });
+
+        view.ui.add("menu", "bottom-left");
+
+
+
+      });
+    </script>
+  </head>
+
+  <body>
+    <div id="applicationDiv">
+    <div id="viewDiv">
+    </div>
+        <div id="menu" class="esri-widget">
+      <input type="checkbox" id="opacityInput" checked />
+      <label for="opacityInput">See through ground</label>
+    </div>
+    </div>
+  </body>
+</html>

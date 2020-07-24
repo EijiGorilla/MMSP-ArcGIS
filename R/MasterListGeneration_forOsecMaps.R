@@ -1,5 +1,11 @@
+library(googlesheets4)
 library(openxlsx)
 library(dplyr)
+library(googledrive)
+library(stringr)
+library(openxlsx)
+library(dplyr)
+library(stringr)
 
 #####################################
 # This R script compiles tables from Google spreadsheet available from DOTr.
@@ -38,22 +44,147 @@ library(dplyr)
 #    5. For Expro
 # The script finally generates a compiled master list table used to join with GIS feature layers.
 
-# 0. Choose working directory
-z = choose.dir()
-wd = setwd(z)
+###################################################################################################
+################################ Read Tables from Google Sheets####################################
+###################################################################################################
+# Autheticate Google Sheets Access
+## Step 1
+# method 1: direct provision client ID and secret
+google_app <- httr::oauth_app(
+  "Desktop client 1",
+  key = "603155182488-fqkuqgl6jgn3qp3lstdj6liqlvirhag4.apps.googleusercontent.com",
+  secret = "bH1svdfg-ofOg3WR8S5WDzPu"
+)
+drive_auth_configure(app = google_app)
+drive_auth_configure(api_key = "AIzaSyCqbwFnO6csUya-zKcXKXh_-unE_knZdd0")
+drive_auth(path = "G:/My Drive/01-Google Clould Platform/service-account-token.json")
+
+
+## Step 2: Authorize (Choose 'matsuzakieiji0@gmail.com'. OCG gmail may not work)
+gs4_auth()
+
+## Paramter
+a=choose.dir()
+wd=setwd(a)
+
+## Collect all URLs
+### NVS
+NVS = c("NVS_Depot", "NVS_QH", "NVS_TSS")
+EXPRO = c("Expro_Depot", "Expro_QH", "Expro_TSS") # Tandang Sora
+url = "https://docs.google.com/spreadsheets/d/1KcbcdIp_3Tkq6y61CEeJSaVo9EKJ0VeDva2SBUZviZk"
+
+## 2. Compile datasets
+### 2.1. NVS
+TEMP_NVS = data.frame()
+n=0
+
+for(i in NVS){
+  #i=NVS[1]
+  n=n+1
+  
+  # Read and write as CSV
+  v = range_speedread(url, sheet = i)
+  write.csv(v, "temp_NVS.csv", na="NA", row.names = FALSE)
+
+  v1 = read.csv(file.path(wd,"temp_NVS.csv"), stringsAsFactors = FALSE)
+
+  ## Add Station names
+  if(n==1){
+    v1$Station = "Depot"
+  } else if(n==2){
+    v1$Station = "Quirino Highway"
+  } else {
+    v1$Station = "Tandang Sora"
+  }
+  
+  # Write and read back as xlsx
+  ## Reorder: bring "Station" to the second name
+  colnames(v1)
+  v1 = v1[,c(1,ncol(v1),2:(ncol(v1)-1))]
+  write.xlsx(v1, "temp_NVS1.xlsx", row.names = FALSE)
+
+  temp = read.xlsx(file.path(wd, "temp_NVS1.xlsx"))
+  head(temp)
+  colnames(temp)
+
+  # Convert to Date format (after compiling all)
+  colNames = colnames(temp)[16:ncol(temp)]
+  
+  for(k in colNames){
+    temp[[k]] = as.Date(temp[[k]], format = "%d %b %y")
+    temp[[k]] = as.Date(temp[[k]], format = "1899-12-30")
+    temp[[k]] = as.numeric(temp[[k]])
+  }
+
+  # Make sure that CN is text
+  temp$CN = as.character(temp$CN)
+  
+  # Compile all NVS files for each station
+  TEMP_NVS = bind_rows(TEMP_NVS, temp)
+}
+
+# Priorit3
+dd = str_detect(colnames(TEMP_NVS), "Priority")
+colnames(TEMP_NVS)[which(dd==TRUE)] = "Priority3"
+#which(dd==TRUE)
+
+### 2.2. Expro
+TEMP_EXPRO = data.frame()
+n=0
+
+for(i in EXPRO){
+ # i=EXPRO[2]
+  n=n+1
+  v = range_speedread(url, sheet = i)
+  write.csv(v, "temp_EXPRO.csv", na="NA", row.names = FALSE)
+  
+  v1 = read.csv(file.path(wd,"temp_EXPRO.csv"), stringsAsFactors = FALSE)
+  
+  ## Add Station names
+  if(n==1){
+    v1$Station = "Depot"
+  } else if(n==2){
+    v1$Station = "Quirino Highway"
+  } else {
+    v1$Station = "Tandang Sora"
+  }
+  
+  # Write and read back as xlsx
+  ## Reorder: bring "Station" to the second name
+  v1 = v1[,c(1,ncol(v1),3:(ncol(v1)-1))]
+  write.xlsx(v1, "temp_EXPRO1.xlsx", row.names = FALSE)
+  
+  temp = read.xlsx(file.path(wd, "temp_EXPRO1.xlsx"))
+  
+  ## Get "Priority" location
+  rr=str_detect(colnames(temp), "Priority")
+  temp = temp[,c(1,2,which(rr==TRUE))]
+  colnames(temp)[3] = "Priority3_expro" # Rename priority
+  
+  # Add a field name to indicate the lots in this table is subject to Expropriation
+  temp$ForExpro = 1
+  
+  # Make sure that CN is text
+  temp$CN = as.character(temp$CN)
+
+  # Compile all NVS files for each station
+  TEMP_EXPRO = bind_rows(TEMP_EXPRO, temp)
+  
+}
+
+###################################################################################################
+################################ Add LAR Processes for OSEc maps####################################
+###################################################################################################
 
 # 1. Read Tables
-## nvs table is a xlsx table copied from Google sheet provided by DOTr
-a = file.choose()
-nvs = read.xlsx(a)
+nvs = TEMP_NVS
+expro = TEMP_EXPRO
 
-## expro table is a xlsx table copied from Google sheet provided by DOTr
-b = file.choose()
-expro =read.xlsx(b)
-
+# Read an previous master list
 c = file.choose()
 x = read.xlsx(c) # master list 
 
+# Define names of Status 3
 Status3Names = c("OTB Accepted",
                  "OTB for Serving",
                  "Pending Compilation of Documents",
@@ -81,7 +212,6 @@ nvs$StatusNVS[nvs$S>1]=3
 
 ## Status3
 nvs$Status3 = 0
-
 nvs$Status3[nvs$Status==Status3Names[1]]=1
 nvs$Status3[nvs$Status==Status3Names[2]]=2
 nvs$Status3[nvs$Status==Status3Names[3]]=3
@@ -163,100 +293,11 @@ xy_nvs_expro$StatusNVS3[xy_nvs_expro$ForExpro==1]=5 # Add For Expro process to s
 xy_nvs_expro = xy_nvs_expro[,-c(which(colnames(xy_nvs_expro)=="count_nvs.x"):which(colnames(xy_nvs_expro)=="count_nvs.y"))]
 
 # 6. Write a new master list
-write.xlsx(xy_nvs_expro,file.path(wd,paste("test_",Sys.Date(), ".xlsx", sep="")),row.names=FALSE)
+write.xlsx(xy_nvs_expro,file.path(wd,paste("MasterList_",Sys.Date(), ".xlsx", sep="")),row.names=FALSE)
 
+# Check
 table(xy_nvs_expro$StatusNVS)
 table(xy_nvs_expro$Status3)
 table(xy_nvs_expro$StatusNVS2)
 table(xy_nvs_expro$StatusNVS3)
 
-
-
-
-######################################################################
-## Practice script where you may need for temporary operation
-# matser list (sde)
-a=file.choose()
-x=read.xlsx(a)
-
-# new list (local)
-b=file.choose()
-y=read.xlsx(b)
-
-y$LotID = as.character(y$LotID)
-# Join 
-head(x)
-head(y)
-
-str(x);str(y)
-
-x=filter(x,Municipality=="Malolos"|Municipality=="San Fernando")
-y=filter(y,Municipality=="Malolos"|Municipality=="San Fernando")
-?filter
-head(x)
-
-#  table[,i]=as.Date(table[,i],format="%m/%d/%Y")
-#  table[,i]=as.POSIXct(table[,i],format="%m/%d/%y %H:%M:%S")
-# use the following date conversion if necessary
-y$ActualDateofInitialSubmissionforLegalPass = as.Date(y$ActualDateofInitialSubmissionforLegalPass, origin = "1899-12-30")
-y$ActualDateofInitialSubmissionforLegalPass = as.Date(y$ActualDateofInitialSubmissionforLegalPass, format="%m/%d/%y %H:%M:%S")
-
-y$ActualDateofClearedLegalPass = as.Date(y$ActualDateofClearedLegalPass, origin = "1899-12-30")
-y$ActualDateofClearedLegalPass = as.Date(y$ActualDateofClearedLegalPass, format="%m/%d/%y %H:%M:%S")
-
-?left_join
-
-
-xy=left_join(x,y,by="Id")
-xy=left_join(x,y,by=c("CN", "Station"))
-
-head(xy) 
-str(xy)
-# Convert NA to 0 for the following status
-xy$StatusNVS.y[is.na(xy$StatusNVS.y)]=0
-xy$Status3.y[is.na(xy$Status3.y)]=0
-xy$StatusNVS2.y[is.na(xy$StatusNVS2.y)]=0
-xy$StatusNVS3.y[is.na(xy$StatusNVS3.y)]=0
-xy$ForExpro[is.na(xy$ForExpro)]=0
-xy$count_NVS.y[is.na(xy$count_NVS.y)]=0 # count total target lots numbers
-
-xy$count_NVS.y[xy$ForExpro==1]=1 # count total target lots numbers
-xy$StatusNVS3.y[xy$ForExpro==1]=5 # Add For Expro process to statusNVS3
-
-
-xy$Priority3.y[is.na(xy$Priority3.y)]=0
-xy$Priority3_expro[is.na(xy$Priority3_expro)]=0
-unique(xy$Priority3.y)
-unique(xy$Priority3)
-
-xy$Priority3 = xy$Priority3.y + xy$Priority3_expro
-unique(xy$Priority3)
-       
-write.xlsx(xy,"C:/Users/oc3512/OneDrive - Oriental Consultants Global JV/Desktop/Envi/Time slice/v8/Joined.xlsx",row.names=FALSE)
-write.xlsx(xy,"C:/Users/oc3512/OneDrive - Oriental Consultants Global JV/Desktop/Envi/Parcellary Map/20200706/merged_with_MasterList_v2.xlsx",row.names=FALSE)
-write.xlsx(xy,"C:/Users/oc3512/OneDrive - Oriental Consultants Global JV/Desktop/temp.xlsx",row.names=FALSE)
-
-
-##########
-xy=left_join(x,y,by=c("Municipality", "LotID"))
-?left_join
-
-xy=full_join(x,y,by=c("Municipality", "LotID"))
-xy=left_join(x,y,by="LotID")
-xy=full_join(x,y,by="LotID")
-
-#xy=filter(xy,Municipality.x==c("Malolos","San Fernando"))
-unique(xy$Municipality.x)
-
-write.xlsx(xy,"C:/Users/oc3512/OneDrive - Oriental Consultants Global JV/Desktop/02-xy_merged.xlsx",row.names=FALSE)
-write.xlsx(xy,"C:/Users/oc3512/OneDrive - Oriental Consultants Global JV/Desktop/03-xy_merged_with_Expro.xlsx",row.names=FALSE)
-write.xlsx(xy,"C:/Users/oc3512/OneDrive - Oriental Consultants Global JV/Desktop/04-xy_merged_with_MasterList.xlsx",row.names=FALSE)
-write.xlsx(xy,"C:/Users/oc3512/OneDrive - Oriental Consultants Global JV/Documents/ArcGIS/Projects/NSCR-EX_envi/01-Environment/N2/Land_Acquisition/Master List/PAB-MASTERLIST/Calumpit/New_to_Old_20200716.xlsx",row.names=FALSE)
-
-####
-colnames(xy)
-xy1 = filter(xy, count_NAS==1)
-
-
-t=table(xy1$StatusNVS3.y)
-sum(t)

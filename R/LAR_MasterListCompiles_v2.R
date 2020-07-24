@@ -32,28 +32,31 @@ tool_exec=function(in_params,out_params){
   joinField=in_params[[4]] # Joine Field to be used between Old and New Master List tables
   result=out_params[[1]] # parameter: Feature Layer
 
- # workSpace =   "C:/Users/oc3512/OneDrive - Oriental Consultants Global JV/Documents/ArcGIS/Projects/NSCR-EX_envi/01-Environment/N2/Land_Acquisition/Master List/PAB-MASTERLIST/00-MasterList"
+# workSpace =   "C:/Users/oc3512/OneDrive - Oriental Consultants Global JV/Documents/ArcGIS/Projects/NSCR-EX_envi/01-Environment/N2/Land_Acquisition/Master List/PAB-MASTERLIST/00-MasterList"
 #  oldTable = "C:/Users/oc3512/OneDrive - Oriental Consultants Global JV/Documents/ArcGIS/Projects/NSCR-EX_envi/01-Environment/N2/Land_Acquisition/Master List/PAB-MASTERLIST/00-MasterList/MasterList_Parcellary_Compiled.xlsx"
 #  newTable = "C:\\Users\\oc3512\\OneDrive - Oriental Consultants Global JV\\Documents\\ArcGIS\\Projects\\NSCR-EX_envi\\01-Environment\\N2\\Land_Acquisition\\Master List\\PAB-MASTERLIST\\Minalin\\Minalin_20200619.xlsx"
 #  joinField = "LotID"
-  
+
   # 1. Set Working Directory:
   dir=workSpace #"C:\\Users\\oc3512\\OneDrive - Oriental Consultants Global JV\\Documents\\ArcGIS\\Projects\\NSCR-EX_envi\\99-Site_Preparation_Works\\Land_Acquisition\\Master List\\PAB-MASTERLIST"
   setwd(dir)
-  
+
   # 3. Get names of municipality under the main directory
   ## 3.1 Extract Municipality name from Old Master List File Name:
   ##(Note we need to make sure municipality names match between old and new master list tables)
+  print(oldTable)
   x=read.xlsx(gsub(paste("\\",basename(oldTable),sep=""),"",oldTable,fixed=TRUE)) # In the ArcGIS Pro, it reads the file at the level of a sheet name so need to remove it.
+ # oldTable="C:\\Users\\oc3512\\OneDrive - Oriental Consultants Global JV\\Documents\\ArcGIS\\Projects\\NSCR-EX_envi\\01-Environment\\N2\\Land_Acquisition\\Master List\\PAB-MASTERLIST\\00-MasterList\\Parcellary_MasterList_Compiled.xlsx\\T_Sheet_1$_"
   #x=read.xlsx(oldTable)
+  
   listM=paste0(unique(x$Municipality),collapse="|")
   
   print(listM)
 
   ## Extract municipality names from new master list table
   ### Selected municipality
+
   print(newTable)
-  
   municipality=str_extract(newTable,listM)
   print(municipality)
   
@@ -79,9 +82,13 @@ tool_exec=function(in_params,out_params){
     TEMP=data.frame()
     
     for(i in municipality){
+     # i="San Fernando"
+      
  
       # Extract subject municipality name from the New master list excel table
       table=grep(i,newTable,ignore.case=TRUE,value=TRUE)
+      #table="C:\\Users\\oc3512\\OneDrive - Oriental Consultants Global JV\\Documents\\ArcGIS\\Projects\\NSCR-EX_envi\\01-Environment\\N2\\Land_Acquisition\\Master List\\PAB-MASTERLIST\\Malolos\\Malolos_20200714.xlsx\\Malolos$"
+      #table="C:\\Users\\oc3512\\OneDrive - Oriental Consultants Global JV\\Documents\\ArcGIS\\Projects\\NSCR-EX_envi\\01-Environment\\N2\\Land_Acquisition\\Master List\\PAB-MASTERLIST\\San_Fernando\\San Fernando_Parcellary_20200714.xlsx\\T_San_Fernando$_"
       
       # 5.4. Read New Master List Excel Table
       y=read.xlsx(gsub(paste("\\",basename(table),sep=""),"",table,fixed=TRUE)) # Remove [1] later
@@ -152,7 +159,8 @@ tool_exec=function(in_params,out_params){
       }
       
       # Add Municipality
-      temp$Municipality=toupper(i)
+      temp$Municipality=i
+      tail(temp)
 
       # End of Delete Punctuation
       
@@ -160,35 +168,55 @@ tool_exec=function(in_params,out_params){
       TEMP=bind_rows(TEMP,temp)
       
     }
-
+# OK until here
     # 6. Replace Original Master List with New Master List compiled
     
     TABLE=data.frame()
-    for(k in toupper(municipality)){
-
+    #for(k in toupper(municipality)){
+v=1
+    for(k in municipality){
+      #k="Malolos"
       # Join TEMP (new master list) to original
       ## Extract missing field names from New Master List that exist in the original master list
-      unFieldN=colnames(x)[!colnames(x) %in% colnames(TEMP)]
-      
-      ## Extract sub datasets of missing field names from original Master List
-      # x10=x[,c(fieldNames[1],fieldNames[2],unFieldN)]
-      
-      
-      x10=x[,c(joinField,"Municipality",unFieldN)]
-      x11=filter(x10,Municipality==k)
-      x11=x11[,-which(colnames(x11)=="Municipality")]
+      if(v==1){
+        unFieldN=colnames(x)[!colnames(x) %in% colnames(TEMP)]
+        ## Extract sub datasets of missing field names from original Master List
+        # x10=x[,c(fieldNames[1],fieldNames[2],unFieldN)]
+        x10=x[,c(joinField,"Municipality",unFieldN)]
+        x11=filter(x10,Municipality==k)
+        x11=x11[,-which(colnames(x11)=="Municipality")]
+        
+        ## Join TEMP (new master list) to original for missing
+        TEMP_Filter=filter(TEMP,Municipality==k)
+        #ok
+        xxx=left_join(TEMP_Filter,x11,by=joinField)
+        
+        # Filter out municipality selected from original master list:
+        TABLE=filter(x,Municipality!=k)
+      } else {
+        unFieldN=colnames(TABLE)[!colnames(x) %in% colnames(TEMP)]
+        ## Extract sub datasets of missing field names from original Master List
+        # x10=x[,c(fieldNames[1],fieldNames[2],unFieldN)]
+        x10=x[,c(joinField,"Municipality",unFieldN)]
+        x11=filter(x10,Municipality==k)
+        x11=x11[,-which(colnames(x11)=="Municipality")]
+        
+        ## Join TEMP (new master list) to original for missing
+        TEMP_Filter=filter(TEMP,Municipality==k)
+        #ok
+        xxx=left_join(TEMP_Filter,x11,by=joinField)
+        
+        # Filter out municipality selected from original master list:
+        TABLE=filter(TABLE,Municipality!=k)
+      }
 
-      ## Join TEMP (new master list) to original for missing
-      TEMP_Filter=filter(TEMP,Municipality==k)
-      xxx=left_join(TEMP_Filter,x11,by=joinField)
-      
-      # Filter out municipality selected from original master list:
-      TABLE=filter(x,Municipality!=k)
-      
-      # Row bind new master list to original master list 
-      TABLE$TotalArea=as.numeric(TABLE$TotalArea)
-      
-      TABLE=bind_rows(TABLE,xxx)
+
+        # Row bind new master list to original master list 
+        TABLE$TotalArea=as.numeric(TABLE$TotalArea)
+        TABLE=bind_rows(TABLE,xxx)
+        
+        v=v+1
+
 
     }
     

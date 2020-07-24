@@ -7,7 +7,7 @@ library(openxlsx)
 library(dplyr)
 library(stringr)
 
-#####################################
+
 # This R script compiles tables from Google spreadsheet available from DOTr.
 # https://docs.google.com/spreadsheets/d/1zoQVPsWHfgZT1Q_Scz2lnkQKafeyI9c79yAbMEnBuno/edit#gid=743362036
 # It adds four types of land acquisition processes to the table
@@ -44,9 +44,20 @@ library(stringr)
 #    5. For Expro
 # The script finally generates a compiled master list table used to join with GIS feature layers.
 
-###################################################################################################
-################################ Read Tables from Google Sheets####################################
-###################################################################################################
+
+
+# STEP:1 Copy and Paste Google Sheets from DOTr's to My Google Sheets:----
+#
+# **READ first****READ first****READ first****READ first****READ first****READ first**
+#
+#WHen you copy and paste, make sure that column names are consistent.
+# Make sure to check the Google Sheets to see if there are some anomalies or errors.
+# For "NVS_TSS" Google Sheets of DOTr, there are forma links such that you will have errors when just copying and pasting.
+# For "NVS_TSS", make sure to copy and paste to Excel Sheet (xlsx) first then copy and paste to my Google Sheet
+
+
+# STEP 2: Authenticate Google Sheets:----
+
 # Autheticate Google Sheets Access
 ## Step 1
 # method 1: direct provision client ID and secret
@@ -60,9 +71,11 @@ drive_auth_configure(api_key = "AIzaSyCqbwFnO6csUya-zKcXKXh_-unE_knZdd0")
 drive_auth(path = "G:/My Drive/01-Google Clould Platform/service-account-token.json")
 
 
-## Step 2: Authorize (Choose 'matsuzakieiji0@gmail.com'. OCG gmail may not work)
+## Authorize (Choose 'matsuzakieiji0@gmail.com'. OCG gmail may not work)
 gs4_auth()
 
+
+# STEP 3: Compile all Google Sheet Tables:----
 ## Paramter
 a=choose.dir()
 wd=setwd(a)
@@ -172,10 +185,8 @@ for(i in EXPRO){
   
 }
 
-###################################################################################################
-################################ Add LAR Processes for OSEc maps####################################
-###################################################################################################
 
+# STEP 4: Add LAR Processes for Osec Maps:----
 # 1. Read Tables
 nvs = TEMP_NVS
 expro = TEMP_EXPRO
@@ -292,6 +303,8 @@ xy_nvs_expro$StatusNVS3[xy_nvs_expro$ForExpro==1]=5 # Add For Expro process to s
 # Delete supplementary count and priority fields
 xy_nvs_expro = xy_nvs_expro[,-c(which(colnames(xy_nvs_expro)=="count_nvs.x"):which(colnames(xy_nvs_expro)=="count_nvs.y"))]
 
+
+# STEP 5: Save an output table:----
 # 6. Write a new master list
 write.xlsx(xy_nvs_expro,file.path(wd,paste("MasterList_",Sys.Date(), ".xlsx", sep="")),row.names=FALSE)
 

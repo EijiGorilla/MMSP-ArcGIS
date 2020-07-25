@@ -78,7 +78,13 @@ gs4_auth()
 # STEP 3: Compile all Google Sheet Tables:----
 ## Paramter
 a=choose.dir()
+
 wd=setwd(a)
+
+
+# Read an previous master list
+c = file.choose()
+x = read.xlsx(c) # master list 
 
 ## Collect all URLs
 ### NVS
@@ -117,8 +123,6 @@ for(i in NVS){
   write.xlsx(v1, "temp_NVS1.xlsx", row.names = FALSE)
 
   temp = read.xlsx(file.path(wd, "temp_NVS1.xlsx"))
-  head(temp)
-  colnames(temp)
 
   # Convert to Date format (after compiling all)
   colNames = colnames(temp)[16:ncol(temp)]
@@ -127,11 +131,19 @@ for(i in NVS){
     temp[[k]] = as.Date(temp[[k]], format = "%d %b %y")
     temp[[k]] = as.Date(temp[[k]], format = "1899-12-30")
     temp[[k]] = as.numeric(temp[[k]])
+    temp[[k]] = gsub("N/A", "NA", temp[[k]]) # Some cells have "N/A" which must be converted to NA
   }
+  
+  # Convert "N/A" to "NA" in R format
+  temp$Status = gsub("N/A", "NA", temp$Status)
 
   # Make sure that CN is text
   temp$CN = as.character(temp$CN)
   
+  # Remove Structure
+  t5 = str_detect(temp$CN, "S") # Structure's CN ends with "S"
+  temp = temp[-which(t5==TRUE),]
+
   # Compile all NVS files for each station
   TEMP_NVS = bind_rows(TEMP_NVS, temp)
 }
@@ -191,9 +203,6 @@ for(i in EXPRO){
 nvs = TEMP_NVS
 expro = TEMP_EXPRO
 
-# Read an previous master list
-c = file.choose()
-x = read.xlsx(c) # master list 
 
 # Define names of Status 3
 Status3Names = c("OTB Accepted",
@@ -254,9 +263,11 @@ nvs$StatusNVS3[nvs$Status==Status3Names[2] | nvs$Status==Status3Names[3] |
                  nvs$Status==Status3Names[8]]=4
 nvs$StatusNVS3[nvs$AK>1]=1 # Make sure that Paid (1) must come at last
 
+write.xlsx(nvs, "Table_toBeChecked.xlsx",row.names = FALSE)
+
 ## Keep only necessary fields
 nvs = nvs[,c("CN", "Station","Priority3", "StatusNVS", "Status3", "StatusNVS2", "StatusNVS3")]
-colnames(nvs)
+
 ## FOr counting the total number of target lots for NVS
 nvs$count_nvs = 1
 

@@ -317,7 +317,10 @@ xy_nvs_expro = xy_nvs_expro[,-c(which(colnames(xy_nvs_expro)=="count_nvs.x"):whi
 
 # STEP 5: Save an output table:----
 # 6. Write a new master list
-write.xlsx(xy_nvs_expro,file.path(wd,paste("MasterList_",Sys.Date(), ".xlsx", sep="")),row.names=FALSE)
+dropboxFolder = "C:/Users/oc3512/Dropbox/★01-Railway/01-MMSP/02-Pre-Construction/01-Environment/01-LAR/99-MasterList"
+write.xlsx(xy_nvs_expro,file.path(dropboxFolder,paste("MasterList_",gsub("-","",Sys.Date()), ".xlsx", sep="")),row.names=FALSE)
+write.xlsx(xy_nvs_expro,file.path(wd,paste("MasterList_",gsub("-","",Sys.Date()), ".xlsx", sep="")),row.names=FALSE)
+
 
 # Check
 table(xy_nvs_expro$StatusNVS)

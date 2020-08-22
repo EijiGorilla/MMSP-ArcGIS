@@ -19,12 +19,13 @@ inputFeatures = # Copy and paste in python console and drag and drop target laye
 for layer in inputFeatures:
     new_md = md.Metadata()
     basename = os.path.basename(layer)
-    t1 = basename.split("nscrexbasedatasc.BASEUSER.",1)[1]
-    #t2 = t1.replace("()","") # remove bracket
+    #t1 = basename.split("nscrexbasedata.BASEUSER.",1)[1]
+    t1 = basename
+    t1 = t1.replace("X_ref_","") # remove bracket
     new_md.title = "{}".format(t1)
     #new_md.tags = 'Parcellary, NSCR-Ex, SC, Land Acquisition'
-    new_md.tags = 'Parcellary, Lot, NSCR-Ex, SC, Land Acquisition'
-    new_md.summary = 'This feature layer is used to monitoring land acquisition. Data Source: Wesley, Data Received: June 25th, 2020 (Outlook)'
+    new_md.tags = 'Trees, Compensation, MMSP'
+    new_md.summary = 'This feature layer is used to monitoring trees for compensation. Data Source: Morimoto (July 29th, 2020. OCG mail).'
     tgt_item_md = md.Metadata(layer)
     if not tgt_item_md.isReadOnly:
         tgt_item_md.copy(new_md)

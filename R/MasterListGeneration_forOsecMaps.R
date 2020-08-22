@@ -3,10 +3,6 @@ library(openxlsx)
 library(dplyr)
 library(googledrive)
 library(stringr)
-library(openxlsx)
-library(dplyr)
-library(stringr)
-
 
 # This R script compiles tables from Google spreadsheet available from DOTr.
 # https://docs.google.com/spreadsheets/d/1zoQVPsWHfgZT1Q_Scz2lnkQKafeyI9c79yAbMEnBuno/edit#gid=743362036
@@ -76,7 +72,7 @@ gs4_auth()
 
 
 # STEP 3: Compile all Google Sheet Tables:----
-## Paramter
+## Parameter
 a=choose.dir()
 
 wd=setwd(a)
@@ -94,6 +90,7 @@ url = "https://docs.google.com/spreadsheets/d/1KcbcdIp_3Tkq6y61CEeJSaVo9EKJ0VeDv
 
 ## 2. Compile datasets
 ### 2.1. NVS
+wd=setwd(a)
 TEMP_NVS = data.frame()
 n=0
 
@@ -119,13 +116,13 @@ for(i in NVS){
   # Write and read back as xlsx
   ## Reorder: bring "Station" to the second name
   colnames(v1)
-  v1 = v1[,c(1,ncol(v1),2:(ncol(v1)-1))]
+  v1 = v1[,c(1,ncol(v1),13:(ncol(v1)-1))]
   write.xlsx(v1, "temp_NVS1.xlsx", row.names = FALSE)
 
   temp = read.xlsx(file.path(wd, "temp_NVS1.xlsx"))
 
   # Convert to Date format (after compiling all)
-  colNames = colnames(temp)[16:ncol(temp)]
+  colNames = colnames(temp)[5:ncol(temp)]
   
   for(k in colNames){
     temp[[k]] = as.Date(temp[[k]], format = "%d %b %y")
@@ -221,7 +218,7 @@ colnames(nvs)
 dateNames = c("P", "Q", "R", "S", "TT", "U", "V", "W", "X", "Y", "Z",
               "AA", "AB", "AC", "AD", "AE", "AF", "AG", "AH", "AI", "AJ", "AK")
 # P: "Date of Initial Submission for Legal Pass", AK: "Actual Date of Check Issuance"
-colnames(nvs)[c(16:37)]=dateNames
+colnames(nvs)[c(5:ncol(nvs))]=dateNames
 
 # Add processes:
 ## StatusNVS
@@ -317,14 +314,24 @@ xy_nvs_expro = xy_nvs_expro[,-c(which(colnames(xy_nvs_expro)=="count_nvs.x"):whi
 
 # STEP 5: Save an output table:----
 # 6. Write a new master list
-dropboxFolder = "C:/Users/oc3512/Dropbox/★01-Railway/01-MMSP/02-Pre-Construction/01-Environment/01-LAR/99-MasterList"
-write.xlsx(xy_nvs_expro,file.path(dropboxFolder,paste("MasterList_",gsub("-","",Sys.Date()), ".xlsx", sep="")),row.names=FALSE)
+#dropboxFolder = "C:/Users/oc3512/Dropbox/???01-Railway/01-MMSP/02-Pre-Construction/01-Environment/01-LAR/99-MasterList"
+#write.xlsx(xy_nvs_expro,file.path(dropboxFolder,paste("MasterList_",gsub("-","",Sys.Date()), ".xlsx", sep="")),row.names=FALSE)
 write.xlsx(xy_nvs_expro,file.path(wd,paste("MasterList_",gsub("-","",Sys.Date()), ".xlsx", sep="")),row.names=FALSE)
 
 
 # Check
-table(xy_nvs_expro$StatusNVS)
-table(xy_nvs_expro$Status3)
-table(xy_nvs_expro$StatusNVS2)
-table(xy_nvs_expro$StatusNVS3)
+print(table(xy_nvs_expro$StatusNVS, dnn="StatusNVS"))
+print(table(xy_nvs_expro$Status3, dnn="Status3"))
+print(table(xy_nvs_expro$StatusNVS2, dnn="StatusNVS2"))
+print(table(xy_nvs_expro$StatusNVS3, dnn="StatusNVS3"))
 
+# Make a summary table
+summaryT = data.frame(xy_nvs_expro %>% group_by(StatusNVS3, Station) %>% summarise(n = n()))
+
+# Recoode StatusNVS3 for easier interpretation
+summaryT$StatusNVS3 = recode(summaryT$StatusNVS3, '1'="Paid", '2'="Ongoing Payment Processing",
+       '3'="Ongoing Legal Pass", '4'="Ongoing Appraisal/OtB", '5'="For Expro")
+summaryT
+
+# Total Number of observations for subject Lots (i.e., only StatusNVS3)
+sum(summaryT$n[which(!is.na(summaryT$StatusNVS3))])

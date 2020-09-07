@@ -3,6 +3,7 @@ library(openxlsx)
 library(dplyr)
 library(googledrive)
 library(stringr)
+library(reshape2)
 
 # This R script compiles tables from Google spreadsheet available from DOTr.
 # https://docs.google.com/spreadsheets/d/1zoQVPsWHfgZT1Q_Scz2lnkQKafeyI9c79yAbMEnBuno/edit#gid=743362036
@@ -332,6 +333,7 @@ summaryT = data.frame(xy_nvs_expro %>% group_by(StatusNVS3, Station) %>% summari
 summaryT$StatusNVS3 = recode(summaryT$StatusNVS3, '1'="Paid", '2'="Ongoing Payment Processing",
        '3'="Ongoing Legal Pass", '4'="Ongoing Appraisal/OtB", '5'="For Expro")
 summaryT
+
 
 # Total Number of observations for subject Lots (i.e., only StatusNVS3)
 sum(summaryT$n[which(!is.na(summaryT$StatusNVS3))])

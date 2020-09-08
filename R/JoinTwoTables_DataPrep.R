@@ -183,6 +183,7 @@ x=read.xlsx(a)
 b=file.choose()
 y=read.xlsx(b)
 
+
 y$LotID = as.character(y$LotID)
 # Join 
 head(x)
@@ -210,7 +211,7 @@ y$ActualDateofClearedLegalPass = as.Date(y$ActualDateofClearedLegalPass, format=
 xy=left_join(x,y,by="Id")
 xy=left_join(x,y,by=c("CN", "Station"))
 
-head(xy) 
+head(xy)
 str(xy)
 # Convert NA to 0 for the following status
 xy$StatusNVS.y[is.na(xy$StatusNVS.y)]=0
@@ -243,7 +244,9 @@ xy=left_join(x,y,by=c("Municipality", "LotID"))
 
 xy=full_join(x,y,by=c("Municipality", "LotID"))
 xy=left_join(x,y,by="LotID")
-xy=full_join(x,y,by="LotID")
+xy=full_join(x,y,by="Id")
+
+head(x)
 
 #xy=filter(xy,Municipality.x==c("Malolos","San Fernando"))
 unique(xy$Municipality.x)
@@ -252,6 +255,7 @@ write.xlsx(xy,"C:/Users/oc3512/OneDrive - Oriental Consultants Global JV/Desktop
 write.xlsx(xy,"C:/Users/oc3512/OneDrive - Oriental Consultants Global JV/Desktop/03-xy_merged_with_Expro.xlsx",row.names=FALSE)
 write.xlsx(xy,"C:/Users/oc3512/OneDrive - Oriental Consultants Global JV/Desktop/04-xy_merged_with_MasterList.xlsx",row.names=FALSE)
 write.xlsx(xy,"C:/Users/oc3512/OneDrive - Oriental Consultants Global JV/Documents/ArcGIS/Projects/NSCR-EX_envi/01-Environment/N2/Land_Acquisition/Master List/PAB-MASTERLIST/Calumpit/New_to_Old_20200716.xlsx",row.names=FALSE)
+write.xlsx(xy,"Check_xy.xlsx",row.names = FALSE)
 
 ####
 colnames(xy)

@@ -96,7 +96,7 @@ TEMP_NVS = data.frame()
 n=0
 
 for(i in NVS){
-  #i=NVS[1]
+  #i=NVS[3]
   n=n+1
   
   # Read and write as CSV
@@ -113,11 +113,24 @@ for(i in NVS){
   } else {
     v1$Station = "Tandang Sora"
   }
-  
+
   # Write and read back as xlsx
   ## Reorder: bring "Station" to the second name
   colnames(v1)
-  v1 = v1[,c(1,ncol(v1),13:(ncol(v1)-1))]
+  
+  ## As of November 23, 2020. DOTr used different table formats among Depot, QH, and Tandangs Sora.
+  ## As such, I have to write the following code. Please take a note.
+  ## This 'v1' table has the following colnmaes in order:
+  ## CN, Station, Priority.Ranking...1...highest, Status, Date.of.Initial.Submission.for.Legal.Pass, ...., Actual.Date.of.Check.Issuance
+
+  if(n==1){ # Depot
+    v1 = v1[,c(1,ncol(v1),13:(ncol(v1)-1))]
+  } else if(n==2){
+    v1 = v1[,c(1,ncol(v1),18:41)]
+  } else if(n==3){
+    v1 = v1[,c(1,ncol(v1),18:41)]
+  }
+
   write.xlsx(v1, "temp_NVS1.xlsx", row.names = FALSE)
 
   temp = read.xlsx(file.path(wd, "temp_NVS1.xlsx"))
@@ -330,8 +343,8 @@ print(table(xy_nvs_expro$StatusNVS3, dnn="StatusNVS3"))
 summaryT = data.frame(xy_nvs_expro %>% group_by(StatusNVS3, Station) %>% summarise(n = n()))
 
 # Recoode StatusNVS3 for easier interpretation
-summaryT$StatusNVS3 = recode(summaryT$StatusNVS3, '1'="Paid", '2'="Ongoing Payment Processing",
-       '3'="Ongoing Legal Pass", '4'="Ongoing Appraisal/OtB", '5'="For Expro")
+summaryT$StatusNVS3 = recode(summaryT$StatusNVS3, '1'="Paid", '2'="For Payment Processing",
+       '3'="For Legal Pass", '4'="For Appraisal/OtB", '5'="For Expro")
 summaryT
 
 

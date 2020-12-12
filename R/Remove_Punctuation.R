@@ -4,6 +4,7 @@ library(dplyr)
 library(stringr)
 library(openxlsx)
 library(tools)
+library(stringr)
 
 z = choose.dir()
 wd = setwd(z)
@@ -80,20 +81,31 @@ dCol = select.list(ncol, multiple = TRUE, title = "Choose Target Columns")
 
 # Delete unwanted space;
 for(i in dCol){
-  temp1$C = gsub(" ","",temp1$C)
+  temp[[i]] = gsub(" ","",temp[[i]])
 }
 
 # Delete unwanted period
 for(i in dCol){
-  temp1$A = gsub("\\.", "", temp1$A)
+  temp[[i]] = gsub("\\.", "", temp[[i]])
 }
 
 # Delete unwanted numeric characters
 for(i in dCol){
   # Delete numueric characters
-  temp1$A = gsub("[0-9]+", "", temp1$A)
-  
+  temp[[i]] = gsub("[0-9]+", "", temp[[i]])
 }
 
-#
+# First Letter to Capital
+for(i in dCol){
+  # Delete numueric characters
+  temp[[i]] = str_to_title(temp[[i]])
+}
+
+# Convert to numeric column
+for(i in dCol){
+  temp[[i]] = as.numeric(temp[[i]])
+}
+
+# Export
 write.xlsx(temp,"updated_y.xlsx",row.names = FALSE)
+

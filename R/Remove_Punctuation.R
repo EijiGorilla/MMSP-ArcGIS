@@ -63,7 +63,6 @@ for(j in colnames(y)){
   # Delete Punctuation "*", "**", "\n", white space before 1st letter and after the last letter
   #############################################
   for(k in colnames(temp)){
-    k = colnames(temp1)[1]
     temp[[k]] = gsub("[*]","",temp[[k]])
     temp[[k]] = gsub("\n","",temp[[k]])
     temp[[k]] = gsub("^\\s+|\\s+$", "",temp[[k]])
@@ -72,10 +71,29 @@ for(j in colnames(y)){
 
   
 }
+colnames(temp)
+
+############# Delete unwanted punctuation or numbers for only selected columns################
+ncol = colnames(temp)
+dCol = select.list(ncol, multiple = TRUE, title = "Choose Target Columns") 
 
 
-# Delete unwanted space
-temp1$C = gsub(" ","",temp1$C)
+# Delete unwanted space;
+for(i in dCol){
+  temp1$C = gsub(" ","",temp1$C)
+}
+
+# Delete unwanted period
+for(i in dCol){
+  temp1$A = gsub("\\.", "", temp1$A)
+}
+
+# Delete unwanted numeric characters
+for(i in dCol){
+  # Delete numueric characters
+  temp1$A = gsub("[0-9]+", "", temp1$A)
+  
+}
 
 #
-write.xlsx(temp1,"sample.xlsx",row.names = FALSE)
+write.xlsx(temp,"updated_y.xlsx",row.names = FALSE)

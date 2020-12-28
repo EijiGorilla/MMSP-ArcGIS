@@ -176,13 +176,54 @@ table(xy_nvs_expro$StatusNVS3)
 ######################################################################
 ## Practice script where you may need for temporary operation
 # matser list (sde)
+
+
+z=choose.dir()
+wd=setwd(z)
+
+# Excel master list
 a=file.choose()
 x=read.xlsx(a)
 
-# new list (local)
+# Attribute table in ArcGIS Pro
 b=file.choose()
 y=read.xlsx(b)
 
+
+y$TEST = y$Id
+xy = left_join(x,y,by="LotID")
+
+id = unique(y$StrucID)
+test = data.frame(StrucID = id, n=1:length(id))
+
+xy = full_join(x,y,by="StrucID")
+write.xlsx(xy,"xy_merged_overlapped_Expro.xlsx",row.names=FALSE)
+
+y$nidy = 1:nrow(y)
+x$nidx = 1:nrow(x)
+
+# Find observations that are present in x (excel master list) and missing in y (ArcGIS Pro)
+# !! Look for missing 'nidy'
+xy=full_join(x,y,by=("LotID"))
+xy=full_join(x,y,by=("StrucID"))
+
+
+# Find observations that are present in y(arcgis pro) and missing in x (excel masterlist)
+# !! Look for missing 'nidx'
+yx=full_join(y,x,by=("LotID"))
+yx=full_join(y,x,by=("StrucID"))
+
+# Extract observations that exist in x but missing in y
+xy = xy[is.na(xy$nid),]
+write.xlsx(xy,"xy_merged_new_Priority.xlsx",row.names = FALSE)
+
+
+write.xlsx(yx,"yx_merged_missing_in_x.xlsx",row.names = FALSE)
+
+write.xlsx(xy, "xy_merged_StrucID.xlsx", row.names=FALSE)
+#########################################
+write.xlsx(xy,"delete.xlsx",row.names = FALSE)
+str(y)
 
 y$LotID = as.character(y$LotID)
 # Join 
@@ -236,15 +277,18 @@ unique(xy$Priority3)
 write.xlsx(xy,"C:/Users/oc3512/OneDrive - Oriental Consultants Global JV/Desktop/Envi/Time slice/v8/Joined.xlsx",row.names=FALSE)
 write.xlsx(xy,"C:/Users/oc3512/OneDrive - Oriental Consultants Global JV/Desktop/Envi/Parcellary Map/20200706/merged_with_MasterList_v2.xlsx",row.names=FALSE)
 write.xlsx(xy,"C:/Users/oc3512/OneDrive - Oriental Consultants Global JV/Desktop/temp.xlsx",row.names=FALSE)
-write.xlsx(xy, "temp_merged.xlsx",row.names = FALSE)
+write.xlsx(xy, "xy_merged_corrected_comparison.xlsx",row.names = FALSE)
+write.xlsx(xy, "temp.xlsx",row.names = FALSE)
 
 ##########
-xy=left_join(x,y,by=c("Municipality", "LotID"))
+xy=left_join(x,y,by=("Id"))
+
 ?left_join
 
+?full_join
 xy=full_join(x,y,by=c("Municipality", "LotID"))
 xy=left_join(x,y,by="LotID")
-xy=full_join(x,y,by="Id")
+xy=full_join(x,y,by="LotID")
 
 head(x)
 
@@ -255,7 +299,8 @@ write.xlsx(xy,"C:/Users/oc3512/OneDrive - Oriental Consultants Global JV/Desktop
 write.xlsx(xy,"C:/Users/oc3512/OneDrive - Oriental Consultants Global JV/Desktop/03-xy_merged_with_Expro.xlsx",row.names=FALSE)
 write.xlsx(xy,"C:/Users/oc3512/OneDrive - Oriental Consultants Global JV/Desktop/04-xy_merged_with_MasterList.xlsx",row.names=FALSE)
 write.xlsx(xy,"C:/Users/oc3512/OneDrive - Oriental Consultants Global JV/Documents/ArcGIS/Projects/NSCR-EX_envi/01-Environment/N2/Land_Acquisition/Master List/PAB-MASTERLIST/Calumpit/New_to_Old_20200716.xlsx",row.names=FALSE)
-write.xlsx(xy,"Check_xy.xlsx",row.names = FALSE)
+write.xlsx(xy,"xy_merged.xlsx",row.names = FALSE)
+write.xlsx(xy,"new_xy_handover.xlsx",row.names = FALSE)
 
 ####
 colnames(xy)
@@ -264,3 +309,27 @@ xy1 = filter(xy, count_NAS==1)
 
 t=table(xy1$StatusNVS3.y)
 sum(t)
+
+a=file.choose()
+x=read.xlsx(a)
+
+colnames(x)
+head(x)
+
+cp = unique(x$CP)
+
+temp = data.frame()
+for (i in cp){
+  #i=cp[1]
+  x1 = x[x$CP == i,]
+  nn = 1:nrow(x1)
+  x1$Id1 = paste(i,nn,sep = "")
+  x1$Id1 = gsub("-","",x1$Id1)
+  
+  temp = bind_rows(temp,x1)
+  
+}
+
+str(temp)
+head(temp)
+write.xlsx(temp,"tree_compiled_20201202.xlsx",row.names = FALSE)

@@ -96,7 +96,8 @@ TEMP_NVS = data.frame()
 n=0
 
 for(i in NVS){
-  #i=NVS[3]
+#i=NVS[1]
+  
   n=n+1
   
   # Read and write as CSV
@@ -124,11 +125,11 @@ for(i in NVS){
   ## CN, Station, Priority.Ranking...1...highest, Status, Date.of.Initial.Submission.for.Legal.Pass, ...., Actual.Date.of.Check.Issuance
 
   if(n==1){ # Depot
-    v1 = v1[,c(1,ncol(v1),13:(ncol(v1)-1))]
+    v1 = v1[,c(1,ncol(v1),14:(ncol(v1)-1))] # 14: Priority.ranking..highest
   } else if(n==2){
-    v1 = v1[,c(1,ncol(v1),18:41)]
+    v1 = v1[,c(1,ncol(v1),14:(ncol(v1)-1))]
   } else if(n==3){
-    v1 = v1[,c(1,ncol(v1),18:41)]
+    v1 = v1[,c(1,ncol(v1),14:(ncol(v1)-1))]
   }
 
   write.xlsx(v1, "temp_NVS1.xlsx", row.names = FALSE)
@@ -277,6 +278,7 @@ nvs$StatusNVS3[nvs$AK>1]=1 # Make sure that Paid (1) must come at last
 write.xlsx(nvs, "Table_toBeChecked.xlsx",row.names = FALSE)
 
 ## Keep only necessary fields
+colnames(nvs)
 nvs = nvs[,c("CN", "Station","Priority3", "StatusNVS", "Status3", "StatusNVS2", "StatusNVS3")]
 
 ## FOr counting the total number of target lots for NVS

@@ -13,6 +13,30 @@ a=file.choose()
 y = read.xlsx(a)
 
 
+######## find duplication
+## Get owner trees which did not overlap original tree data.
+y$n[is.na(y$n)]=0
+min = min(y$n)
+max = max(y$n)
+
+
+mn = setdiff(min:max,y$n)
+write.xlsx(mn,"lots_mustbe_bound_to_onlyIntersected_table.xlsx",row.names=FALSE)
+
+
+yy=y[duplicated(y$n),]
+
+
+write.xlsx(yyy,"duplicated_trees_owner_masterlist.xlsx",row.names=TRUE)
+
+# Join the table (yy) to original (y)
+## Note that the 'duplicated' function returns the 1st representative value of the duplicated. not all the duplicated value
+
+yyy = left_join(y,yy,by="OBJECTID.*")
+head(yyy)
+
+##########
+
 temp=as.data.frame(matrix(data=NA,nrow=nrow(y),ncol=length(colnames(y))))
 colnames(temp)=colnames(y)
 
@@ -75,6 +99,7 @@ for(j in colnames(y)){
 colnames(temp)
 
 ############# Delete unwanted punctuation or numbers for only selected columns################
+temp = y
 ncol = colnames(temp)
 dCol = select.list(ncol, multiple = TRUE, title = "Choose Target Columns") 
 
@@ -106,6 +131,14 @@ for(i in dCol){
   temp[[i]] = as.numeric(temp[[i]])
 }
 
+# Delete Punctuation "*", "**", "\n", white space before 1st letter and after the last letter
+for(i in dCol){
+  temp[[i]] = gsub("[*]","",temp[[i]])
+  temp[[i]] = gsub("\n","",temp[[i]])
+  temp[[i]] = gsub("^\\s+|\\s+$", "",temp[[i]])
+  
+}
+
 # Export
-write.xlsx(temp,"updated_y.xlsx",row.names = FALSE)
+write.xlsx(temp,"y_new_priority_N2_20201223.xlsx",row.names = FALSE)
 

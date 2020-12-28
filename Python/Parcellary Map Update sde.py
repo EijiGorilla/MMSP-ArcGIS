@@ -114,8 +114,14 @@ OtB_Deliv = 'OtB_Delivered'
 PayP = 'Payment_Processing'
 ExproC = 'Expropriation_Case'
 newPrioArea = 'NewPriorityArea'
+Priority3 = 'Priority3'
+StatusNVS = 'StatusNVS'
+StatusNVS2 = 'StatusNVS2'
+StatusNVS3 = 'StatusNVS3'
+Status3 = 'Status3'
+count_NVS = 'count_NVS'
 
-varFieldList = [Status1, Status2, exproCaseProfile, Scale, OtB_Prep, OtB_Deliv, PayP, ExproC, newPrioArea]
+varFieldList = [Status1, Status2, exproCaseProfile, Scale, OtB_Prep, OtB_Deliv, PayP, ExproC, newPrioArea, Priority3, StatusNVS, StatusNVS2, StatusNVS3, Status3, count_NVS]
 
 
 # Set local variables

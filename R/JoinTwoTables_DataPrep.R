@@ -191,7 +191,7 @@ y=read.xlsx(b)
 
 
 y$TEST = y$Id
-xy = left_join(x,y,by="LotID")
+xy = left_join(x,y,by="Id")
 
 id = unique(y$StrucID)
 test = data.frame(StrucID = id, n=1:length(id))
@@ -215,7 +215,7 @@ yx=full_join(y,x,by=("StrucID"))
 
 # Extract observations that exist in x but missing in y
 xy = xy[is.na(xy$nid),]
-write.xlsx(xy,"xy_merged_new_Priority.xlsx",row.names = FALSE)
+write.xlsx(xy,"xy_merged_new_MPR.xlsx",row.names = FALSE)
 
 
 write.xlsx(yx,"yx_merged_missing_in_x.xlsx",row.names = FALSE)

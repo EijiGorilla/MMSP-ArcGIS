@@ -15,6 +15,7 @@ This script only works in Python console within ArcGIS Pro. If you create a scri
 
 import arcpy
 import os
+import re
 
 aprx = arcpy.mp.ArcGISProject('current')
 
@@ -105,23 +106,17 @@ expression = "reclass(!{}!)".format(demolitionM)
 arcpy.CalculateField_management(inputLyr, "temp", expression, "PYTHON3", codeblock)
 
 # Apply Symbology from layer for each demolition Plan month
-#monthList= ["202006End","202007Mid", "202007End", "202008Mid", "202008End", "202009Mid", "202009End", "202010Mid", "202010End",
-#            "202011Mid", "202011End", "202012Mid", "202012End", "202101Mid", "202101End", "202102Mid",
-#           "202102End", "202103Mid", "202103End", "202104Mid", "202104End", "202105Mid", "202105End",
-#            "202106Mid", "202106End"]
+## Get month list from the layerFileDir being defined
+monthList = [re.sub('.lyrx', '', _) for _ in os.listdir(layerFileDir)]
 
-#monthList= ["202007Mid", "202007End", "202008Mid", "202008End"]
-monthList= ["202101Mid", "202101End", "202102Mid", "202102End", "202103Mid", "202103End",
-            "202104Mid", "202104End", "202105Mid", "202105End", "202106Mid", "202106End",
-            "202107Mid", "202107End", "202108Mid", "202108End", "202109Mid", "202109End",
-            "202110Mid", "202110End", "202111Mid", "202111End"]
+#monthList= ["202101Mid", "202101End", "202102Mid", "202102End", "202103Mid", "202103End"]
 
 for m in monthList:
     symbolLyrx = os.path.join(layerFileDir, m + ".lyrx")
     arcpy.ApplySymbologyFromLayer_management(inputLyr, symbolLyrx, [["VALUE_FIELD", demolitionM, demolitionM]], update_symbology="MAINTAIN")[0]
     
     # Get the corresponding map series page numbers
-    pages_list = Pages.split(";")
+    pages_list = Pages.split(";") # Construction boundary names
     pages_str = ",".join("'" + p + "'" for p in pages_list)
     sql = 'Station IN ({})'.format(pages_str)
     arcpy.SelectLayerByAttribute_management(mapSeriesLyr, "NEW_SELECTION", sql)    

@@ -28,8 +28,8 @@ for layer in inputFeatures:
     #t1 = t1.replace("X_ref_","") # remove bracket
     new_md.title = "{}".format(t1)
     #new_md.tags = 'Parcellary, NSCR-Ex, SC, Land Acquisition'
-    new_md.tags = 'Dilapidation Survey, TBM Tunnel, MMSP, Civil'
-    new_md.summary = 'This feature layer is used for monitoring important structures during TBM tunnel construction. Data Provider: Kaleb (Septebmer 25, 2020.Viber). Data Source: JDT?'
+    new_md.tags = 'NSRP, SC, NSCR-Ex, Alignment'
+    new_md.summary = 'This feature layer data source: NSRP_SC_(3.6.5)_20200714_S06RoadRealignment(Detail Design).kmz \n Data Provider: Jaina Bobihiss'
     tgt_item_md = md.Metadata(layer)
     if not tgt_item_md.isReadOnly:
         tgt_item_md.copy(new_md)

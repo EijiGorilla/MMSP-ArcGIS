@@ -25,8 +25,9 @@ arcpy.env.workspace = workSpace
 
 
 # List fields being chosen
-fieldList = list(inputField)
-arcpy.AddMessage(fieldList)
+#fieldList = inputField
+#fieldList = list(inputField)
+#arcpy.AddMessage(fieldList)
 
 codeblock = """
 import re
@@ -37,10 +38,10 @@ def reclass(status):
     else:
         return None"""
 
-for field in fieldList:
-    arcpy.AddMessage(field)
+#for field in fieldList:
+#    arcpy.AddMessage(field)
     # Set local variables
-    expression = "reclass(!{}!)".format(field)
+expression = "reclass(!{}!)".format(inputField)
     
-    # Execute CalculateField 
-    arcpy.CalculateField_management(inputTable, field, expression, "PYTHON3", codeblock)
+# Execute CalculateField 
+arcpy.CalculateField_management(inputTable, inputField, expression, "PYTHON3", codeblock)

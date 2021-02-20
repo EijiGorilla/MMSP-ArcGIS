@@ -1,4 +1,4 @@
-# MMSP-ArcGIS
+# Tips and Tricks-ArcGIS
 
 
 ## How To Use ESRI's World Imagery and OpenStreeMap for Offline Use in Collector for ArcGIS

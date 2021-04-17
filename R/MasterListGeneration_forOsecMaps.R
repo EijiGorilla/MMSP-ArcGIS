@@ -96,8 +96,8 @@ TEMP_NVS = data.frame()
 n=0
 
 for(i in NVS){
-#i=NVS[1]
-  
+#i=NVS[3]
+
   n=n+1
   
   # Read and write as CSV
@@ -125,11 +125,11 @@ for(i in NVS){
   ## CN, Station, Priority.Ranking...1...highest, Status, Date.of.Initial.Submission.for.Legal.Pass, ...., Actual.Date.of.Check.Issuance
 
   if(n==1){ # Depot
-    v1 = v1[,c(1,ncol(v1),14:(ncol(v1)-1))] # 14: Priority.ranking..highest
+    v1 = v1[,c(1,ncol(v1),14:20,23:(ncol(v1)-1))] # 14: Priority.ranking..highest, 14:20,23
   } else if(n==2){
-    v1 = v1[,c(1,ncol(v1),14:(ncol(v1)-1))]
+    v1 = v1[,c(1,ncol(v1),14:20,23:(ncol(v1)-1))]
   } else if(n==3){
-    v1 = v1[,c(1,ncol(v1),14:(ncol(v1)-1))]
+    v1 = v1[,c(1,ncol(v1),14:20,23:(ncol(v1)-1))]
   }
 
   write.xlsx(v1, "temp_NVS1.xlsx", row.names = FALSE)
@@ -158,9 +158,11 @@ for(i in NVS){
 
   # Compile all NVS files for each station
   TEMP_NVS = bind_rows(TEMP_NVS, temp)
+
 }
 
 # Priorit3
+
 dd = str_detect(colnames(TEMP_NVS), "Priority")
 colnames(TEMP_NVS)[which(dd==TRUE)] = "Priority3"
 #which(dd==TRUE)
@@ -170,7 +172,7 @@ TEMP_EXPRO = data.frame()
 n=0
 
 for(i in EXPRO){
- # i=EXPRO[2]
+# i=EXPRO[1]
   n=n+1
   v = range_speedread(url, sheet = i)
   write.csv(v, "temp_EXPRO.csv", na="NA", row.names = FALSE)
@@ -188,7 +190,11 @@ for(i in EXPRO){
   
   # Write and read back as xlsx
   ## Reorder: bring "Station" to the second name
-  v1 = v1[,c(1,ncol(v1),3:(ncol(v1)-1))]
+  colnames(v1)
+  
+  
+  #v1 = v1[,c(1,ncol(v1),3:(ncol(v1)-1))]
+  v1 = v1[,c(1,ncol(v1),3:5,7,9:24,29:(ncol(v1)-1))]
   write.xlsx(v1, "temp_EXPRO1.xlsx", row.names = FALSE)
   
   temp = read.xlsx(file.path(wd, "temp_EXPRO1.xlsx"))
@@ -283,6 +289,9 @@ nvs = nvs[,c("CN", "Station","Priority3", "StatusNVS", "Status3", "StatusNVS2", 
 
 ## FOr counting the total number of target lots for NVS
 nvs$count_nvs = 1
+
+## OK
+
 
 ### 2.2. Expro Table
 expro$count_nvs = 1

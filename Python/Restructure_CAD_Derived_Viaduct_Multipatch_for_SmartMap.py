@@ -45,7 +45,7 @@ arcpy.DeleteField_management(copyStatus,dropField)
 
 # 2. Add Fields
 # PierNumber (text), Type (short), Status1 (short), TargetDate (Date), CP (text), Id (text)
-addFields = ['PierNumber', 'Type', 'Status1', 'TargetDate', 'CP', 'ID']
+addFields = ['PierNumber', 'Type', 'Status1', 'StartDate','TargetDate', 'CP', 'ID']
 
 for field in addFields:
     if field in ('PierNumber', 'CP', 'ID'):
@@ -71,27 +71,22 @@ reg = re.compile('.*PreCast*|.*PRECAST*|.*precast*|.*preCast*|.*Pile*|.*PILE*|.*
 
 finalList = list(filter(reg.match, uniqueList))
 
-codeblock = """
-def reclass(layer):
-    if layer == finalList[0]:
-        return 5
-    elif layer == finalList[1]:
-        return 3
-    elif layer == finalList[2]:
-        return 2
-    elif layer == finalList[3]:
-        return 4
-    elif layer == finalList[4]:
-        return 1
-    else:
-        return None"""
-
-arcpy.AddMessage(field)
-    # Set local variables
-expression = "reclass(!{}!)".format("Layer")
+with arcpy.da.UpdateCursor(copyStatus, ['Layer','Type']) as cursor:
+    for row in cursor:
+        if row[0] == finalList[0]:
+            row[1] = 5
+        elif row[0] == finalList[1]:
+            row[1] = 3
+        elif row[0] == finalList[2]:
+            row[1] = 2
+        elif row[0] == finalList[3]:
+            row[1] = 4
+        elif row[0] == finalList[4]:
+            row[1] = 1
+        else:
+            row[0] = None
+            cursor.updateRow(row)
     
-    # Execute CalculateField 
-arcpy.CalculateField_management(copyStatus, "Type", expression, "PYTHON3", codeblock)
 
 ## Assign 1 (To be Constructed) to all layers for 'Status1' field
 CP = CPno

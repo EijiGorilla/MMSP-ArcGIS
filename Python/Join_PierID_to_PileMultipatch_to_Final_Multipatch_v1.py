@@ -20,6 +20,7 @@ inputLayerL = arcpy.GetParameterAsText(4)
 inputLayerM = arcpy.GetParameterAsText(5)
 inputLayerR = arcpy.GetParameterAsText(6)
 sourceLayer = arcpy.GetParameterAsText(7) # Viaduct_N04_before_PierNo_Assignment
+outputDir = arcpy.GetParameterAsText(8)
 
 arcpy.env.workspace = workSpace
 
@@ -88,7 +89,21 @@ domainStatus = list(filter(regStatus.match, domainList))
 arcpy.AssignDomainToField_management(mergedLayer, "Type", domainType[0])
 arcpy.AssignDomainToField_management(mergedLayer, "Status1", domainStatus[0])
 
+# create tempid
+addField = "tempid"
+arcpy.AddField_management(mergedLayer, addField, "Short", field_alias = addField, field_is_nullable="NULLABLE")
 
+with arcpy.da.UpdateCursor(mergedLayer, ['tempid']) as cursor:
+    n= 0
+    for row in cursor:
+        n = n + 1
+        row[0] = n
+        cursor.updateRow(row)
+
+# Export to excel csv
+fileName = arcpy.Describe(mergedLayer).name
+exportFile = fileName + "_fineSort" + ".csv"
+arcpy.TableToTable_conversion(mergedLayer, outputDir, exportFile)
 
 del joinField
 del transferField

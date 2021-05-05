@@ -22,6 +22,7 @@ inputLayer = arcpy.GetParameterAsText(1)
 layerName = arcpy.GetParameterAsText(2) # Do not use '-"
 pierNoPtLayer = arcpy.GetParameterAsText(3)
 CPno = arcpy.GetParameterAsText(4)
+outputLocation = arcpy.GetParameterAsText(5)  # Export to excel file f
 
 arcpy.env.workspace = workSpace
 
@@ -65,27 +66,66 @@ with arcpy.da.SearchCursor(copyStatus, ['Layer']) as cursor:
             listLayer.append(str(row[0]))
             
 uniqueList = list(Counter(listLayer))
-    
+            
 ## Rmove unnecessary letters
-reg = re.compile('.*PreCast*|.*PRECAST*|.*precast*|.*preCast*|.*Pile*|.*PILE*|.*COLUMN*|.*Column*|.*PILECAP*|.*pileCap*|.*pilecap*|.*PIER_Head*|.*PIER_head*|.*pier_head*|.*Pier_head*|.*Pier_Head*')
+reg = re.compile('.*PreCast*|.*PRECAST*|.*precast*|.*preCast*|.*Pile*|.*PILE*|.*COLUMN*|.*Column*|.*PILECAP*|.*pileCap*|.*pilecap*|.*PIER_Head*|.*PIER_head*|.*pier_head*|.*Pier_head*|.*Pier_Head*|.*PIER_Hd|.*Pier_Hd|.*pier_hd')
 
 finalList = list(filter(reg.match, uniqueList))
 
+
+# Sometimes, pier head has two names in 'Layer' field so need to correct
+reg22 = re.compile(r'.*Hd')
+regCor = re.compile('.*Head')
+
+replacedHead = list(filter(reg22.match, finalList))
+replacingHead = list(filter(regCor.match, finalList))
+
+with arcpy.da.UpdateCursor(copyStatus, ['Layer']) as cursor:
+    for row in cursor:
+        if row[0] == replacedHead:
+            row[0] = replacingHead
+            cursor.updateRow(row)
+##
+
+indexN = finalList.index("".join(replacedHead))
+del finalList[indexN]
+
+#
+regPile = re.compile(r'.*PILE$|.*pile$|.*Pile$')
+pileL = list(filter(regPile.match, finalList))
+pileC = "".join(pileL)
+
+regPierH = re.compile(r'.*Head$|.*head$|.*HEAD$')
+pierHL = list(filter(regPierH.match, finalList))
+pierHC = "".join(pierHL)
+
+regCol = re.compile(r'.*COLUMN$|.*Column$|.*column$')
+colL = list(filter(regCol.match, finalList))
+colC = "".join(colL)
+
+regPileC = re.compile(r'.*PILECAP$|.*Pilecap$|.*pilecap$')
+pileCL = list(filter(regPileC.match, finalList))
+pileCC = "".join(pileCL)
+
+regPreC = re.compile(r'.*PreCast$|.*PRECAST$|.*precast$')
+preCL = list(filter(regPreC.match, finalList))
+preCC = "".join(preCL)
+
 with arcpy.da.UpdateCursor(copyStatus, ['Layer','Type']) as cursor:
     for row in cursor:
-        if row[0] == finalList[0]:
-            row[1] = 5
-        elif row[0] == finalList[1]:
-            row[1] = 3
-        elif row[0] == finalList[2]:
-            row[1] = 2
-        elif row[0] == finalList[3]:
-            row[1] = 4
-        elif row[0] == finalList[4]:
+        if row[0] == pileC:
             row[1] = 1
+        elif row[0] == pileCC:
+            row[1] = 2
+        elif row[0] == colC:
+            row[1] = 3
+        elif row[0] == pierHC:
+            row[1] = 4
+        elif row[0] == preCC:
+            row[1] = 5
         else:
-            row[0] = None
-            cursor.updateRow(row)
+            row[1] = None
+        cursor.updateRow(row)
     
 
 ## Assign 1 (To be Constructed) to all layers for 'Status1' field
@@ -101,6 +141,11 @@ with arcpy.da.UpdateCursor(copyStatus, ['Status1', 'CP']) as cursor:
 out_dataset = layerName + "_" + "sort"
 sortedCopyStatus = arcpy.Sort_management(copyStatus, out_dataset, [["Shape", "ASCENDING"]], "LR")
 
+## Delete 'Ellipse' in the 'Entity' field
+with arcpy.da.UpdateCursor(sortedCopyStatus, "Entity") as cursor:
+    for row in cursor:
+        if row[0] == "Ellipse":
+            cursor.deleteRow()
 
 #################
 ## Join PierNo point feature layer to the sorted multipatch
@@ -184,6 +229,22 @@ arcpy.DeleteField_management(finalSortedLayer, [fieldAdd, addField])
 
 # Add Field
 arcpy.AddField_management(finalSortedLayer, "PileNo", "TEXT", field_alias = "PileNo", field_is_nullable="NULLABLE")
+
+
+# create 'temp' field with sequentail numbers. this is needed for assigning PierIDs to viaduct component using R
+tempField = "temp"
+arcpy.AddField_management(finalSortedLayer, tempField, "SHORT", field_alias = tempField, field_is_nullable="NULLABLE")
+
+with arcpy.da.UpdateCursor(finalSortedLayer, tempField) as cursor:
+    n = 0
+    for row in cursor:
+        n = n + 1
+        row[0] = n
+        cursor.updateRow(row)
+        
+# Export to excel for assigning PierID to each component in R
+exportFile = "Assign_pierIDs_using_R.csv"
+arcpy.TableToTable_conversion(finalSortedLayer, outputLocation, exportFile)
 
 ##########################################################
 # 9. Delete Copied feature layer

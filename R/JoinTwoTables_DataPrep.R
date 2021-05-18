@@ -187,17 +187,28 @@ x=read.xlsx(a)
 
 # Attribute table in ArcGIS Pro
 b=file.choose()
+
 y=read.xlsx(b)
+head(y)
+
+y$id = 1:nrow(y)
+head(y)
+y$HandOverDate = as.Date(y$HandOverDate, origin = "1899-12-30")
+y$HandOverDate = as.Date(y$HandOverDate, format="%m/%d/%y %H:%M:%S")
 
 
-y$TEST = y$Id
-xy = left_join(x,y,by="Id")
+head(x)
+xy = left_join(x,y,by="LotID")
 
 id = unique(y$StrucID)
 test = data.frame(StrucID = id, n=1:length(id))
 
 xy = full_join(x,y,by="StrucID")
-write.xlsx(xy,"xy_merged_overlapped_Expro.xlsx",row.names=FALSE)
+write.xlsx(xy,"xy_merged_XXXX.xlsx",row.names=FALSE)
+
+
+
+
 
 y$nidy = 1:nrow(y)
 x$nidx = 1:nrow(x)
@@ -215,13 +226,13 @@ yx=full_join(y,x,by=("StrucID"))
 
 # Extract observations that exist in x but missing in y
 xy = xy[is.na(xy$nid),]
-write.xlsx(xy,"xy_merged_new_MPR.xlsx",row.names = FALSE)
+write.xlsx(xy,"xy_merged_demolitionM.xlsx",row.names = FALSE)
 
 
 write.xlsx(yx,"yx_merged_missing_in_x.xlsx",row.names = FALSE)
 
-write.xlsx(xy, "xy_merged_StrucID.xlsx", row.names=FALSE)
-#########################################
+write.xlsx(xy, "00-xy_merged_StrucID_missing_in_y.xlsx", row.names=FALSE)
+#########################################s
 write.xlsx(xy,"delete.xlsx",row.names = FALSE)
 str(y)
 
@@ -240,6 +251,8 @@ head(x)
 #  table[,i]=as.Date(table[,i],format="%m/%d/%Y")
 #  table[,i]=as.POSIXct(table[,i],format="%m/%d/%y %H:%M:%S")
 # use the following date conversion if necessary
+
+
 y$ActualDateofInitialSubmissionforLegalPass = as.Date(y$ActualDateofInitialSubmissionforLegalPass, origin = "1899-12-30")
 y$ActualDateofInitialSubmissionforLegalPass = as.Date(y$ActualDateofInitialSubmissionforLegalPass, format="%m/%d/%y %H:%M:%S")
 
@@ -333,3 +346,8 @@ for (i in cp){
 str(temp)
 head(temp)
 write.xlsx(temp,"tree_compiled_20201202.xlsx",row.names = FALSE)
+
+
+head(xy)
+xy$comCN = cbind(xy$CN.x, xy$CN.y)
+head(xy)

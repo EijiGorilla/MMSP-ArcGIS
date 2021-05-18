@@ -27,7 +27,7 @@ inputFeature = "C:/Users/oc3512/OneDrive - Oriental Consultants Global JV/Docume
 layerFileDir = "C:/Users/oc3512/Dropbox/01-Railway/01-MMSP/10-ArcGIS/01-Reference/01-Layer File-lyrx/01-Land Acquisition/02-Time Slice/from mid January 2021"
 
 #outputDir = arcpy.GetParameterAsText(2)
-outputDir = 'C:/Users/oc3512/OneDrive - Oriental Consultants Global JV/Desktop/Envi/Time slice/v9'
+outputDir = 'C:/Users/oc3512/OneDrive - Oriental Consultants Global JV/Desktop/Envi/Time slice/20210121'
 
 
 
@@ -38,7 +38,7 @@ outputDir = 'C:/Users/oc3512/OneDrive - Oriental Consultants Global JV/Desktop/E
 demolitionM = "demolition_Ready_MTH" # Field name of demolition plan months
 Pages = "Depot;Quirino Highway;Tandang Sora" # Define Map Series names
 # As of Date
-asofDate = "20210115"
+asofDate = "20210121"
 
 layout = aprx.listLayouts('DemolitionPlan')[0]
 ms = layout.mapSeries

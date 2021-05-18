@@ -16,7 +16,7 @@ arcpy.env.overwriteOutput = True
 workSpace = arcpy.GetParameterAsText(0)
 inputLayer = arcpy.GetParameterAsText(1)
 outputLocation = arcpy.GetParameterAsText(2)
-
+#"C:/Users/oc3512/OneDrive - Oriental Consultants Global JV/Desktop/tempCheck"
 arcpy.env.workspace = workSpace
 
 # Copy Feature for 'L' (left) Piles

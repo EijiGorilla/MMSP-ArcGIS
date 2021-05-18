@@ -12,7 +12,7 @@ wd = setwd(z)
 a=file.choose()
 y = read.xlsx(a)
 
-
+head(y)
 ######## find duplication
 ## Get owner trees which did not overlap original tree data.
 y$n[is.na(y$n)]=0
@@ -126,6 +126,11 @@ for(i in dCol){
   temp[[i]] = str_to_title(temp[[i]])
 }
 
+# to Upper case letter
+for(i in dCol){
+  temp[[i]] = toupper(temp[[i]])
+}
+
 # Convert to numeric column
 for(i in dCol){
   temp[[i]] = as.numeric(temp[[i]])
@@ -140,5 +145,13 @@ for(i in dCol){
 }
 
 # Export
-write.xlsx(temp,"y_new_priority_N2_20201223.xlsx",row.names = FALSE)
+
+write.xlsx(temp,paste(basename(a),"_fixed.xlsx",sep = ""),row.names = FALSE)
+
+head(temp)
+unique(temp$Municipality)
+unique(temp$Barangay)
+sort(unique(temp$UTILITY.COMPANY))
+write.xlsx(sort(unique(temp$UTILITY.COMPANY)),"x_utilityCompany.xlsx",row.names=FALSE)
+
 

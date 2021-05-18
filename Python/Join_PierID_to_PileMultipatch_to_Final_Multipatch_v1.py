@@ -25,8 +25,8 @@ outputDir = arcpy.GetParameterAsText(8)
 arcpy.env.workspace = workSpace
 
 # Make sure to copy the source layer in case the source layer is corrupted
-copiedSourceLayer = arcpy.Describe(sourceLayer).name + "_COPY"
-arcpy.CopyFeatures_management(tempCopy, copiedSourceLayer)
+copiedSourceLayer = arcpy.Describe(sourceLayer).name + "_COPY1"
+arcpy.CopyFeatures_management(sourceLayer, copiedSourceLayer)
 
 # Join excel table (PierID No created) to sortedPiles (L, M, R)
 joinField = "temp"
@@ -42,13 +42,10 @@ joinDeleteFieldTable(inputLayerR, joinField, joinTableR, transferField)
 
 
 # Delete all the Piles from the source multipatch
-def deletePiles(sourceLayer):
-    with arcpy.da.UpdateCursor(sourceLayer, "Type") as cursor:
-        for row in cursor:
-            if row[0] == 1:
-                cursor.deleteRow()
-
-deletePiles(sourceLayer)
+with arcpy.da.UpdateCursor(sourceLayer, "Type") as cursor:
+    for row in cursor:
+        if row[0] == 1:
+            cursor.deleteRow()
 
 # Merge all for a final multipatch layer
 listLayer = []
@@ -108,5 +105,4 @@ arcpy.TableToTable_conversion(mergedLayer, outputDir, exportFile)
 del joinField
 del transferField
 del joinDeleteFieldTable
-del deletePiles
 del finalLayer

@@ -34,6 +34,9 @@ allFilesList = os.listdir(kmzDir)
 reg = re.compile(r".*kmz")
 kmzList = list(filter(reg.match, allFilesList))
 
+appendListPolylie = []
+appendListPoint = []
+    
 # 3. Loop for each kmz files
 for kmz in kmzList:
     in_kmz_file = os.path.join(kmzDir, kmz)
@@ -85,9 +88,6 @@ for kmz in kmzList:
     fieldNames=[f.name for f in arcpy.ListFields(Polylines)]
     dropField = [e for e in fieldNames if e not in (addField, addField2, 'SymbolID', 'Shape','Shape_Length','Shape_Area','Shape.STArea()','Shape.STLength()','OBJECTID','GlobalID', 'OID')]
     arcpy.DeleteField_management(Polylines, dropField)
- 
-    appendListPolylie = []
-    appendListPoint = []
     
     for types in uniqueList: 
         # 3.1. Filter each type and copy to the file geodatabase
@@ -199,54 +199,34 @@ for kmz in kmzList:
 ## Lastly, merge by types
 ## Polylines
 # ['C:/Users/oc3512/OneDrive - Oriental Consultants Global JV/Documents/ArcGIS/Projects/Pre-Construction_nscrexn2/Pre-Construction_nscrexn2.gdb\\main_alignment_N05']
-appendListPolylie = ['C:/Users/oc3512/OneDrive - Oriental Consultants Global JV/Documents/ArcGIS/Projects/Pre-Construction_nscrexn2/Pre-Construction_nscrexn2.gdb\\main_alignment_N01',
-                     'C:/Users/oc3512/OneDrive - Oriental Consultants Global JV/Documents/ArcGIS/Projects/Pre-Construction_nscrexn2/Pre-Construction_nscrexn2.gdb\\main_alignment_N02',
-                     'C:/Users/oc3512/OneDrive - Oriental Consultants Global JV/Documents/ArcGIS/Projects/Pre-Construction_nscrexn2/Pre-Construction_nscrexn2.gdb\\main_alignment_N03',
-                     'C:/Users/oc3512/OneDrive - Oriental Consultants Global JV/Documents/ArcGIS/Projects/Pre-Construction_nscrexn2/Pre-Construction_nscrexn2.gdb\\main_alignment_N04',
-                     'C:/Users/oc3512/OneDrive - Oriental Consultants Global JV/Documents/ArcGIS/Projects/Pre-Construction_nscrexn2/Pre-Construction_nscrexn2.gdb\\main_alignment_N05',
-                     'C:/Users/oc3512/OneDrive - Oriental Consultants Global JV/Documents/ArcGIS/Projects/Pre-Construction_nscrexn2/Pre-Construction_nscrexn2.gdb\\centerline_N01',
-                     'C:/Users/oc3512/OneDrive - Oriental Consultants Global JV/Documents/ArcGIS/Projects/Pre-Construction_nscrexn2/Pre-Construction_nscrexn2.gdb\\centerline_N02',
-                     'C:/Users/oc3512/OneDrive - Oriental Consultants Global JV/Documents/ArcGIS/Projects/Pre-Construction_nscrexn2/Pre-Construction_nscrexn2.gdb\\centerline_N03',
-                     'C:/Users/oc3512/OneDrive - Oriental Consultants Global JV/Documents/ArcGIS/Projects/Pre-Construction_nscrexn2/Pre-Construction_nscrexn2.gdb\\centerline_N04',
-                     'C:/Users/oc3512/OneDrive - Oriental Consultants Global JV/Documents/ArcGIS/Projects/Pre-Construction_nscrexn2/Pre-Construction_nscrexn2.gdb\\centerline_N05',
-                     'C:/Users/oc3512/OneDrive - Oriental Consultants Global JV/Documents/ArcGIS/Projects/Pre-Construction_nscrexn2/Pre-Construction_nscrexn2.gdb\\columnation_N01',
-                     'C:/Users/oc3512/OneDrive - Oriental Consultants Global JV/Documents/ArcGIS/Projects/Pre-Construction_nscrexn2/Pre-Construction_nscrexn2.gdb\\columnation_N02',
-                     'C:/Users/oc3512/OneDrive - Oriental Consultants Global JV/Documents/ArcGIS/Projects/Pre-Construction_nscrexn2/Pre-Construction_nscrexn2.gdb\\columnation_N03',
-                     'C:/Users/oc3512/OneDrive - Oriental Consultants Global JV/Documents/ArcGIS/Projects/Pre-Construction_nscrexn2/Pre-Construction_nscrexn2.gdb\\columnation_N04',
-                     'C:/Users/oc3512/OneDrive - Oriental Consultants Global JV/Documents/ArcGIS/Projects/Pre-Construction_nscrexn2/Pre-Construction_nscrexn2.gdb\\mcrp_row_N01',
-                     'C:/Users/oc3512/OneDrive - Oriental Consultants Global JV/Documents/ArcGIS/Projects/Pre-Construction_nscrexn2/Pre-Construction_nscrexn2.gdb\\mcrp_row_N02',
-                     'C:/Users/oc3512/OneDrive - Oriental Consultants Global JV/Documents/ArcGIS/Projects/Pre-Construction_nscrexn2/Pre-Construction_nscrexn2.gdb\\mcrp_row_N03',
-                     'C:/Users/oc3512/OneDrive - Oriental Consultants Global JV/Documents/ArcGIS/Projects/Pre-Construction_nscrexn2/Pre-Construction_nscrexn2.gdb\\mcrp_row_N04',
-                     'C:/Users/oc3512/OneDrive - Oriental Consultants Global JV/Documents/ArcGIS/Projects/Pre-Construction_nscrexn2/Pre-Construction_nscrexn2.gdb\\mcrp_row_N05',
-                     'C:/Users/oc3512/OneDrive - Oriental Consultants Global JV/Documents/ArcGIS/Projects/Pre-Construction_nscrexn2/Pre-Construction_nscrexn2.gdb\\station_platform_N01',
-                     'C:/Users/oc3512/OneDrive - Oriental Consultants Global JV/Documents/ArcGIS/Projects/Pre-Construction_nscrexn2/Pre-Construction_nscrexn2.gdb\\station_platform_N02',
-                     'C:/Users/oc3512/OneDrive - Oriental Consultants Global JV/Documents/ArcGIS/Projects/Pre-Construction_nscrexn2/Pre-Construction_nscrexn2.gdb\\station_platform_N03']
-
-appendListPoint = ['C:/Users/oc3512/OneDrive - Oriental Consultants Global JV/Documents/ArcGIS/Projects/Pre-Construction_nscrexn2/Pre-Construction_nscrexn2.gdb\\main_alignment_N05_point',
-                     'C:/Users/oc3512/OneDrive - Oriental Consultants Global JV/Documents/ArcGIS/Projects/Pre-Construction_nscrexn2/Pre-Construction_nscrexn2.gdb\\centerline_N01_point',
-                     'C:/Users/oc3512/OneDrive - Oriental Consultants Global JV/Documents/ArcGIS/Projects/Pre-Construction_nscrexn2/Pre-Construction_nscrexn2.gdb\\centerline_N02_point',
-                     'C:/Users/oc3512/OneDrive - Oriental Consultants Global JV/Documents/ArcGIS/Projects/Pre-Construction_nscrexn2/Pre-Construction_nscrexn2.gdb\\centerline_N03_point',
-                     'C:/Users/oc3512/OneDrive - Oriental Consultants Global JV/Documents/ArcGIS/Projects/Pre-Construction_nscrexn2/Pre-Construction_nscrexn2.gdb\\centerline_N04_point',
-                     'C:/Users/oc3512/OneDrive - Oriental Consultants Global JV/Documents/ArcGIS/Projects/Pre-Construction_nscrexn2/Pre-Construction_nscrexn2.gdb\\centerline_N05_point',
-                     'C:/Users/oc3512/OneDrive - Oriental Consultants Global JV/Documents/ArcGIS/Projects/Pre-Construction_nscrexn2/Pre-Construction_nscrexn2.gdb\\columnation_N01_point',
-                     'C:/Users/oc3512/OneDrive - Oriental Consultants Global JV/Documents/ArcGIS/Projects/Pre-Construction_nscrexn2/Pre-Construction_nscrexn2.gdb\\columnation_N02_point',
-                     'C:/Users/oc3512/OneDrive - Oriental Consultants Global JV/Documents/ArcGIS/Projects/Pre-Construction_nscrexn2/Pre-Construction_nscrexn2.gdb\\columnation_N03_point',
-                     'C:/Users/oc3512/OneDrive - Oriental Consultants Global JV/Documents/ArcGIS/Projects/Pre-Construction_nscrexn2/Pre-Construction_nscrexn2.gdb\\columnation_N04_point']
-
-
 uniqueList = ['centerline', 'main_alignment', 'mcrp_row', 'station_platform', 'columnation']
+
+arcpy.AddMessage(appendListPolylie)
+
 for types in uniqueList:
     regA = re.compile(r".*{}".format(types))
     mergeList = list(filter(regA.match, appendListPolylie))
-    OutName = types.title() + "_N2"
-    arcpy.Merge_management(mergeList, os.path.join(fgdbDir, OutName))
+    outName = types.title() + "_N2"
+    outputName = os.path.join(fgdbDir, outName)
+    
+    arcpy.AddMessage(outputName)
+    
+    arcpy.Merge_management(mergeList, outputName)
 
 ## Points
+arcpy.AddMessage(appendListPoint)
+
+uniqueListP = ['centerline', 'main_alignment', 'columnation']
+
 for types in uniqueListP:
     regP = re.compile(r".*{}".format(types))
     mergeListP = list(filter(regP.match, appendListPoint))
-    OutNameP = types.title() + "_N2"
-    arcpy.Merge_management(mergeListP, os.path.join(fgdbDir, OutNameP))
+    outNameP = types.title() + "_N2_point"
+    outputNameP = os.path.join(fgdbDir, outNameP)
+    
+    arcpy.AddMessage(outputNameP)
+    
+    arcpy.Merge_management(mergeListP, outputNameP)
     
 # Delete
 arcpy.Delete_management(appendListPolylie)

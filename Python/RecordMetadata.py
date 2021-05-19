@@ -30,7 +30,7 @@ for layer in inputFeatures:
     new_md.title = "{}".format(t1)
     #new_md.tags = 'Parcellary, NSCR-Ex, SC, Land Acquisition'
     new_md.tags = 'NSRP, SC, NSCR-Ex, Alignment'
-    new_md.summary = 'This feature layer data source: NSRP_SC_(3.6.5)_20200714_S06RoadRealignment(Detail Design).kmz \n Data Provider: Jaina Bobihiss'
+    new_md.summary = 'This feature layer data source: /NCREx-Files01/19_CIVN2 Team (GF Server, Active)/08_DRAWINGS (Katherine Magculang, sakamoto, Ricardo Cagaanan)/05_KMZ file/MCRP_KMZ (Rev.0) 20210319 \n Data Provider: Sakamoto san? \n Data Created: May 18, 2021'
     tgt_item_md = md.Metadata(layer)
     if not tgt_item_md.isReadOnly:
         tgt_item_md.copy(new_md)

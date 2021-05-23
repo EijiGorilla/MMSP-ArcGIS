@@ -1,16 +1,15 @@
-{
+  {
     "type": "bar",
     "datasets": [
       {
         "url": "https://services8.arcgis.com/h9TUF6x5VzqLQaYx/arcgis/rest/services/Parcellary_compiled_N2/FeatureServer/1",
         "name": "Paid",
         "query": {
-          "where": "StatusLA=1",
           "orderByFields": "Municipality_1 DESC",
           "groupByFieldsForStatistics": "Municipality_1",
           "outStatistics": [{
-            "statisticType": "count",
-            "onStatisticField": "OBJECTID",
+            "statisticType": "sum",
+            "onStatisticField": "CASE WHEN StatusLA = 1 THEN 1 ELSE 0 END",
             "outStatisticFieldName": "OBJECTID_count"
           }]
         },
@@ -20,12 +19,11 @@
         "url": "https://services8.arcgis.com/h9TUF6x5VzqLQaYx/arcgis/rest/services/Parcellary_compiled_N2/FeatureServer/1",
         "name": "PayP",
         "query": {
-          "where": "StatusLA=2",
           "orderByFields": "Municipality_1 DESC",
           "groupByFieldsForStatistics": "Municipality_1",
           "outStatistics": [{
-            "statisticType": "count",
-            "onStatisticField": "OBJECTID",
+            "statisticType": "sum",
+            "onStatisticField": "CASE WHEN StatusLA = 2 THEN 1 ELSE 0 END",
             "outStatisticFieldName": "OBJECTID_count"
           }]
         },
@@ -35,12 +33,39 @@
         "url": "https://services8.arcgis.com/h9TUF6x5VzqLQaYx/arcgis/rest/services/Parcellary_compiled_N2/FeatureServer/1",
         "name": "LegalPass",
         "query": {
-          "where": "StatusLA=3",
           "orderByFields": "Municipality_1 DESC",
           "groupByFieldsForStatistics": "Municipality_1",
           "outStatistics": [{
-            "statisticType": "count",
-            "onStatisticField": "OBJECTID",
+            "statisticType": "sum",
+            "onStatisticField": "CASE WHEN StatusLA = 3 THEN 1 ELSE 0 END",
+            "outStatisticFieldName": "OBJECTID_count"
+          }]
+        },
+        "join": "Municipality_1"
+      },
+      {
+        "url": "https://services8.arcgis.com/h9TUF6x5VzqLQaYx/arcgis/rest/services/Parcellary_compiled_N2/FeatureServer/1",
+        "name": "Otb",
+        "query": {
+          "orderByFields": "Municipality_1 DESC",
+          "groupByFieldsForStatistics": "Municipality_1",
+          "outStatistics": [{
+            "statisticType": "sum",
+            "onStatisticField": "CASE WHEN StatusLA = 4 THEN 1 ELSE 0 END",
+            "outStatisticFieldName": "OBJECTID_count"
+          }]
+        },
+        "join": "Municipality_1"
+      },
+      {
+        "url": "https://services8.arcgis.com/h9TUF6x5VzqLQaYx/arcgis/rest/services/Parcellary_compiled_N2/FeatureServer/1",
+        "name": "Expro",
+        "query": {
+          "orderByFields": "Municipality_1 DESC",
+          "groupByFieldsForStatistics": "Municipality_1",
+          "outStatistics": [{
+            "statisticType": "sum",
+            "onStatisticField": "CASE WHEN StatusLA = 5 THEN 1 ELSE 0 END",
             "outStatisticFieldName": "OBJECTID_count"
           }]
         },
@@ -65,6 +90,19 @@
         "value": { "field": "OBJECTID_count", "label": "For Legal Pass"},
         "source": "LegalPass",
         "stack": true
+      },
+      {
+        "category": {"field": "Municipality_1", "label": "Municipality"},
+        "value": { "field": "OBJECTID_count", "label": "For Appraisal/Offer to Buy"},
+        "source": "Otb",
+        "stack": true
+      },
+      {
+        "category": {"field": "Municipality_1", "label": "Municipality"},
+        "value": { "field": "OBJECTID_count", "label": "For Expro"},
+        "source": "Expro",
+        "stack": true
       }
     ]
   }
+

@@ -13,13 +13,13 @@ import os
 arcpy.env.overwriteOutput = True
 
 workSpace = arcpy.GetParameterAsText(0)
-joinTable = arcpy.GetParameterAsText(1)
+joinTable = arcpy.GetParameterAsText(1) #target table multipatch
 targetTable = arcpy.GetParameterAsText(2)
 joinField = arcpy.GetParameterAsText(3) #tempID
 transferField = arcpy.GetParameterAsText(4) #PierNumber_1
 
 # Join Field
-joinedLayer = arcpy.JoinField_management(in_data=joinTable, in_field=joinField, join_table=targetTable, join_field=joinField, fields=transferField)
+joinedLayer = arcpy.JoinField_management(in_data=targetTable, in_field=joinField, join_table=joinTable, join_field=joinField, fields=transferField)
 
 # Copy to the PierNumber field
 with arcpy.da.UpdateCursor(joinedLayer, ['PierNumber', transferField]) as cursor:

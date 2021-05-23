@@ -1,0 +1,70 @@
+{
+    "type": "bar",
+    "datasets": [
+      {
+        "url": "https://services8.arcgis.com/h9TUF6x5VzqLQaYx/arcgis/rest/services/Parcellary_compiled_N2/FeatureServer/1",
+        "name": "Paid",
+        "query": {
+          "where": "StatusLA=1",
+          "orderByFields": "Municipality_1 DESC",
+          "groupByFieldsForStatistics": "Municipality_1",
+          "outStatistics": [{
+            "statisticType": "count",
+            "onStatisticField": "OBJECTID",
+            "outStatisticFieldName": "OBJECTID_count"
+          }]
+        },
+        "join": "Municipality_1"
+      },
+      {
+        "url": "https://services8.arcgis.com/h9TUF6x5VzqLQaYx/arcgis/rest/services/Parcellary_compiled_N2/FeatureServer/1",
+        "name": "PayP",
+        "query": {
+          "where": "StatusLA=2",
+          "orderByFields": "Municipality_1 DESC",
+          "groupByFieldsForStatistics": "Municipality_1",
+          "outStatistics": [{
+            "statisticType": "count",
+            "onStatisticField": "OBJECTID",
+            "outStatisticFieldName": "OBJECTID_count"
+          }]
+        },
+        "join": "Municipality_1"
+      },
+      {
+        "url": "https://services8.arcgis.com/h9TUF6x5VzqLQaYx/arcgis/rest/services/Parcellary_compiled_N2/FeatureServer/1",
+        "name": "LegalPass",
+        "query": {
+          "where": "StatusLA=3",
+          "orderByFields": "Municipality_1 DESC",
+          "groupByFieldsForStatistics": "Municipality_1",
+          "outStatistics": [{
+            "statisticType": "count",
+            "onStatisticField": "OBJECTID",
+            "outStatisticFieldName": "OBJECTID_count"
+          }]
+        },
+        "join": "Municipality_1"
+      }
+    ],
+    "series": [
+      {
+        "category": {"field": "Municipality_1", "label": "Municipality"},
+        "value": { "field": "OBJECTID_count", "label": "Paid"},
+        "source": "Paid",
+        "stack": true
+      },
+      {
+        "category": {"field": "Municipality_1", "label": "Municipality"},
+        "value": { "field": "OBJECTID_count", "label": "For Payment Processing"},
+        "source": "PayP",
+        "stack": true
+      },
+      {
+        "category": {"field": "Municipality_1", "label": "Municipality"},
+        "value": { "field": "OBJECTID_count", "label": "For Legal Pass"},
+        "source": "LegalPass",
+        "stack": true
+      }
+    ]
+  }

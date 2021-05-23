@@ -23,7 +23,7 @@ layerName = arcpy.GetParameterAsText(2) # Do not use '-"
 pierNoPtLayer = arcpy.GetParameterAsText(3)
 CPno = arcpy.GetParameterAsText(4)
 outputLocation = arcpy.GetParameterAsText(5)  # Export to excel file f
-
+# "C:/Users/oc3512/OneDrive - Oriental Consultants Global JV/Desktop/tempCheck"
 arcpy.env.workspace = workSpace
 
 
@@ -58,7 +58,7 @@ for field in addFields:
 
 # 3. Calculate Field
 ## Assign values to 'Type' field based on 'Layer' field
-## 1. Bored Pile, 2. Pile Cap, 3. Pier, 4. Pier Head, 5. Pre-cast
+## 1. Bored Pile, 2. Pile Cap, 3. Pier, 4. Pier Head, 5. Pre-cast, 6. Cantilever
 listLayer = []
 with arcpy.da.SearchCursor(copyStatus, ['Layer']) as cursor:
     for row in cursor:
@@ -68,27 +68,38 @@ with arcpy.da.SearchCursor(copyStatus, ['Layer']) as cursor:
 uniqueList = list(Counter(listLayer))
             
 ## Rmove unnecessary letters
-reg = re.compile('.*PreCast*|.*PRECAST*|.*precast*|.*preCast*|.*Pile*|.*PILE*|.*COLUMN*|.*Column*|.*PILECAP*|.*pileCap*|.*pilecap*|.*PIER_Head*|.*PIER_head*|.*pier_head*|.*Pier_head*|.*Pier_Head*|.*PIER_Hd|.*Pier_Hd|.*pier_hd')
+reg = re.compile('.*PreCast*|.*PRECAST*|.*precast*|.*preCast*|.*Pile*|.*PILE*|.*COLUMN*|.*Column*|.*PILECAP*|.*pileCap*|.*pilecap*|.*PIER_Head*|.*PIER_head*|.*pier_head*|.*Pier_head*|.*Pier_Head*|.*PIER_Hd|.*Pier_Hd|.*pier_hd|.*C-BRDG|.*C-brdg|.*c-brdg|.*C-Brdg')
 
 finalList = list(filter(reg.match, uniqueList))
 
 
-# Sometimes, pier head has two names in 'Layer' field so need to correct
+# Sometimes, pier head and cantilever need to correct the names in 'Layer'
 reg22 = re.compile(r'.*Hd')
 regCor = re.compile('.*Head')
+regCanti = re.compile(r'.*C-BRDG|.*c-brdg|.*C-Brdg')
 
 replacedHead = list(filter(reg22.match, finalList))
 replacingHead = list(filter(regCor.match, finalList))
 
+replacedCanti = list(filter(regCanti.match, finalList))
+replacingCanti = CPno + "_" + "Cantilever"
+
+
 with arcpy.da.UpdateCursor(copyStatus, ['Layer']) as cursor:
     for row in cursor:
-        if row[0] == replacedHead:
-            row[0] = replacingHead
-            cursor.updateRow(row)
+        if row[0] == replacedHead[0]:
+            row[0] = replacingHead[0]
+        elif row[0] == replacedCanti[0]:
+            row[0] = replacingCanti
+        cursor.updateRow(row)
 ##
 
 indexN = finalList.index("".join(replacedHead))
 del finalList[indexN]
+
+# replace old Cantilever with its new label
+indexCanti = finalList.index("".join(replacedCanti))
+finalList[indexCanti] = replacingCanti
 
 #
 regPile = re.compile(r'.*PILE$|.*pile$|.*Pile$')
@@ -111,6 +122,10 @@ regPreC = re.compile(r'.*PreCast$|.*PRECAST$|.*precast$')
 preCL = list(filter(regPreC.match, finalList))
 preCC = "".join(preCL)
 
+regCanti = re.compile(r'.*Cantilever|.*cantilever|.*CANTILEVER')
+cantiL = list(filter(regCanti.match, finalList))
+cantiC = "".join(cantiL)
+
 with arcpy.da.UpdateCursor(copyStatus, ['Layer','Type']) as cursor:
     for row in cursor:
         if row[0] == pileC:
@@ -123,6 +138,8 @@ with arcpy.da.UpdateCursor(copyStatus, ['Layer','Type']) as cursor:
             row[1] = 4
         elif row[0] == preCC:
             row[1] = 5
+        elif row[0] == cantiC:
+            row[1] = 6
         else:
             row[1] = None
         cursor.updateRow(row)

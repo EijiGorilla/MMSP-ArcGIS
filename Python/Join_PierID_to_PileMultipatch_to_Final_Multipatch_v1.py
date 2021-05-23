@@ -20,7 +20,7 @@ inputLayerL = arcpy.GetParameterAsText(4)
 inputLayerM = arcpy.GetParameterAsText(5)
 inputLayerR = arcpy.GetParameterAsText(6)
 sourceLayer = arcpy.GetParameterAsText(7) # Viaduct_N04_before_PierNo_Assignment
-outputDir = arcpy.GetParameterAsText(8)
+outputDir = arcpy.GetParameterAsText(8) #C:/Users/oc3512/OneDrive - Oriental Consultants Global JV/Desktop/tempCheck
 
 arcpy.env.workspace = workSpace
 
@@ -63,11 +63,11 @@ finalLayer = "Viaduct" + "_" + cp + "_Final"
 mergedLayer = arcpy.Merge_management([sourceLayer, inputLayerL, inputLayerM, inputLayerR], finalLayer)
 
 # Finally sort the merged layer from south to north
-arcpy.Sort_management(mergedLayer, finalLayer + "_sorted", [["Shape", "ASCENDING"]], "LR")
+mergedLayerSorted = arcpy.Sort_management(mergedLayer, finalLayer + "_sorted", [["Shape", "ASCENDING"]], "LR")
 
 # Delete PileNo Field
 deleteField = "PileNo"
-arcpy.DeleteField_management(mergedLayer, deleteField)
+arcpy.DeleteField_management(mergedLayerSorted, deleteField)
 
 
 # Define Domain
@@ -83,14 +83,14 @@ regStatus = re.compile(r'.*ViaductStatus|.*viaductStatus|.*viaductstatus|.*Viadu
 domainType = list(filter(regType.match, domainList))
 domainStatus = list(filter(regStatus.match, domainList))
 
-arcpy.AssignDomainToField_management(mergedLayer, "Type", domainType[0])
-arcpy.AssignDomainToField_management(mergedLayer, "Status1", domainStatus[0])
+arcpy.AssignDomainToField_management(mergedLayerSorted, "Type", domainType[0])
+arcpy.AssignDomainToField_management(mergedLayerSorted, "Status1", domainStatus[0])
 
 # create tempid
 addField = "tempid"
-arcpy.AddField_management(mergedLayer, addField, "Short", field_alias = addField, field_is_nullable="NULLABLE")
+arcpy.AddField_management(mergedLayerSorted, addField, "Short", field_alias = addField, field_is_nullable="NULLABLE")
 
-with arcpy.da.UpdateCursor(mergedLayer, ['tempid']) as cursor:
+with arcpy.da.UpdateCursor(mergedLayerSorted, ['tempid']) as cursor:
     n= 0
     for row in cursor:
         n = n + 1
@@ -100,7 +100,7 @@ with arcpy.da.UpdateCursor(mergedLayer, ['tempid']) as cursor:
 # Export to excel csv
 fileName = arcpy.Describe(mergedLayer).name
 exportFile = fileName + "_fineSort" + ".csv"
-arcpy.TableToTable_conversion(mergedLayer, outputDir, exportFile)
+arcpy.TableToTable_conversion(mergedLayerSorted, outputDir, exportFile)
 
 del joinField
 del transferField

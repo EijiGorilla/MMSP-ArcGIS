@@ -11,6 +11,8 @@ tool_exec=function(in_params,out_params){
   workSpace=in_params[[1]] # parameter: workspace
   table=in_params[[2]]
   
+  #table = file.choose()
+  
   result=out_params[[1]] # parameter: Feature Layer
 
   x = read.csv(table, stringsAsFactors = FALSE)
@@ -20,6 +22,7 @@ x$pierHead = as.numeric(NA)
 
 j = 0
 for(i in 1:nrow(x)) {
+  print(i)
   
   if(x[i, 4] == 2){
     j = j +1

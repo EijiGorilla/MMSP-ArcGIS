@@ -91,49 +91,48 @@ for kmz in kmzList:
     
     for types in uniqueList: 
         # 3.1. Filter each type and copy to the file geodatabase
-        if cp == 'N01' and types == 'columnation':
+        if cp == 'N-01' and types == 'columnation':
             sqlExpression = "SymbolID = 0" + " AND " + "type = '{}'".format(types)
-        elif cp == 'N01' and types == 'station_platform': # symbolID = 9 and 10
+        elif cp == 'N-01' and types == 'station_platform': # symbolID = 9 and 10
             sqlExpression = "SymbolID = 0" + " AND " + "type = '{}'".format(types)             
-        elif cp == 'N01' and types == 'main_alignment': # symbolID = 9 and 10
+        elif cp == 'N-01' and types == 'main_alignment': # symbolID = 9 and 10
             sqlExpression = "SymbolID IN (0, 11)" + " AND " + "type = '{}'".format(types) 
-        elif cp == 'N01' and types == 'mcrp_row': # symbolID = 9 and 10
+        elif cp == 'N-01' and types == 'mcrp_row': # symbolID = 9 and 10
             sqlExpression = "SymbolID IN (9, 10)" + " AND " + "type = '{}'".format(types)
-        elif cp == 'N01' and types == 'centerline':   
+        elif cp == 'N-01' and types == 'centerline':   
             sqlExpression = "SymbolID = 15" + " AND " + "type = '{}'".format(types)
             
-        elif cp == 'N03' and types == 'columnation':
+        elif cp == 'N-03' and types == 'columnation':
             sqlExpression = "SymbolID = 0" + " AND " + "type = '{}'".format(types)
-        elif cp == 'N03' and types == 'station_platform':
+        elif cp == 'N-03' and types == 'station_platform':
             sqlExpression = "SymbolID = 0" + " AND " + "type = '{}'".format(types)            
-        elif cp == 'N03' and types == 'main_alignment':
+        elif cp == 'N-03' and types == 'main_alignment':
             sqlExpression = "SymbolID IN (0, 3)" + " AND " + "type = '{}'".format(types)
-        elif cp == 'N03' and types == 'mcrp_row':
+        elif cp == 'N-03' and types == 'mcrp_row':
             sqlExpression = "SymbolID = 6" + " AND " + "type = '{}'".format(types)
-        elif cp == 'N03' and types == 'centerline':
+        elif cp == 'N-03' and types == 'centerline':
             sqlExpression = "SymbolID = 3" + " AND " + "type = '{}'".format(types)
             
-        elif cp == 'N02' and types == 'mcrp_row':
+        elif cp == 'N-02' and types == 'mcrp_row':
             sqlExpression = "SymbolID = 0" + " AND " + "type = '{}'".format(types)
-        elif cp == 'N02' and types == 'centerline':
+        elif cp == 'N-02' and types == 'centerline':
             sqlExpression = "SymbolID = 6" + " AND " + "type = '{}'".format(types)
-        elif cp == 'N02' and types == 'station_platform':
+        elif cp == 'N-02' and types == 'station_platform':
             sqlExpression = "SymbolID = 2" + " AND " + "type = '{}'".format(types)
-        elif cp == 'N02' and types == 'columnation':
+        elif cp == 'N-02' and types == 'columnation':
             sqlExpression = "SymbolID = 2" + " AND " + "type = '{}'".format(types)
-        elif cp == 'N02' and types == 'main_alignment':
+        elif cp == 'N-02' and types == 'main_alignment':
             sqlExpression = "SymbolID IN (2, 3)" + " AND " + "type = '{}'".format(types)
             
-        elif cp == 'N04' and types == 'columnation':
+        elif cp == 'N-04' and types == 'columnation':
             sqlExpression = "SymbolID IN (1, 13)" + " AND " + "type = '{}'".format(types)
-        elif cp == 'N04' and types == 'centerline':
+        elif cp == 'N-04' and types == 'centerline':
             sqlExpression = "SymbolID = 7" + " AND " + "type = '{}'".format(types)
-        elif cp == 'N02' and types == 'main_alignment':
+        elif cp == 'N-04' and types == 'main_alignment':
             sqlExpression = "SymbolID IN (0, 1)" + " AND " + "type = '{}'".format(types)
-        elif cp == 'N02' and types == 'main_alignment':
+        elif cp == 'N-04' and types == 'main_alignment':
             sqlExpression = "SymbolID = 11" + " AND " + "type = '{}'".format(types)
             
-        
         makeLayer = arcpy.MakeFeatureLayer_management(Polylines, types, sqlExpression)
         
         ExportDir = os.path.join(fgdbDir, types + "_" + cp)

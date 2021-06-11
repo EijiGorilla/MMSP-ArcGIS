@@ -103,8 +103,8 @@ arcpy.Append_management(copyStatus, Status1011_Merge,schema_type = 'NO_TEST')
 # 7. Convert 99 to None in Status fields
 ##########################################################
 #-----------------------
-# 5. Convert 99 to None
-# 99 is used to keep the field as numeric type 
+# 5. Convert 0 to None
+# 0 is used to keep the field as numeric type 
 # Set local variables
 Status1 = 'Status1'
 Status2 = 'Status2'
@@ -121,9 +121,18 @@ StatusNVS2 = 'StatusNVS2'
 StatusNVS3 = 'StatusNVS3'
 Status3 = 'Status3'
 count_NVS = 'count_NVS'
+StatusPaid = "Paid"
+SPaid = "S_Paid"
+PTE = "PTE"
+MOA = "MOA"
+SMOA = "S_MOA"
+HandOver = "HandedOver"
+SHandOver = "S_HandedOver"
+tmp_handover = "TMp_handover"
+StrucStatus = "StrucStatus"
 
-varFieldList = [Status1, Status2, exproCaseProfile, Scale, OtB_Prep, OtB_Deliv, PayP, ExproC, newPrioArea, Priority3, StatusNVS, StatusNVS2, StatusNVS3, Status3, count_NVS]
 
+varFieldList = [Status1, Status2, exproCaseProfile, Scale, OtB_Prep, OtB_Deliv, PayP, ExproC, newPrioArea, Priority3, StatusNVS, StatusNVS2, StatusNVS3, Status3, count_NVS, StatusPaid, SPaid, PTE, MOA, SMOA, HandOver, SHandOver, tmp_handover, StrucStatus]
 
 # Set local variables
 #expression1 = "reclass(!{}!)".format(Status1)

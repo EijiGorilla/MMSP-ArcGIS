@@ -193,12 +193,14 @@ head(y)
 
 y$id = 1:nrow(y)
 head(y)
+str(y)
+colnames(y)[11] = "HandOverDate" 
 y$HandOverDate = as.Date(y$HandOverDate, origin = "1899-12-30")
 y$HandOverDate = as.Date(y$HandOverDate, format="%m/%d/%y %H:%M:%S")
 
 
 head(x)
-xy = left_join(x,y,by="LotID")
+xy = left_join(x,y,by="Id")
 
 id = unique(y$StrucID)
 test = data.frame(StrucID = id, n=1:length(id))

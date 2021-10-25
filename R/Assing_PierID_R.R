@@ -1,9 +1,6 @@
 tool_exec=function(in_params,out_params){
   library(openxlsx)
   library(dplyr)
-  library(stringr)
-  library(reshape2)
-  
   # This R code assigns pierID to each Viaduct component
   # The result table is exported to workspace as file geodatabase table
   # for joining to the multipatch layer
@@ -14,7 +11,7 @@ tool_exec=function(in_params,out_params){
   #table = file.choose()
   
   result=out_params[[1]] # parameter: Feature Layer
-
+  
   x = read.csv(table, stringsAsFactors = FALSE)
   x = x[,-1]
 
@@ -22,7 +19,7 @@ x$pierHead = as.numeric(NA)
 
 j = 0
 for(i in 1:nrow(x)) {
-  print(i)
+  #print(i)
   
   if(x[i, 4] == 2){
     j = j +1
@@ -32,6 +29,7 @@ for(i in 1:nrow(x)) {
   }
 }
 
+print("Success")
 # Replace empty cell with some other values for simplicity
 x$PierNumber[x$PierNumber == "" | is.na(x$PierNumber)] = "xxxx"
 
@@ -55,9 +53,21 @@ for(i in n){
   temp = bind_rows(temp, x1)
 }
 
-arc.write(result,temp,overwrite=TRUE)
+print("Success")
 
+temp$ID = as.character(temp$ID)
+temp$PileNo = as.character(temp$PileNo)
+
+write.xlsx(temp, "Assigned_pierIDs.xlsx",overwrite=TRUE)
+
+print("Success")
+
+arc.write(result, temp, overwrite = TRUE)
+
+
+print("Success")
 # return result
 return(out_params)
 
 }
+

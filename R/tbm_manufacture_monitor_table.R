@@ -24,17 +24,23 @@ drive_auth(path = "G:/My Drive/01-Google Clould Platform/service-account-token.j
 ## Authorize (Choose 'matsuzakieiji0@gmail.com'. OCG gmail may not work)
 gs4_auth()
 
+# Choose "1!
+1
 
 # STEP 3: Compile all Google Sheet Tables:----
 ## Parameter
-a=choose.dir()
+a=choose.dir() "C:\Users\oc3512\Dropbox\01-Railway\02-NSCR-Ex\01-N2\02-Pre-Construction\01-Environment\02-Tree Cutting"
 wd = setwd(a)
 
 ## Define URL where data is stored and updated
-url = "https://docs.google.com/spreadsheets/d/12mQTJH2SAwiQH2bUXLM2RkDA0kU4nzXmDb7Mi7rJm5E/edit?usp=sharing"
+url = "https://docs.google.com/spreadsheets/d/12mQTJH2SAwiQH2bUXLM2RkDA0kU4nzXmDb7Mi7rJm5E/edit#gid=762722994"
 
 # Read and write as CSV and xlsx
-v = range_speedread(url, sheet = 1)
+v = range_read(url, sheet = 1)
+v = data.frame(v)
+
+#v = range_speedread(url, sheet = 1)
+
 write.csv(v, "temp_NVS.csv", na="NA", row.names = FALSE)
 
 v1 = read.csv(file.path(wd,"temp_NVS.csv"), stringsAsFactors = FALSE)
@@ -48,10 +54,12 @@ v3 = melt(v2, id.vars = c("TBM", "Parts"))
 v3$variable = as.character(v3$variable)
 
 # Rename variables
+
 colnames(v3)[3:4] = c("Process", "Progress")
 
 # Recode Parts: ArcGIS Pro uses domain for the Parts so use numeric values
 ## Parts:
+
 v3$Parts[v3$Parts == "Cutter head"] = 1
 v3$Parts[v3$Parts == "Driving unit"] = 2
 v3$Parts[v3$Parts == "Erector"] = 3

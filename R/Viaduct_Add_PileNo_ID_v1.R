@@ -3,7 +3,6 @@ library(openxlsx)
 library(dplyr)
 library(stringr)
 library(reshape2)
-
   
 workSpace=in_params[[1]] # parameter: workspace
 tableL=in_params[[2]]
@@ -55,9 +54,9 @@ for(pno in unique(x$PileNo)){
 }
 
 # Concatenate
-tempL$ID = paste(tempL$CP, "-", tempL$PierNumber, "-", "Pile_", tempL$PileNo,tempL$id_temp, sep = "")
-tempM$ID = paste(tempM$CP, "-", tempM$PierNumber, "-", "Pile_", tempM$PileNo, tempM$id_temp, sep = "")
-tempR$ID = paste(tempR$CP, "-", tempR$PierNumber, "-", "Pile_", tempR$PileNo, tempR$id_temp, sep = "")
+tempL$ID = paste(tempL$CP, "-", tempL$PierNumber, "-", "Pile-", tempL$PileNo,tempL$id_temp, sep = "")
+tempM$ID = paste(tempM$CP, "-", tempM$PierNumber, "-", "Pile-", tempM$PileNo, tempM$id_temp, sep = "")
+tempR$ID = paste(tempR$CP, "-", tempR$PierNumber, "-", "Pile-", tempR$PileNo, tempR$id_temp, sep = "")
 
 # Export
 write.xlsx(tempL,file.path(outFolder, paste("Viaduct_Assign_ID_Piles_L_", unique(tempL$CP),"_",Sys.Date(),".xlsx",sep="")))

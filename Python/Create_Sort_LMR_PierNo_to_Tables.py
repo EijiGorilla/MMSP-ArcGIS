@@ -16,26 +16,58 @@ arcpy.env.overwriteOutput = True
 workSpace = arcpy.GetParameterAsText(0)
 inputLayer = arcpy.GetParameterAsText(1)
 outputLocation = arcpy.GetParameterAsText(2)
+
 #"C:/Users/oc3512/OneDrive - Oriental Consultants Global JV/Desktop/tempCheck"
 arcpy.env.workspace = workSpace
 
-# Copy Feature for 'L' (left) Piles
+# OLD CODE: keep this just in case
+#sqlExpression = "PileNo = '{}'".format('L')
+#tempCopyLeft = arcpy.MakeFeatureLayer_management(inputLayer, "deleteLater", sqlExpression)
+#pilesLeft = arcpy.CopyFeatures_management(tempCopyLeft, "Piles_Left")
+
+#sqlExpression = "PileNo = '{}'".format('M')
+#tempCopyMid = arcpy.MakeFeatureLayer_management(inputLayer, "deleteLater", "PileNo = 'M'")
+#pilesMid = arcpy.CopyFeatures_management(tempCopyMid, "Piles_Mid")
+
+#sqlExpression = "PileNo = '{}'".format('R')
+#tempCopyRight = arcpy.MakeFeatureLayer_management(inputLayer, "deleteLater", "PileNo = 'R'")
+#pilesRight = arcpy.CopyFeatures_management(tempCopyRight, "Piles_Right")
+
+##
+# Create individual Bored Pile multipatch layers: L, M, and R
 sqlExpression = "PileNo = '{}'".format('L')
-tempCopyLeft = arcpy.MakeFeatureLayer_management(inputLayer, "deleteLater", sqlExpression)
-pilesLeft = arcpy.CopyFeatures_management(tempCopyLeft, "Piles_Left")
+pilesLeft = arcpy.MakeFeatureLayer_management(inputLayer, "Piles_Left", sqlExpression)
 
 sqlExpression = "PileNo = '{}'".format('M')
-tempCopyMid = arcpy.MakeFeatureLayer_management(inputLayer, "deleteLater", "PileNo = 'M'")
-pilesMid = arcpy.CopyFeatures_management(tempCopyMid, "Piles_Mid")
+pilesMid = arcpy.MakeFeatureLayer_management(inputLayer, "Piles_Mid", "PileNo = 'M'")
 
 sqlExpression = "PileNo = '{}'".format('R')
-tempCopyRight = arcpy.MakeFeatureLayer_management(inputLayer, "deleteLater", "PileNo = 'R'")
-pilesRight = arcpy.CopyFeatures_management(tempCopyRight, "Piles_Right")
+pilesRight = arcpy.MakeFeatureLayer_management(inputLayer, "Piles_Right", "PileNo = 'R'")
+
 
 # Sort each
-sortedPilesLeft = arcpy.Sort_management(pilesLeft, "sortedPilesLeft", [["Shape", "ASCENDING"]], "LR")
-sortedPilesMid = arcpy.Sort_management(pilesMid, "sortedPilesMid", [["Shape", "ASCENDING"]], "LR")
-sortedPilesRight = arcpy.Sort_management(pilesRight, "sortedPilesRight", [["Shape", "ASCENDING"]], "LR")
+## Get Contract Package
+listLayer = []
+with arcpy.da.SearchCursor(inputLayer, ['Layer']) as cursor:
+    for row in cursor:
+        if row[0] is not None:
+            listLayer.append(str(row[0]))
+            
+uniqueList = list(Counter(listLayer))
+cp = uniqueList[0].replace('-', '')
+cpL = [f for f in cp if f in "N"]
+
+# SC
+if len(cpL) > 0:
+    arcpy.AddMessage("You sorted by Upper Left for N2 extension")
+    sortedPilesLeft = arcpy.Sort_management(pilesLeft, "sortedPilesLeft", [["Shape", "ASCENDING"]], "LR")
+    sortedPilesMid = arcpy.Sort_management(pilesMid, "sortedPilesMid", [["Shape", "ASCENDING"]], "LR")
+    sortedPilesRight = arcpy.Sort_management(pilesRight, "sortedPilesRight", [["Shape", "ASCENDING"]], "LR")
+else:
+    arcpy.AddMessage("You sorted by Upper Left for SC extension")
+    sortedPilesLeft = arcpy.Sort_management(pilesLeft, "sortedPilesLeft", [["Shape", "ASCENDING"]], "UL")
+    sortedPilesMid = arcpy.Sort_management(pilesMid, "sortedPilesMid", [["Shape", "ASCENDING"]], "UL")
+    sortedPilesRight = arcpy.Sort_management(pilesRight, "sortedPilesRight", [["Shape", "ASCENDING"]], "UL")
 
 # Assign 'temp' Field Name
 tempField = "temp"

@@ -17,6 +17,7 @@ arcpy.env.outputCoordinateSystem = arcpy.SpatialReference("WGS 1984 Web Mercator
 arcpy.env.geographicTransformations = "PRS_1992_To_WGS_1984_1"
 #arcpy.env.workspace= "C:/Users/oc3512/OneDrive - Oriental Consultants Global JV/Documents/ArcGIS/Projects/During-Construction_nscrexn2/During-Construction_nscrexn2.gdb"
 # Script parameters
+
 workSpace = arcpy.GetParameterAsText(0)
 inputLayer = arcpy.GetParameterAsText(1)
 layerName = arcpy.GetParameterAsText(2) # Do not use '-"
@@ -68,7 +69,7 @@ with arcpy.da.SearchCursor(copyStatus, ['Layer']) as cursor:
 uniqueList = list(Counter(listLayer))
             
 ## Rmove unnecessary letters
-reg = re.compile('.*PreCast*|.*PRECAST*|.*precast*|.*preCast*|.*Pile*|.*PILE*|.*COLUMN*|.*Column*|.*PILECAP*|.*pileCap*|.*pilecap*|.*PIER_Head*|.*PIER_head*|.*pier_head*|.*Pier_head*|.*Pier_Head*|.*PIER_Hd|.*Pier_Hd|.*pier_hd|.*C-BRDG|.*C-brdg|.*c-brdg|.*C-Brdg')
+reg = re.compile('.*PreCast*|.*PRECAST*|.*precast*|.*preCast*|.*Precast|.*Pile*|.*PILE*|.*COLUMN*|.*Column*|.*PILECAP*|.*pileCap*|.*pilecap*|.*PIER_Head*|.*PIER_head*|.*pier_head*|.*Pier_head*|.*Pier_Head*|.*PIER_Hd|.*Pier_Hd|.*pier_hd|.*C-BRDG|.*C-brdg|.*c-brdg|.*C-Brdg')
 
 finalList = list(filter(reg.match, uniqueList))
 
@@ -84,65 +85,110 @@ replacingHead = list(filter(regCor.match, finalList))
 replacedCanti = list(filter(regCanti.match, finalList))
 replacingCanti = CPno + "_" + "Cantilever"
 
-
-with arcpy.da.UpdateCursor(copyStatus, ['Layer']) as cursor:
-    for row in cursor:
-        if row[0] == replacedHead[0]:
-            row[0] = replacingHead[0]
-        elif row[0] == replacedCanti[0]:
-            row[0] = replacingCanti
-        cursor.updateRow(row)
+if len(replacedCanti) == 0:
+    with arcpy.da.UpdateCursor(copyStatus, ['Layer']) as cursor:
+        for row in cursor:
+            if row[0] == replacedHead[0]:
+                row[0] = replacingHead[0]
+            cursor.updateRow(row)
+else:
+    with arcpy.da.UpdateCursor(copyStatus, ['Layer']) as cursor:
+        for row in cursor:
+            if row[0] == replacedHead[0]:
+                row[0] = replacingHead[0]
+            elif row[0] == replacedCanti[0]:
+                row[0] = replacingCanti
+            cursor.updateRow(row)
 ##
 
 indexN = finalList.index("".join(replacedHead))
 del finalList[indexN]
 
 # replace old Cantilever with its new label
-indexCanti = finalList.index("".join(replacedCanti))
-finalList[indexCanti] = replacingCanti
 
-#
-regPile = re.compile(r'.*PILE$|.*pile$|.*Pile$')
-pileL = list(filter(regPile.match, finalList))
-pileC = "".join(pileL)
+if len(replacedCanti) == 0:
+    regPile = re.compile(r'.*PILE$|.*pile$|.*Pile$')
+    pileL = list(filter(regPile.match, finalList))
+    pileC = "".join(pileL)
 
-regPierH = re.compile(r'.*Head$|.*head$|.*HEAD$')
-pierHL = list(filter(regPierH.match, finalList))
-pierHC = "".join(pierHL)
+    regPierH = re.compile(r'.*Head$|.*head$|.*HEAD$')
+    pierHL = list(filter(regPierH.match, finalList))
+    pierHC = "".join(pierHL)
 
-regCol = re.compile(r'.*COLUMN$|.*Column$|.*column$')
-colL = list(filter(regCol.match, finalList))
-colC = "".join(colL)
+    regCol = re.compile(r'.*COLUMN$|.*Column$|.*column$')
+    colL = list(filter(regCol.match, finalList))
+    colC = "".join(colL)
 
-regPileC = re.compile(r'.*PILECAP$|.*Pilecap$|.*pilecap$')
-pileCL = list(filter(regPileC.match, finalList))
-pileCC = "".join(pileCL)
+    regPileC = re.compile(r'.*PILECAP$|.*Pilecap$|.*pilecap$')
+    pileCL = list(filter(regPileC.match, finalList))
+    pileCC = "".join(pileCL)
 
-regPreC = re.compile(r'.*PreCast$|.*PRECAST$|.*precast$')
-preCL = list(filter(regPreC.match, finalList))
-preCC = "".join(preCL)
+    regPreC = re.compile(r'.*PreCast$|.*PRECAST$|.*precast$|.*Precast$')
+    preCL = list(filter(regPreC.match, finalList))
+    preCC = "".join(preCL)
 
-regCanti = re.compile(r'.*Cantilever|.*cantilever|.*CANTILEVER')
-cantiL = list(filter(regCanti.match, finalList))
-cantiC = "".join(cantiL)
+else:
+    indexCanti = finalList.index("".join(replacedCanti))
+    finalList[indexCanti] = replacingCanti
+    
+    regPile = re.compile(r'.*PILE$|.*pile$|.*Pile$')
+    pileL = list(filter(regPile.match, finalList))
+    pileC = "".join(pileL)
 
-with arcpy.da.UpdateCursor(copyStatus, ['Layer','Type']) as cursor:
-    for row in cursor:
-        if row[0] == pileC:
-            row[1] = 1
-        elif row[0] == pileCC:
-            row[1] = 2
-        elif row[0] == colC:
-            row[1] = 3
-        elif row[0] == pierHC:
-            row[1] = 4
-        elif row[0] == preCC:
-            row[1] = 5
-        elif row[0] == cantiC:
-            row[1] = 6
-        else:
-            row[1] = None
-        cursor.updateRow(row)
+    regPierH = re.compile(r'.*Head$|.*head$|.*HEAD$')
+    pierHL = list(filter(regPierH.match, finalList))
+    pierHC = "".join(pierHL)
+
+    regCol = re.compile(r'.*COLUMN$|.*Column$|.*column$')
+    colL = list(filter(regCol.match, finalList))
+    colC = "".join(colL)
+
+    regPileC = re.compile(r'.*PILECAP$|.*Pilecap$|.*pilecap$')
+    pileCL = list(filter(regPileC.match, finalList))
+    pileCC = "".join(pileCL)
+
+    regPreC = re.compile(r'.*PreCast$|.*PRECAST$|.*precast$|.*Precast$')
+    preCL = list(filter(regPreC.match, finalList))
+    preCC = "".join(preCL)
+
+    regCanti = re.compile(r'.*Cantilever|.*cantilever|.*CANTILEVER')
+    cantiL = list(filter(regCanti.match, finalList))
+    cantiC = "".join(cantiL)
+
+if len(replacedCanti) == 0:
+    with arcpy.da.UpdateCursor(copyStatus, ['Layer','Type']) as cursor:
+        for row in cursor:
+            if row[0] == pileC:
+                row[1] = 1
+            elif row[0] == pileCC:
+                row[1] = 2
+            elif row[0] == colC:
+                row[1] = 3
+            elif row[0] == pierHC:
+                row[1] = 4
+            elif row[0] == preCC:
+                row[1] = 5
+            else:
+                row[1] = None
+            cursor.updateRow(row)
+else:
+    with arcpy.da.UpdateCursor(copyStatus, ['Layer','Type']) as cursor:
+        for row in cursor:
+            if row[0] == pileC:
+                row[1] = 1
+            elif row[0] == pileCC:
+                row[1] = 2
+            elif row[0] == colC:
+                row[1] = 3
+            elif row[0] == pierHC:
+                row[1] = 4
+            elif row[0] == preCC:
+                row[1] = 5
+            elif row[0] == cantiC:
+                row[1] = 6
+            else:
+                row[1] = None
+            cursor.updateRow(row)
     
 
 ## Assign 1 (To be Constructed) to all layers for 'Status1' field
@@ -154,14 +200,27 @@ with arcpy.da.UpdateCursor(copyStatus, ['Status1', 'CP']) as cursor:
         row[1] = CP
         cursor.updateRow(row)
 
-## Sort by Shape (from south to north)
+## Sort by Shape (from south to north for N2 [LR: lower right])
+## for SC, UL: upper left
+
 out_dataset = layerName + "_" + "sort"
-sortedCopyStatus = arcpy.Sort_management(copyStatus, out_dataset, [["Shape", "ASCENDING"]], "LR")
+
+cpID = [f for f in CPno if f in "N"]
+
+# If CP is "N2", sort LR, otherwise for SC sort by UL
+if len(cpID) > 0:
+    sortedCopyStatus = arcpy.Sort_management(copyStatus, out_dataset, [["Shape", "ASCENDING"]], "LR")
+else:
+    arcpy.AddMessage("You sorted by Upper Left for SC extension")
+    sortedCopyStatus = arcpy.Sort_management(copyStatus, out_dataset, [["Shape", "ASCENDING"]], "UL")
+
+
+
 
 ## Delete 'Ellipse' in the 'Entity' field
 with arcpy.da.UpdateCursor(sortedCopyStatus, "Entity") as cursor:
     for row in cursor:
-        if row[0] == "Ellipse":
+        if row[0] == "Ellipse" or row[0] == "Circle" :
             cursor.deleteRow()
 
 #################
@@ -201,9 +260,15 @@ sqlExpression = "CP = '{}'".format(CPno)
 sortedPierNoPt_CP = arcpy.MakeFeatureLayer_management(pierNoPtLayer, outLayer, sqlExpression)
 
 out_dataset_p = outLayer + "_sort"
-sortedPierNoPt_CP_sort = arcpy.Sort_management(sortedPierNoPt_CP, out_dataset_p, [["Shape", "ASCENDING"]], "LR")
 
-# Add Field for join
+# If CP is "N2", sort LR, otherwise for SC sort by UL
+if len(cpID) > 0:
+    sortedPierNoPt_CP_sort = arcpy.Sort_management(sortedPierNoPt_CP, out_dataset_p, [["Shape", "ASCENDING"]], "LR")
+else:
+    arcpy.AddMessage("You sorted by Upper Left for SC extension")
+    sortedPierNoPt_CP_sort = arcpy.Sort_management(sortedPierNoPt_CP, out_dataset_p, [["Shape", "ASCENDING"]], "UL")
+
+# Add Field for join using tempID
 arcpy.AddField_management(sortedPierNoPt_CP_sort, addField, "SHORT", field_alias = addField, field_is_nullable="NULLABLE")
 
 # sequential number
@@ -232,7 +297,13 @@ testMerge = arcpy.Merge_management([sortedCopyStatusPierHead, sortedCopyStatus],
 
 ## Sort again for assigning Pier ID No. manually to all the other components (precast, pile, pilecap..)
 out_layer_final = layerName + "_before_PierNo_Assignment"
-finalSortedLayer = arcpy.Sort_management(testMerge, out_layer_final, [["Shape", "ASCENDING"]], "LR")
+
+# If CP is "N2", sort LR, otherwise for SC sort by UL
+if len(cpID) > 0:
+    finalSortedLayer = arcpy.Sort_management(testMerge, out_layer_final, [["Shape", "ASCENDING"]], "LR")
+else:
+    arcpy.AddMessage("You sorted by Upper Left for SC extension")
+    finalSortedLayer = arcpy.Sort_management(testMerge, out_layer_final, [["Shape", "ASCENDING"]], "UL")
 
 
 # Finally, copy joined PIER information to 'PierNumber' field

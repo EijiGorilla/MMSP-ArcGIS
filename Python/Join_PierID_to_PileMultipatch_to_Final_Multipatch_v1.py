@@ -13,6 +13,9 @@ import os
 arcpy.env.overwriteOutput = True
 
 workSpace = arcpy.GetParameterAsText(0)
+#C:/Users/oc3512/OneDrive - Oriental Consultants Global JV/Documents/ArcGIS/Projects/During-Construction_nscrexsc/During-Construction_nscrexsc.gdb
+#C:/Users/emasu/OneDrive - Oriental Consultants Global JV/Documents/ArcGIS/Projects/During-Construction_nscrexsc/During-Construction_nscrexsc.gdb
+
 joinTableL = arcpy.GetParameterAsText(1)
 joinTableM = arcpy.GetParameterAsText(2)
 joinTableR = arcpy.GetParameterAsText(3)
@@ -57,13 +60,19 @@ with arcpy.da.SearchCursor(sourceLayer, ['Layer']) as cursor:
 uniqueList = list(Counter(listLayer))
 cp = uniqueList[0].replace('-', '')
 
-
 finalLayer = "Viaduct" + "_" + cp + "_Final"
-
 mergedLayer = arcpy.Merge_management([sourceLayer, inputLayerL, inputLayerM, inputLayerR], finalLayer)
 
+    
+
 # Finally sort the merged layer from south to north
-mergedLayerSorted = arcpy.Sort_management(mergedLayer, finalLayer + "_sorted", [["Shape", "ASCENDING"]], "LR")
+cpL = [f for f in cp if f in "N"]
+
+if len(cpL) > 0:
+    mergedLayerSorted = arcpy.Sort_management(mergedLayer, finalLayer + "_sorted", [["Shape", "ASCENDING"]], "LR")
+else:
+    arcpy.AddMessage("You sorted by Upper Left for SC extension")
+    mergedLayerSorted = arcpy.Sort_management(mergedLayer, finalLayer + "_sorted", [["Shape", "ASCENDING"]], "UL")
 
 # Delete PileNo Field
 deleteField = "PileNo"
@@ -101,6 +110,7 @@ with arcpy.da.UpdateCursor(mergedLayerSorted, ['tempid']) as cursor:
 fileName = arcpy.Describe(mergedLayer).name
 exportFile = fileName + "_fineSort" + ".csv"
 arcpy.TableToTable_conversion(mergedLayerSorted, outputDir, exportFile)
+
 
 del joinField
 del transferField

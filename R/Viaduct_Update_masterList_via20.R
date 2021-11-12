@@ -10,7 +10,7 @@ library(dplyr)
 
 wd = in_params[[1]] # working directory
 inTable=in_params[[2]] # Progress table derived from Civil Team
-MLTable = in_params[[2]] # masterlist table to be joined to viaduct multipatch layer
+MLTable = in_params[[3]] # masterlist table to be joined to viaduct multipatch layer
   
 result=out_params[[1]] # parameter: Feature Layer
 

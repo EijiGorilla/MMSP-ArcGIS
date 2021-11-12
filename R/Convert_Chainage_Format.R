@@ -1,18 +1,19 @@
 # This R code populates chainage distance in the following format: 56+100, 56+200,... from the format of
 # 56K, 1, 2, 3, 4, 5, 6, 7, 8, 9, 57K, 1, 2, 3....
 
-
 library(tidyr)
 library(openxlsx)
 library(dplyr)
 
-z = choose.dir()
-wd = setwd(z)
+z = file.choose()
+setwd(z)
 a=file.choose()
 x = read.xlsx(a)
 
 # If a value has "K", return 1 else 0
-test = x$Name
+## Make sure 
+  test = x$Name
+
 test1 = grepl("K",test)
 test1 = ifelse(test1=="TRUE",1,0)
 
@@ -45,6 +46,7 @@ head(xx,50)
 
 
 # 
-xx2 = xx1[,c(1,4,8)]
+#xx2 = xx1[,c(1,4,8)]
 
-write.xlsx(xx,"SC_Chainage_converted.xlsx",row.names=FALSE)
+write.xlsx(xx,"Chainage_converted.xlsx",row.names=FALSE)
+

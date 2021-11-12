@@ -42,7 +42,7 @@ long = list(filter(reg_long.match, fNames))
 lat = list(filter(reg_lat.match, fNames))
 
 out_feature_class = "Tree_points"
-xyP = arcpy.management.XYTableToPoint(treeTableGDB, out_feature_class, long[0], lat[0], arcpy.SpatialReference(4326))
+xyP = arcpy.management.XYTableToPoint(treeTableGDB, out_feature_class, long[0], lat[0], "", arcpy.SpatialReference(4326))
 
 # 3. Truncate the main feature layer
 arcpy.TruncateTable_management(source_fgdb)

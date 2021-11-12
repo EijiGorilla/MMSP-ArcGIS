@@ -26,21 +26,45 @@ drive_auth(path = "G:/My Drive/01-Google Clould Platform/service-account-token.j
 ## Authorize (Choose 'matsuzakieiji0@gmail.com'. OCG gmail may not work)
 gs4_auth(email="matsuzakieiji0@gmail.com")
 
+# Choose working directory
 a=choose.dir() #"C:\Users\oc3512\Dropbox\01-Railway\02-NSCR-Ex\01-N2\02-Pre-Construction\01-Environment\02-Tree Cutting"
 wd = setwd(a)
 
 ## Define URL where data is stored and updated
-url = "https://docs.google.com/spreadsheets/d/1IOQvv1sux2cgH185SZ7-zDQNUXCOv32m/edit#gid=1298799693"
+url = "https://docs.google.com/spreadsheets/d/1k3iw46wAVZSoRH5txv9-82B5dGpvSwumvUKw2mPiTuY/edit#gid=1298799693"
+
+# Read two tables: our GIs masterlist and master list from Envi Team
+# "C:\\Users\\oc3512\\Dropbox\\01-Railway\\02-NSCR-Ex\\01-N2\\02-Pre-Construction\\01-Environment\\02-Tree Cutting\\Trees_masterlist.xlsx"
+MLTable = file.choose()
+basename = basename(MLTable)
 
 # Read and write as CSV and xlsx
 v = range_read(url, sheet = 1)
 v = data.frame(v)
 
-####
-d = "C:/Users/oc3512/Dropbox/01-Railway/02-NSCR-Ex/01-N2/02-Pre-Construction/01-Environment/02-Tree Cutting/Trees_masterlist.xlsx"
-v = read.xlsx(d,sheet=1)
-colnames(v)=c("TreeNo","Province","CP","CommonName","ScientificName",
-              "DBH","MH","TH","Volume","Latitude","Longitude",
-              "PNR","Status","Compensation","Conservation")
+# Create backup file of original masterlist
+# "C:\Users\oc3512\Dropbox\01-Railway\02-NSCR-Ex\01-N2\02-Pre-Construction\01-Environment\02-Tree Cutting\old"
+dir = choose.dir()
+dates = gsub("-","",Sys.Date()) # today's date
 
-write.xlsx(v,d,overwrite=TRUE)
+backup = paste(dates,"_",basename,sep="") 
+
+write.xlsx(x,file.path(dir,backup),row.names=FALSE)
+
+
+## Rename variables
+v2 = v
+if(sum(str_detect(colnames(v2),"compensation|Compensation"))=1){
+  colnames(v2)=c("TreeNo","Province","CP","CommonName","ScientificName",
+                "DBH","MH","TH","Volume","Latitude","Longitude",
+                "PNR","Status","Conservation","Compensation")
+  write.xlsx(v2,file.path(wd,basename),overwrite=TRUE)
+} else {
+  colnames(v2)=c("TreeNo","Province","CP","CommonName","ScientificName",
+                "DBH","MH","TH","Volume","Latitude","Longitude",
+                "PNR","Status","Conservation")
+  v2$Compensation = as.integer(NA)
+  write.xlsx(v2,file.path(wd,basename),overwrite=TRUE)
+}
+
+

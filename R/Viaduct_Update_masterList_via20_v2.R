@@ -67,7 +67,6 @@ MLTable = file.choose()
 # Read the masterlist:----
 y = read.xlsx(MLTable)
 
-head(y)
 ## Use the following code for concatenating pierNumber and pile numbers for site planner's format
 #y$nPierNumber[y$CP=="N-04"] = y$PierNumber
 #y$nPierNumber[y$CP=="N-04"] = gsub("-","",y$nPierNumber)
@@ -102,7 +101,7 @@ rid = which(is.na(x$nPierNumber))
 x = x[-rid,]
 
 ## Add default status
-x$Status1 = 1
+x$Status1 = 0
 
 
 # Remove hyphen from pierNumbe
@@ -121,8 +120,12 @@ head(y)
 yx = left_join(y,x,by="nPierNumber")
 
 # NA for status = 1 (To be Constructed)
-yx$Status1.y[is.na(yx$Status1.y)] = yx$Status1.x
-delField = which(colnames(yx)=="Status1.x" | colnames(yx)=="Remarks" | colnames(yx)=="CP.y")
+gg = which(yx$Status1.y>1)
+
+yx$Status1.x[gg] = yx$Status1.y[gg]
+#yx$Status1.y[is.na(yx$Status1.y)] = yx$Status1.x
+
+delField = which(colnames(yx)=="Status1.y" | colnames(yx)=="Remarks" | colnames(yx)=="CP.y")
 yx = yx[,-delField]
 
 # Change Status name
@@ -139,6 +142,7 @@ library(lubridate)
 
 
 yx$updated = ymd(date_update)
+
 
 #yx$Updated = as.Date(yx$Updated, origin = "1899-12-30")
 #yx$Updated = as.Date(yx$Updated, format="%m/%d/%y %H:%M:%S")
@@ -163,10 +167,9 @@ yx$start_date = as.Date(yx$start_date, format="%m/%d/%y %H:%M:%S")
 yx$end_date = as.Date(yx$end_date, origin = "1899-12-30")
 yx$end_date = as.Date(yx$end_date, format="%m/%d/%y %H:%M:%S")
 
+
 # 
 write.xlsx(yx, MLTable, row.names=FALSE,overwrite = TRUE)
-
-
 
 # N-01: PILE CAP, PIER COLUN, and PIER HEAD:----
 
@@ -180,9 +183,11 @@ id = which(colnames(v) %in% col)
 
 v2 = v[-c(1:5),id]
 
+
 # Re-format column
 idd = which(colnames(v2) %in% colnames(v2)[str_detect(colnames(v2),"PILE|PIER")])
 
+head(v2)
 for(i in 1:length(idd)){
   v2[[idd[i]]][v2[[idd[i]]]=="NULL"] = 0
   v2[[idd[i]]] = as.numeric(v2[[idd[i]]])
@@ -196,9 +201,10 @@ head(xx,20)
 
 
 # Delete empty observations
-iddd = which(xx$value==0)
+iddd = which(xx$value==0 | is.na(xx$value))
 xx = xx[-iddd,]
 
+xx
 # Update column names
 # Bored Pile = 1
 # Pile Cap = 2
@@ -222,6 +228,7 @@ xx$Status1[xx$Status1>3]=4
 
 # Delete CP
 xx = xx[,-1]
+
 # Unlike bored piles, we need to use nPierNumber AND Type to join Status1 to our master list
 # This is because bored piles have unique nPierNumber, while other components do not.
 # This means that we cannot bind tables generated here between bored piles and others.
@@ -232,13 +239,20 @@ xx = xx[,-1]
 #
 y = read.xlsx(MLTable)
 
+str(y)
+str(xx)
+
 yxx = left_join(y,xx,by=c("Type","nPierNumber"))
+
+# OK here
 
 
 # Delete andRe-name variables again
 ## Extract row numbers to be replaced with new status
 # Because we only want to update status with pier numbers that need to be updated in xx,
 # we replace Status1.x with only these pier numbers.
+
+
 gg = which(yxx$Status1.y>0)
 yxx$Status1.x[gg]=yxx$Status1.y[gg]
 
@@ -264,6 +278,7 @@ yxx$end_date = as.Date(yxx$end_date, format="%m/%d/%y %H:%M:%S")
 # Check if Status1 has any empty observations. iF present, something is wrong with the code above
 
 yxx[is.na(yxx$Status1),]
+
 
 # overwrite masterlist
 write.xlsx(yxx, MLTable, row.names=FALSE,overwrite = TRUE)
@@ -312,8 +327,8 @@ if(length(rid)==0){
 x$nPierNumber = as.character(x$nPierNumber)
 
 ## Add default status
-x$Status1 = 1
-
+x$Status1 = 0
+head(x)
 
 # Remove hyphen from pierNumber
 ## correct with "P-"
@@ -334,6 +349,8 @@ x$Status1[str_detect(x$Remarks,pattern="Casted|casted")] = 4 # Bored Pile comple
 x$Status1[str_detect(x$Remarks,pattern="Inprogress")] = 2 # Under Construction
 x$Status1[str_detect(x$Remarks,pattern="Incomplete")] = 3 # Delayed
 
+del_id = which(x$Status1 == 0)
+x = x[-del_id,]
 
 # Join new status to Viaduct masterlist
 y = read.xlsx(MLTable)
@@ -341,8 +358,10 @@ y = read.xlsx(MLTable)
 yx = left_join(y,x,by="nPierNumber")
 
 # NA for status = 1 (To be Constructed)
-yx$Status1.y[is.na(yx$Status1.y)] = yx$Status1.x
-delField = which(colnames(yx)=="Status1.x" | colnames(yx)=="Remarks" | colnames(yx)=="CP.y")
+gg = which(yx$Status1.y>0)
+
+yx$Status1.x[gg] = yx$Status1.y[gg]
+delField = which(colnames(yx)=="Status1.y" | colnames(yx)=="Remarks" | colnames(yx)=="CP.y")
 yx = yx[,-delField]
 
 # Change Status name

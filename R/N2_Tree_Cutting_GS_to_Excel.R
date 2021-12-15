@@ -31,8 +31,7 @@ a=choose.dir() #"C:\Users\oc3512\Dropbox\01-Railway\02-NSCR-Ex\01-N2\02-Pre-Cons
 wd = setwd(a)
 
 ## Define URL where data is stored and updated
-url = "https://docs.google.com/spreadsheets/d/1k3iw46wAVZSoRH5txv9-82B5dGpvSwumvUKw2mPiTuY/edit#gid=1298799693"
-
+url = "https://docs.google.com/spreadsheets/d/1LVcMTPahKD9-p_sTBL788qiUbFGTRc3jVgm_nlN-NQU/edit#gid=1298799693"
 # Read two tables: our GIs masterlist and master list from Envi Team
 # "C:\\Users\\oc3512\\Dropbox\\01-Railway\\02-NSCR-Ex\\01-N2\\02-Pre-Construction\\01-Environment\\02-Tree Cutting\\Trees_masterlist.xlsx"
 MLTable = file.choose()
@@ -41,7 +40,7 @@ basename = basename(MLTable)
 # Read and write as CSV and xlsx
 v = range_read(url, sheet = 1)
 v = data.frame(v)
-
+head(v)
 # Create backup file of original masterlist
 # "C:\Users\oc3512\Dropbox\01-Railway\02-NSCR-Ex\01-N2\02-Pre-Construction\01-Environment\02-Tree Cutting\old"
 dir = choose.dir()

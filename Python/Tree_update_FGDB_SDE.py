@@ -44,11 +44,19 @@ lat = list(filter(reg_lat.match, fNames))
 out_feature_class = "Tree_points"
 xyP = arcpy.management.XYTableToPoint(treeTableGDB, out_feature_class, long[0], lat[0], "", arcpy.SpatialReference(4326))
 
+# create a spatial reference object for the output coordinate system
+out_coordinate_system = arcpy.SpatialReference(3857) # WGS84 Auxiliary
+
+# run the tool
+output_feature_class = "Tree_points_prj3857"
+xyP_prj = arcpy.Project_management(xyP, output_feature_class, out_coordinate_system)
+
+
 # 3. Truncate the main feature layer
 arcpy.TruncateTable_management(source_fgdb)
 
 # 4. Append the point FL to the main FL
-arcpy.Append_management(xyP, source_fgdb, schema_type = 'NO_TEST')
+arcpy.Append_management(xyP_prj, source_fgdb, schema_type = 'NO_TEST')
 
 # 5. Copy the main FL in PRS92
 arcpy.env.outputCoordinateSystem = arcpy.SpatialReference("PRS 1992 Philippines Zone III")
@@ -64,6 +72,6 @@ arcpy.TruncateTable_management(target_sde)
 arcpy.Append_management(copyL, target_sde, schema_type = 'NO_TEST')
 
 # Delete
-deleteL = [treeTableGDB, xyP, copyL]
+deleteL = [treeTableGDB, xyP, xyP_prj, copyL]
 arcpy.Delete_management(deleteL)
 

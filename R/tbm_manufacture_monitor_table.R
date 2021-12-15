@@ -29,7 +29,7 @@ gs4_auth()
 
 # STEP 3: Compile all Google Sheet Tables:----
 ## Parameter
-a=choose.dir() #"C:\Users\oc3512\Dropbox\01-Railway\02-NSCR-Ex\01-N2\02-Pre-Construction\01-Environment\02-Tree Cutting"
+a=choose.dir()
 wd = setwd(a)
 
 ## Define URL where data is stored and updated

@@ -21,13 +21,13 @@ import re
 arcpy.env.overwriteOutput = True
 
 ## Script parameters
-# "C:/Users/oc3512/OneDrive - Oriental Consultants Global JV/Documents/ArcGIS/Projects/Pre-Construction_nscrexn2/Pre-Construction_nscrexn2.gdb"
+# "C:/Users/oc3512/OneDrive - Oriental Consultants Global JV/Documents/ArcGIS/Projects/During-Construction_nscrexn2/During-Construction_nscrexn2.gdb"
 workSpace = arcpy.GetParameterAsText(0)
 source_fgdb = arcpy.GetParameterAsText(1)
 target_sde = arcpy.GetParameterAsText(2)
 envTable = arcpy.GetParameterAsText(3) # Excel master list table
 
-# 1. Import the tree master list table
+# 1. Import the Envi monitoring master list table
 out_name = "monitor_table"
 tableGDB = arcpy.TableToTable_conversion(envTable, workSpace, out_name)
 
@@ -40,13 +40,21 @@ input_format = 'DMS_2'
 output_format = 'DD_2'
 spatial_ref = arcpy.SpatialReference('WGS 1984')
 
-xyP = arcpy.ConvertCoordinateNotation_management(TableGDB, output_points, x_field, y_field, input_format, output_format, "", spatial_ref)
+xyP = arcpy.ConvertCoordinateNotation_management(tableGDB, output_points, x_field, y_field, input_format, output_format, "", spatial_ref)
+
+# create a spatial reference object for the output coordinate system
+out_coordinate_system = arcpy.SpatialReference(3857) # WGS84 Auxiliary
+
+# run the tool
+output_feature_class = "env_monitor_point_prj3857"
+xyP_prj = arcpy.Project_management(xyP, output_feature_class, out_coordinate_system)
+
 
 # 3. Truncate the main feature layer
 arcpy.TruncateTable_management(source_fgdb)
 
 # 4. Append the point FL to the main FL
-arcpy.Append_management(xyP, source_fgdb, schema_type = 'NO_TEST')
+arcpy.Append_management(xyP_prj, source_fgdb, schema_type = 'NO_TEST')
 
 # 5. Copy the main FL in PRS92
 arcpy.env.outputCoordinateSystem = arcpy.SpatialReference("PRS 1992 Philippines Zone III")
@@ -62,6 +70,6 @@ arcpy.TruncateTable_management(target_sde)
 arcpy.Append_management(copyL, target_sde, schema_type = 'NO_TEST')
 
 # Delete
-deleteL = [tableGDB, xyP, copyL]
+deleteL = [tableGDB, xyP, xyP_prj, copyL]
 arcpy.Delete_management(deleteL)
 

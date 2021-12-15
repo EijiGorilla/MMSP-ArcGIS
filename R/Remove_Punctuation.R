@@ -57,8 +57,9 @@ for(i in dCol){
   
 }
 
+
 # Export
-write.xlsx(temp,paste(basename(a),"_fixed.xlsx",sep = ""),row.names = FALSE)
+write.xlsx(temp,paste(basename(a),"_fixed.xlsx",sep = ""),row.names = FALSE,overwrite=TRUE)
 
 head(temp)
 unique(temp$Municipality)

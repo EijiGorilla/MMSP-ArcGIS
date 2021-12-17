@@ -11,9 +11,19 @@ getwd()
 a=file.choose()
 x=read.xlsx(a)
 
+head(x)
+tbm = unique(x$Line)
 
-x = x[!is.na(x$Satus),]
-
+x = x[!is.na(x$status),]
+x$seq = 0
+temp = data.frame()
+for(i in tbm){
+  xx = x[x$Line==i,]
+  xx$seq = 1:nrow(xx)
+  temp = bind_rows(temp,xx)
+  
+}
+write.xlsx(temp,"check.xlsx")
 
 x$ID0[!x$ID0 %in% x$ID1]
 
@@ -25,6 +35,11 @@ write.xlsx(x,"kingpost_NAS_id.xlsx",row.names=FALSE,overwrite=TRUE)
 # Attribute table in ArcGIS Pro
 b=file.choose()
 y=read.xlsx(b)
+
+str(x)
+str(y)
+x[!x$ID %in% y$ID,]
+
 
 # Check data type of LotID and make sure that LotID data types are both "chr"
 str(x)

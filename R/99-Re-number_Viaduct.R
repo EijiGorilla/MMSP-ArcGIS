@@ -1,3 +1,7 @@
+# Make sure to sort by shape in ascending order in ArcGIS Pro first#
+# N2: Sort lower right (chainage direction from S to N)
+# SC: Sot upper left (chainage direction from N to S)
+
 library(openxlsx)
 library(dplyr)
 library(stringr)
@@ -5,12 +9,13 @@ library(stringr)
 z = choose.dir()
 wd = setwd(z)
 
+
+# Read "L"
 a=file.choose()
 y = read.xlsx(a)
 
 y$pp = 0
 
-head(y)
 #
 pier = unique(y$PierNumber)
 temp = data.frame()

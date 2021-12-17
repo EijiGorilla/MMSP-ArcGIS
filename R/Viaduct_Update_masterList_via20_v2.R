@@ -29,7 +29,7 @@
 
 #******************************************************************#
 ## Enter Date of Update ##
-date_update = "2021-12-10"
+date_update = "2021-12-17"
 
 #******************************************************************#
 
@@ -54,7 +54,7 @@ drive_auth(path = "G:/My Drive/01-Google Clould Platform/service-account-token.j
 
 ## Authorize (Choose 'matsuzakieiji0@gmail.com'. OCG gmail may not work)
 #gs4_auth(email="matsuzakieiji0@gmail.com")
-gs4_auth(email="matsuzaki-ei@ocglobal.jp")
+#gs4_auth(email="matsuzaki-ei@ocglobal.jp")
 
 
 a = "C:/Users/oc3512/Dropbox/01-Railway/02-NSCR-Ex/01-N2/03-During-Construction/02-Civil/03-Viaduct/01-Masterlist/02-Compiled"
@@ -99,6 +99,12 @@ x = v[,id]
 ## Remove empty rows
 rid = which(is.na(x$nPierNumber))
 x = x[-rid,]
+
+# Remove bored piles for station structure
+pile_st = min(which(str_detect(x$nPierNumber,"^APS")))
+remove_rows = pile_st:nrow(x)
+x = x[-remove_rows,] 
+
 
 ## Add default status
 x$Status1 = 0
@@ -289,6 +295,87 @@ write.xlsx(yxx, MLTable, row.names=FALSE,overwrite = TRUE)
 ####################### N-02 #################################:----
 ##############################################################
 
+url = "https://docs.google.com/spreadsheets/d/1du9qnThdve1yXBv-W_lLzSa3RMd6wX6_NlNCz8PqFdg/edit?userstoinvite=junsanjose@gmail.com&actionButton=1#gid=0"
+
+### N-02: BORED PILES #:----
+
+
+# Read and write as CSV and xlsx
+v = range_read(url, sheet = 1)
+v = data.frame(v)
+
+
+id = which(str_detect(v[[2]], "Viaduct"))
+del_row = 1:id
+x = v[-del_row,]
+
+# Restruecture table
+## Remove empty rows and unneeded rows
+x = x[,c(2,ncol(x))]
+colnames(x)[1:2] = c("nPierNumber", "Status1")
+x$Status1 = as.character(x$Status1)
+
+## Find pier numbers starting with only "P" and "MT"
+keep_row = which(str_detect(x$nPierNumber, "^P-|^MT"))
+x = x[keep_row,]
+
+# Recode Status1
+st = unique(x$Status1)
+
+completed_row = which(str_detect(x$Status1,"Completed|completed|Complete|complete"))
+inprogress_row = which(str_detect(x$Status1,"In-progress|in-progress|In-Progress|Inprogress"))
+
+x$Status1[completed_row] = 4
+x$Status1[inprogress_row] = 2
+
+x$Status1 = as.numeric(x$Status1)
+x$CP = "N-02"
+
+# For N-02, I want the first "P-" to be "P"
+x$nPierNumber[] = gsub("^P-|^p-|^P|^p", "P",x$nPierNumber)
+
+# Join 
+y = read.xlsx(MLTable)
+
+yx = left_join(y,x,by="nPierNumber")
+
+
+# NA for status = 1 (To be Constructed)
+gg = which(yx$Status1.y>0)
+
+yx$Status1.x[gg] = yx$Status1.y[gg]
+delField = which(colnames(yx)=="Status1.y" | colnames(yx)=="Remarks" | colnames(yx)=="CP.y")
+yx = yx[,-delField]
+
+# Change Status name
+colnames(yx)[str_detect(colnames(yx),pattern="Status1")] = "Status1"
+colnames(yx)[str_detect(colnames(yx),pattern="CP")] = "CP"
+
+
+# Add date of updating table
+## Delete old ones
+iid = which(colnames(yx) %in% colnames(yx)[str_detect(colnames(yx),"updated|Updated|UPDATED")])
+yx = yx[,-iid]
+
+## Add new dates
+library(lubridate)
+
+yx$updated = ymd(date_update)
+
+yx$updated = as.Date(yx$updated, origin = "1899-12-30")
+yx$updated = as.Date(yx$updated, format="%m/%d/%y %H:%M:%S")
+yx$start_date = as.Date(yx$start_date, origin = "1899-12-30")
+yx$start_date = as.Date(yx$start_date, format="%m/%d/%y %H:%M:%S")
+
+yx$end_date = as.Date(yx$end_date, origin = "1899-12-30")
+yx$end_date = as.Date(yx$end_date, format="%m/%d/%y %H:%M:%S")
+
+head(yx)
+
+# 
+write.xlsx(yx, MLTable, row.names=FALSE,overwrite = TRUE)
+
+
 
 ###############################################################
 ####################### N-03 #################################:----
@@ -300,9 +387,8 @@ write.xlsx(yxx, MLTable, row.names=FALSE,overwrite = TRUE)
 ##############################################################
 url = "https://docs.google.com/spreadsheets/d/1OWdmM36PWL5MgH0lK9HpigaoVq4L7Q6hm7DSN2FxiAA/edit#gid=0"
 
-###################
 ### N-04: BORED PILES #:----
-#####################
+
 
 # Read and write as CSV and xlsx
 v = range_read(url, sheet = 1)
@@ -450,6 +536,7 @@ y = read.xlsx(MLTable)
 
 yxx = left_join(y,xx,by=c("Type","nPierNumber"))
 
+head(yxx)
 # Delete andRe-name variables again
 ## Extract row numbers to be replaced with new status
 # Because we only want to update status with pier numbers that need to be updated in xx,
@@ -478,6 +565,7 @@ yxx$end_date = as.Date(yxx$end_date, format="%m/%d/%y %H:%M:%S")
 # Check if Status1 has any empty observations. iF present, something is wrong with the code above
 
 yxx[is.na(yxx$Status1),]
+
 
 # overwrite masterlist
 write.xlsx(yxx, MLTable, row.names=FALSE,overwrite = TRUE)

@@ -380,6 +380,85 @@ write.xlsx(yx, MLTable, row.names=FALSE,overwrite = TRUE)
 ###############################################################
 ####################### N-03 #################################:----
 ##############################################################
+url = "https://docs.google.com/spreadsheets/d/19TBfdEpRuW7edwhiP7YdVSJQgrkot9wN7tDwzSTF76E/edit#gid=0"
+
+n03_pile = 1
+CP = "N-03"
+  
+# read and write as CSV and xlsx
+v = range_read(url, sheet = n03_pile)
+v = data.frame(v)
+
+# filter out
+x = v[,c(2,14)]
+
+colnames(x)[c(1,2)] = c("nPierNumber", "Status1")
+
+# Convert to string
+x$nPierNumber = as.character(x$nPierNumber)
+x$Status1 = as.character(x$Status1)
+x$CP = CP
+
+# Delete empty cells
+rem_id = which(is.na(x$nPierNumber))
+x = x[-rem_id,]
+
+# Extract only piles
+pile_id = which(str_detect(x$nPierNumber,"^P-"))
+x = x[pile_id,]
+
+x$nPierNumber = gsub("^P-","P",x$nPierNumber)
+
+# convert stats
+x$Status1[str_detect(x$Status1,pattern="Completed|completed")] = 4 # Bored Pile completed
+x$Status1[str_detect(x$Status1,pattern="Inprogress")] = 2 # Under Construction
+x$Status1[str_detect(x$Status1,pattern="Incomplete")] = 3 # Delayed
+
+x$Status1 = as.numeric(x$Status1)
+
+
+# Read master list and join
+y = read.xlsx(MLTable)
+
+## Join 
+yx = left_join(y,x,by="nPierNumber")
+
+# NA for status = 1 (To be Constructed)
+gg = which(yx$Status1.y>0)
+
+yx$Status1.x[gg] = yx$Status1.y[gg]
+delField = which(colnames(yx)=="Status1.y" | colnames(yx)=="CP.y")
+yx = yx[,-delField]
+
+# Change Status name
+head(yx)
+colnames(yx)[str_detect(colnames(yx),pattern="Status1")] = "Status1"
+colnames(yx)[str_detect(colnames(yx),pattern="CP")] = "CP"
+
+# Add date of updating table
+## Delete old ones
+iid = which(colnames(yx) %in% colnames(yx)[str_detect(colnames(yx),"updated|Updated|UPDATED")])
+yx = yx[,-iid]
+
+## Add new dates
+library(lubridate)
+
+
+yx$updated = ymd(date_update)
+
+yx$updated = as.Date(yx$updated, origin = "1899-12-30")
+yx$updated = as.Date(yx$updated, format="%m/%d/%y %H:%M:%S")
+
+yx$start_date = as.Date(yx$start_date, origin = "1899-12-30")
+yx$start_date = as.Date(yx$start_date, format="%m/%d/%y %H:%M:%S")
+
+yx$end_date = as.Date(yx$end_date, origin = "1899-12-30")
+yx$end_date = as.Date(yx$end_date, format="%m/%d/%y %H:%M:%S")
+
+head(yx)
+
+# 
+write.xlsx(yx, MLTable, row.names=FALSE,overwrite = TRUE)
 
 
 ###############################################################

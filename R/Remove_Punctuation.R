@@ -19,7 +19,7 @@ dCol = select.list(ncol, multiple = TRUE, title = "Choose Target Columns")
 # Delete unwanted space;
 ?gsub
 for(i in dCol){
-  temp[[i]] = gsub(" ","",temp[[i]])
+  temp[[i]] = gsub("[[:space:]]","",temp[[i]])
 }
 
 # Delete unwanted period

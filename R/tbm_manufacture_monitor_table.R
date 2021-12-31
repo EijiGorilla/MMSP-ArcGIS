@@ -11,13 +11,13 @@ library(reshape2)
 # Autheticate Google Sheets Access
 ## Step 1
 # method 1: direct provision client ID and secret
-google_app <- httr::oauth_app(
-  "Desktop client 1",
-  key = "603155182488-fqkuqgl6jgn3qp3lstdj6liqlvirhag4.apps.googleusercontent.com",
-  secret = "bH1svdfg-ofOg3WR8S5WDzPu"
-)
-drive_auth_configure(app = google_app)
-drive_auth_configure(api_key = "AIzaSyCqbwFnO6csUya-zKcXKXh_-unE_knZdd0")
+#google_app <- httr::oauth_app(
+#  "Desktop client 1",
+#  key = "603155182488-fqkuqgl6jgn3qp3lstdj6liqlvirhag4.apps.googleusercontent.com",
+#  secret = "bH1svdfg-ofOg3WR8S5WDzPu"
+#)
+#drive_auth_configure(app = google_app)
+#drive_auth_configure(api_key = "AIzaSyCqbwFnO6csUya-zKcXKXh_-unE_knZdd0")
 drive_auth(path = "G:/My Drive/01-Google Clould Platform/service-account-token.json")
 
 

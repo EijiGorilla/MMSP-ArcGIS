@@ -46,13 +46,13 @@ library(googledrive)
 library(stringr)
 library(reshape2)
 
-google_app <- httr::oauth_app(
-  "Desktop client 1",
-  key = "603155182488-fqkuqgl6jgn3qp3lstdj6liqlvirhag4.apps.googleusercontent.com",
-  secret = "bH1svdfg-ofOg3WR8S5WDzPu"
-)
-drive_auth_configure(app = google_app)
-drive_auth_configure(api_key = "AIzaSyCqbwFnO6csUya-zKcXKXh_-unE_knZdd0")
+#google_app <- httr::oauth_app(
+#  "Desktop client 1",
+#  key = "603155182488-fqkuqgl6jgn3qp3lstdj6liqlvirhag4.apps.googleusercontent.com",
+#  secret = "bH1svdfg-ofOg3WR8S5WDzPu"
+#)
+#drive_auth_configure(app = google_app)
+#drive_auth_configure(api_key = "AIzaSyCqbwFnO6csUya-zKcXKXh_-unE_knZdd0")
 drive_auth(path = "G:/My Drive/01-Google Clould Platform/service-account-token.json")
 
 
@@ -63,15 +63,15 @@ a = "C:/Users/oc3512/Dropbox/01-Railway/01-MMSP/03-During-Construction/01-Statio
 wd = setwd(a)
 
 ## Enter Date of Update ##:----
-date_update = "2021-12-20"
+date_update = "2021-12-31"
 
 # Read our master list table
-# C:\Users\oc3512\Dropbox\01-Railway\02-NSCR-Ex\01-N2\03-During-Construction\02-Civil\03-Viaduct\01-Masterlist\02-Compiled\N2_Viaduct_MasterList.xlsx"
-MLTable = file.choose()
+MLTable = "C:/Users/oc3512/Dropbox/01-Railway/01-MMSP/03-During-Construction/01-Station Structure/01-Masterlist/01-Compiled/MMSP_Station_Structure.xlsx"
+
 # Read the masterlist:----
 y = read.xlsx(MLTable)
 
-
+head(y)
 ## Define Parameter:
 # Define Type
 type_dwall = 1
@@ -112,6 +112,7 @@ nas_dwall_sheet = 2
 
 # Read and write as CSV and xlsx
 v = range_read(url, sheet = nas_kp_sheet)
+1
 v = data.frame(v)
 
 # Find "KING POST ID" and "COMPLETED" column names
@@ -145,9 +146,12 @@ x$Status[x$Status==1] = 4
 x$Type = type_kp
 x$Station = st_NA
 
+head(x)
+
 # Merge this to masterlist
 y = read.xlsx(MLTable)
 
+head(y)
 yx = left_join(y,x,by=c("Station","Type","ID"))
 
 ## Replace Status.x rows with only updated status from Status.y

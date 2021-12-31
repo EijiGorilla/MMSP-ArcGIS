@@ -69,10 +69,11 @@ with arcpy.da.SearchCursor(copyStatus, ['Layer']) as cursor:
 uniqueList = list(Counter(listLayer))
             
 ## Rmove unnecessary letters
-reg = re.compile('.*PreCast*|.*PRECAST*|.*precast*|.*preCast*|.*Precast|.*Pile*|.*PILE*|.*COLUMN*|.*Column*|.*PILECAP*|.*pileCap*|.*pilecap*|.*PIER_Head*|.*PIER_head*|.*pier_head*|.*Pier_head*|.*Pier_Head*|.*PIER_Hd|.*Pier_Hd|.*pier_hd|.*C-BRDG|.*C-brdg|.*c-brdg|.*C-Brdg')
+reg = re.compile('.*PreCast*|.*PRECAST*|.*precast*|.*preCast*|.*Precast|.*Pile*|.*PILE*|.*COLUMN*|.*Column*|.*PILECAP*|.*pileCap*|.*pilecap*|.*PIER_Head*|.*PIERHEAD*|.*PIER_head*|.*pier_head*|.*Pier_head*|.*Pier_Head*|.*PIER_Hd|.*Pier_Hd|.*pier_hd|.*C-BRDG|.*C-brdg|.*c-brdg|.*C-Brdg')
 
 finalList = list(filter(reg.match, uniqueList))
 
+###
 
 # Sometimes, pier head and cantilever need to correct the names in 'Layer'
 reg22 = re.compile(r'.*Hd')
@@ -84,6 +85,10 @@ replacingHead = list(filter(regCor.match, finalList))
 
 replacedCanti = list(filter(regCanti.match, finalList))
 replacingCanti = CPno + "_" + "Cantilever"
+
+######################################
+### You sometimes need to skip this part when replacedHead or replacedCanti is empty??
+
 
 if len(replacedCanti) == 0:
     with arcpy.da.UpdateCursor(copyStatus, ['Layer']) as cursor:
@@ -103,6 +108,9 @@ else:
 
 indexN = finalList.index("".join(replacedHead))
 del finalList[indexN]
+
+##### SKIP IF EMPTY in replacedHead or replacedCanti
+
 
 # replace old Cantilever with its new label
 

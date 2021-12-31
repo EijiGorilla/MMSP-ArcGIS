@@ -52,7 +52,9 @@ M=read.xlsx(aM)
 head(M)
 
 # join
-Lx = tempL[,c(2,13)]
+head(tempL)
+id = which(colnames(tempLM)=="PierNumber" | colnames(tempLM)=="pp")
+Lx = tempL[,id]
 
 MLx = left_join(M,Lx,by="PierNumber")
 head(MLx)
@@ -71,8 +73,9 @@ for(i in pier) {
 }
 head(tempM)
 
-tempM = tempM[,-12]
-colnames(tempM)[12] = "pp"
+tempM = tempM[,-(ncol(tempM)-1)]
+colnames(tempM)[ncol(tempM)] = "pp"
+head(tempM)
 
 write.xlsx(tempM,file.path(wd,"N2_Viaduct_M_sorted_S_to_N_numbered.xlsx"))
 
@@ -80,6 +83,8 @@ write.xlsx(tempM,file.path(wd,"N2_Viaduct_M_sorted_S_to_N_numbered.xlsx"))
 L = read.xlsx(file.path(wd,"N2_Viaduct_L_sorted_S_to_N_numbered.xlsx"))
 M = read.xlsx(file.path(wd, "N2_Viaduct_M_sorted_S_to_N_numbered.xlsx"))
 
+head(L)
+head(M)
 LM = bind_rows(L,M)
 
 LM = LM[order(LM$PierNumber),]
@@ -104,7 +109,8 @@ head(R)
 
 # join
 head(tempLM)
-LMx = tempLM[,c(2,11)]
+id = which(colnames(tempLM)=="PierNumber" | colnames(tempLM)=="pp")
+LMx = tempLM[,id]
 
 unique(R$PierNumber)
 unique(LMx$PierNumber)
@@ -128,8 +134,8 @@ for(i in pier) {
 }
 head(tempLMR)
 
-tempLMR = tempLMR[,-11]
-colnames(tempLMR)[11] = "pp"
+tempLMR = tempLMR[,-(ncol(tempLMR)-1)]
+colnames(tempLMR)[ncol(tempLMR)] = "pp"
 
 write.xlsx(tempLMR,file.path(wd,"N2_Viaduct_R_sorted_S_to_N_numbered.xlsx"))
 

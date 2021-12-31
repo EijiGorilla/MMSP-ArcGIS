@@ -14,11 +14,11 @@ resultL=out_params[[1]] # parameter: Feature Layer
 resultM=out_params[[2]] # parameter: Feature Layer
 resultR=out_params[[3]] # parameter: Feature Layer
 
-
 # Read tables as csv
 tL = read.csv(tableL, stringsAsFactors = FALSE)
 tM = read.csv(tableM, stringsAsFactors = FALSE)
 tR = read.csv(tableR, stringsAsFactors = FALSE)
+
 
 # Bind Rows of all tables
 t = bind_rows(tL, tM)
@@ -32,6 +32,7 @@ x = x[, -1]
 tempL = data.frame()
 tempM = data.frame()
 tempR = data.frame()
+
 
 for(pno in unique(x$PileNo)){
   x1 = x[x$PileNo == pno,]
@@ -53,6 +54,7 @@ for(pno in unique(x$PileNo)){
   }
 }
 
+head(tempL)
 # Concatenate
 tempL$ID = paste(tempL$CP, "-", tempL$PierNumber, "-", "Pile-", tempL$PileNo,tempL$id_temp, sep = "")
 tempM$ID = paste(tempM$CP, "-", tempM$PierNumber, "-", "Pile-", tempM$PileNo, tempM$id_temp, sep = "")

@@ -40,6 +40,8 @@ str(x)
 str(y)
 x[!x$ID %in% y$ID,]
 
+xy = left_join(x,y,by="ID")
+write.xlsx(xy,"merged.xlsx")
 
 # Check data type of LotID and make sure that LotID data types are both "chr"
 str(x)

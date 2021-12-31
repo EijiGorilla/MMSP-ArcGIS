@@ -29,7 +29,7 @@
 
 #******************************************************************#
 ## Enter Date of Update ##
-date_update = "2021-12-17"
+date_update = "2021-12-31"
 
 #******************************************************************#
 
@@ -42,13 +42,13 @@ library(googledrive)
 library(stringr)
 library(reshape2)
 
-google_app <- httr::oauth_app(
-  "Desktop client 1",
-  key = "603155182488-fqkuqgl6jgn3qp3lstdj6liqlvirhag4.apps.googleusercontent.com",
-  secret = "bH1svdfg-ofOg3WR8S5WDzPu"
-)
-drive_auth_configure(app = google_app)
-drive_auth_configure(api_key = "AIzaSyCqbwFnO6csUya-zKcXKXh_-unE_knZdd0")
+#google_app <- httr::oauth_app(
+#  "Desktop client 1",
+#  key = "603155182488-fqkuqgl6jgn3qp3lstdj6liqlvirhag4.apps.googleusercontent.com",
+#  secret = "bH1svdfg-ofOg3WR8S5WDzPu"
+#)
+#drive_auth_configure(app = google_app)
+#drive_auth_configure(api_key = "AIzaSyCqbwFnO6csUya-zKcXKXh_-unE_knZdd0")
 drive_auth(path = "G:/My Drive/01-Google Clould Platform/service-account-token.json")
 
 
@@ -88,6 +88,8 @@ url = "https://docs.google.com/spreadsheets/d/11YqYaenIB0l3Bpiv398-0QO3mEIR_Bjvn
 
 # Read and write as CSV and xlsx
 v = range_read(url, sheet = 1)
+1
+
 v = data.frame(v)
 
 # Restruecture table
@@ -101,10 +103,8 @@ rid = which(is.na(x$nPierNumber))
 x = x[-rid,]
 
 # Remove bored piles for station structure
-pile_st = min(which(str_detect(x$nPierNumber,"^APS")))
-remove_rows = pile_st:nrow(x)
-x = x[-remove_rows,] 
-
+pile_id = which(str_detect(x$nPierNumber,"^P-"))
+x = x[pile_id,]
 
 ## Add default status
 x$Status1 = 0
@@ -123,6 +123,8 @@ x$Status1[str_detect(x$Remarks,pattern="Incomplete")] = 3 # Delayed
 head(x)
 head(y)
 # Join new status to Viaduct masterlist
+y = read.xlsx(MLTable)
+
 yx = left_join(y,x,by="nPierNumber")
 
 # NA for status = 1 (To be Constructed)
@@ -177,6 +179,7 @@ yx$end_date = as.Date(yx$end_date, format="%m/%d/%y %H:%M:%S")
 # 
 write.xlsx(yx, MLTable, row.names=FALSE,overwrite = TRUE)
 
+
 # N-01: PILE CAP, PIER COLUN, and PIER HEAD:----
 
 v = range_read(url, sheet = 2)
@@ -188,7 +191,7 @@ col = colnames(v)[str_detect(colnames(v),"CP|PILE|PIER|Pier|Pile")]
 id = which(colnames(v) %in% col)
 
 v2 = v[-c(1:5),id]
-
+head(v2)
 
 # Re-format column
 idd = which(colnames(v2) %in% colnames(v2)[str_detect(colnames(v2),"PILE|PIER")])
@@ -200,17 +203,19 @@ for(i in 1:length(idd)){
 }
 str(v2)
 
+
 # Convert wide to long format
 xx <- melt(v2, id=c("CP","PierNo"))
 
 head(xx,20)
-
 
 # Delete empty observations
 iddd = which(xx$value==0 | is.na(xx$value))
 xx = xx[-iddd,]
 
 xx
+xx[xx$PierNo==""]
+
 # Update column names
 # Bored Pile = 1
 # Pile Cap = 2
@@ -221,16 +226,32 @@ xx
 colnames(xx) = c("CP","nPierNumber","Type","Status1")
 xx$Type = as.character(xx$Type)
 
+# Status1 = 1: Ongoing (2)
+# Status1 > 1: Completed (4)
+
+## Completed
+xx$Status1[xx$Type=="PILE.CAP.done" & xx$Status1==1]=4
+xx$Status1[xx$Type=="PIER.COLUMN.done" & xx$Status1==1]=4
+xx$Status1[xx$Type=="PIER.HEAD.done" & xx$Status1==1]=4
+
+## Ongoing
+xx$Status1[xx$Type=="PILE.CAP.done" & xx$Status1 < 1]=2 # if less than 1, ongoing
+xx$Status1[xx$Type=="PILE.CAP.ongoing" & xx$Status1==1]=2
+
+xx$Status1[xx$Type=="PIER.COLUMN.ongoing" & xx$Status1==1]=2
+xx$Status1[xx$Type=="PIER.COLUMN.done" & xx$Status1 < 1]=2
+
+xx$Status1[xx$Type=="PIER.HEAD.ongoing" & xx$Status1==1]=2
+xx$Status1[xx$Type=="PIER.HEAD.done" & xx$Status1 < 1]=2
+
+
+# Re-code Type
 
 xx$Type[xx$Type=="PILE.CAP.done" | xx$Type=="PILE.CAP.ongoing"]=2
 xx$Type[xx$Type=="PIER.COLUMN.done" | xx$Type=="PIER.COLUMN.ongoing"]=3
 xx$Type[xx$Type=="PIER.HEAD.done" | xx$Type=="PIER.HEAD.ongoing"]=4
 xx$Type = as.numeric(xx$Type)
 
-# Status1 = 1: Ongoing (2)
-# Status1 > 1: Completed (4)
-xx$Status1[xx$Status1==1]=2
-xx$Status1[xx$Status1>3]=4
 
 # Delete CP
 xx = xx[,-1]
@@ -245,12 +266,7 @@ xx = xx[,-1]
 #
 y = read.xlsx(MLTable)
 
-str(y)
-str(xx)
-
 yxx = left_join(y,xx,by=c("Type","nPierNumber"))
-
-# OK here
 
 
 # Delete andRe-name variables again
@@ -258,10 +274,8 @@ yxx = left_join(y,xx,by=c("Type","nPierNumber"))
 # Because we only want to update status with pier numbers that need to be updated in xx,
 # we replace Status1.x with only these pier numbers.
 
-
 gg = which(yxx$Status1.y>0)
 yxx$Status1.x[gg]=yxx$Status1.y[gg]
-
 
 ## Rename and delete Status1.y
 id.status1.y = which(colnames(yxx)=="Status1.y")
@@ -304,10 +318,9 @@ url = "https://docs.google.com/spreadsheets/d/1du9qnThdve1yXBv-W_lLzSa3RMd6wX6_N
 v = range_read(url, sheet = 1)
 v = data.frame(v)
 
+id = which(str_detect(v[[2]], "^P-"))
+x = v[id,]
 
-id = which(str_detect(v[[2]], "Viaduct"))
-del_row = 1:id
-x = v[-del_row,]
 
 # Restruecture table
 ## Remove empty rows and unneeded rows
@@ -416,6 +429,7 @@ x$Status1[str_detect(x$Status1,pattern="Incomplete")] = 3 # Delayed
 
 x$Status1 = as.numeric(x$Status1)
 
+head(x)
 
 # Read master list and join
 y = read.xlsx(MLTable)
@@ -473,6 +487,7 @@ url = "https://docs.google.com/spreadsheets/d/1OWdmM36PWL5MgH0lK9HpigaoVq4L7Q6hm
 v = range_read(url, sheet = 1)
 v = data.frame(v)
 
+head(v)
 # Restruecture table
 ## I temporarliy used dummy field names to be discarded so need to remove it
 nChar = sapply(1:ncol(v), function(k) nchar(colnames(v)[k]))
@@ -517,11 +532,13 @@ x$Status1[str_detect(x$Remarks,pattern="Incomplete")] = 3 # Delayed
 del_id = which(x$Status1 == 0)
 x = x[-del_id,]
 
+head(x)
 # Join new status to Viaduct masterlist
 y = read.xlsx(MLTable)
 
 yx = left_join(y,x,by="nPierNumber")
 
+head(yx)
 # NA for status = 1 (To be Constructed)
 gg = which(yx$Status1.y>0)
 
@@ -553,6 +570,12 @@ yx$start_date = as.Date(yx$start_date, format="%m/%d/%y %H:%M:%S")
 yx$end_date = as.Date(yx$end_date, origin = "1899-12-30")
 yx$end_date = as.Date(yx$end_date, format="%m/%d/%y %H:%M:%S")
 
+yx$StartDate = as.Date(yx$StartDate, origin = "1899-12-30")
+yx$StartDate = as.Date(yx$StartDate, format="%m/%d/%y %H:%M:%S")
+
+yx$TargetDate = as.Date(yx$TargetDate, origin = "1899-12-30")
+yx$TargetDate = as.Date(yx$TargetDate, format="%m/%d/%y %H:%M:%S")
+
 head(yx)
 
 # 
@@ -576,6 +599,7 @@ v2 = v[,id]
 
 #
 head(v2)
+
 v2$nPierNumber[] = gsub("^P ","P",v2$nPierNumber)
 v2$nPierNumber[] = gsub("P-","P",v2$nPierNumber)
 
@@ -615,7 +639,7 @@ y = read.xlsx(MLTable)
 
 yxx = left_join(y,xx,by=c("Type","nPierNumber"))
 
-head(yxx)
+
 # Delete andRe-name variables again
 ## Extract row numbers to be replaced with new status
 # Because we only want to update status with pier numbers that need to be updated in xx,

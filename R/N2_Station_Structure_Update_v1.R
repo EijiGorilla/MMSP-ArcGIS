@@ -73,7 +73,7 @@
 # DEFINE PARAMETERS
 #******************************************************************#
 ## Enter Date of Update ##
-date_update = "2021-12-19"
+date_update = "2021-12-31"
 
 
 strucType = c("Substructure", "Superstructure")
@@ -92,6 +92,21 @@ N2_station = c("NCC","Depot","CIA","Clark","Angeles",
                "Santa Rosa","Cabuyao","Banlic Depot","Banlic","Calamba")
 
 stn_URL = "https://docs.google.com/spreadsheets/d/1U7NKHyRleRGQYXj382bRVFbvM5ZUlqfMHMGScd6gxO8/edit#gid=0"
+
+### VERY IMPORTANT: READ ! ###
+# The Source Google Sheet is different between bored piles and other structural components
+
+# BORED PILES:
+## 1. Read Google Sheet Owned by Civil Team
+## 2. Restructure
+## 3. Update GIS mater list
+
+# OTHERS:
+## 1. Read Google Sheet owned by GIS Team
+## 2. Restructure
+## 3. Update GIS master list
+
+
 #******************************************************************#
 
 library(googlesheets4)
@@ -101,13 +116,13 @@ library(googledrive)
 library(stringr)
 library(reshape2)
 
-google_app <- httr::oauth_app(
-  "Desktop client 1",
-  key = "603155182488-fqkuqgl6jgn3qp3lstdj6liqlvirhag4.apps.googleusercontent.com",
-  secret = "bH1svdfg-ofOg3WR8S5WDzPu"
-)
-drive_auth_configure(app = google_app)
-drive_auth_configure(api_key = "AIzaSyCqbwFnO6csUya-zKcXKXh_-unE_knZdd0")
+#google_app <- httr::oauth_app(
+#  "Desktop client 1",
+#  key = "603155182488-fqkuqgl6jgn3qp3lstdj6liqlvirhag4.apps.googleusercontent.com",
+#  secret = "bH1svdfg-ofOg3WR8S5WDzPu"
+#)
+#drive_auth_configure(app = google_app)
+#drive_auth_configure(api_key = "AIzaSyCqbwFnO6csUya-zKcXKXh_-unE_knZdd0")
 drive_auth(path = "G:/My Drive/01-Google Clould Platform/service-account-token.json")
 
 
@@ -190,7 +205,45 @@ yx = yx[,-delField]
 # Rename Status.x to Status
 colnames(yx)[which(str_detect(colnames(yx),"CP|Status"))] = c("CP","Status")
 
+# Date
+library(lubridate)
 
+## Backup old ones in case
+
+y$updated = as.Date(y$updated, origin = "1899-12-30")
+y$updated = as.Date(y$updated, format="%m/%d/%y %H:%M:%S")
+oldDate = gsub("-","",unique(y$updated))
+
+
+fileName = paste(oldDate,"_",basename(MLTable),sep="")
+direct = file.path(a,"old")
+
+write.xlsx(y,file.path(direct,fileName),row.names=FALSE)
+
+
+## Overwrite master list with new date
+yx$updated = ymd(date_update)
+
+
+yx$updated = as.Date(yx$updated, origin = "1899-12-30")
+yx$updated = as.Date(yx$updated, format="%m/%d/%y %H:%M:%S")
+
+# Recover data in excel format
+yx$StartDate = as.Date(yx$StartDate, origin = "1899-12-30")
+yx$StartDate = as.Date(yx$StartDate, format="%m/%d/%y %H:%M:%S")
+
+yx$TargetDate = as.Date(yx$TargetDate, origin = "1899-12-30")
+yx$TargetDate = as.Date(yx$TargetDate, format="%m/%d/%y %H:%M:%S")
+
+
+# 
+write.xlsx(yx, MLTable, row.names=FALSE,overwrite = TRUE)
+
+
+
+### N01: OTHERS #############----
+
+## 
 # We need to convert string to numbers for smart maps.
 ## These strings must be used for site palnners who will update the master list
 
@@ -229,40 +282,6 @@ yx$Type = as.numeric(yx$Type)
 yx$SubType = as.numeric(yx$SubType)
 yx$Station = as.numeric(yx$Station)
 
-
-# Date
-library(lubridate)
-
-## Backup old ones in case
-
-y$updated = as.Date(y$updated, origin = "1899-12-30")
-y$updated = as.Date(y$updated, format="%m/%d/%y %H:%M:%S")
-oldDate = gsub("-","",unique(y$updated))
-
-
-fileName = paste(oldDate,"_",basename(MLTable),sep="")
-direct = file.path(a,"old")
-
-write.xlsx(y,file.path(direct,fileName),row.names=FALSE)
-
-
-## Overwrite master list with new date
-yx$updated = ymd(date_update)
-
-
-yx$updated = as.Date(yx$updated, origin = "1899-12-30")
-yx$updated = as.Date(yx$updated, format="%m/%d/%y %H:%M:%S")
-
-# Recover data in excel format
-yx$StartDate = as.Date(yx$StartDate, origin = "1899-12-30")
-yx$StartDate = as.Date(yx$StartDate, format="%m/%d/%y %H:%M:%S")
-
-yx$TargetDate = as.Date(yx$TargetDate, origin = "1899-12-30")
-yx$TargetDate = as.Date(yx$TargetDate, format="%m/%d/%y %H:%M:%S")
-
-
-# 
-write.xlsx(yx, MLTable, row.names=FALSE,overwrite = TRUE)
 
 
 
@@ -311,15 +330,10 @@ x$ID = as.character(x$ID)
 
 # Join 
 # Read Google Sheet 
-v = range_read(stn_URL, sheet = 1)
-v = data.frame(v)
+y = read.xlsx(MLTable)
 
-y=v
-
-str(x)
-str(y)
 yx = left_join(y,x,by="ID")
-head(yx)
+
 
 # NA for status = 1 (To be Constructed)
 gg = which(yx$Status.y>0)
@@ -332,43 +346,6 @@ yx = yx[,-delField]
 colnames(yx)[str_detect(colnames(yx),pattern="Status")] = "Status"
 colnames(yx)[str_detect(colnames(yx),pattern="CP")] = "CP"
 
-# We need to convert string to numbers for smart maps.
-## These strings must be used for site palnners who will update the master list
-
-for(i in 1:length(strucType)) {
-  yx$StructureType[which(yx$StructureType==strucType[i])] = i
-}
-
-for(i in 1:length(strucLevel)) {
-  yx$StructureLevel[which(yx$StructureLevel==strucLevel[i])] = i
-}
-
-for(i in 1:length(Type)) {
-  yx$Type[which(yx$Type==Type[i])] = i
-}
-
-for(i in 1:length(subType)) {
-  yx$SubType[which(yx$SubType==subType[i])] = i
-}
-
-for(i in 1:length(N2_station)) {
-  yx$Station[which(yx$Station==N2_station[i])] = i
-}
-
-
-# check
-unique(yx$StructureType)
-unique(yx$StructureLevel)
-unique(yx$Type)
-unique(yx$SubType)
-unique(yx$Station)
-
-# Convert string to numeric
-yx$StructureType = as.numeric(yx$StructureType)
-yx$StructureLevel = as.numeric(yx$StructureLevel)
-yx$Type = as.numeric(yx$Type)
-yx$SubType = as.numeric(yx$SubType)
-yx$Station = as.numeric(yx$Station)
 
 # Add date of updating table
 ## Delete old ones
@@ -436,11 +413,7 @@ x$CP = CP
 x$ID = as.character(x$ID)
 
 # Join 
-# Read Google Sheet 
-v = range_read(stn_URL, sheet = 1)
-v = data.frame(v)
-
-y=v
+y = read.xlsx(MLTable)
 
 yx = left_join(y,x,by="ID")
 
@@ -455,43 +428,6 @@ yx = yx[,-delField]
 colnames(yx)[str_detect(colnames(yx),pattern="Status")] = "Status"
 colnames(yx)[str_detect(colnames(yx),pattern="CP")] = "CP"
 
-# We need to convert string to numbers for smart maps.
-## These strings must be used for site palnners who will update the master list
-
-for(i in 1:length(strucType)) {
-  yx$StructureType[which(yx$StructureType==strucType[i])] = i
-}
-
-for(i in 1:length(strucLevel)) {
-  yx$StructureLevel[which(yx$StructureLevel==strucLevel[i])] = i
-}
-
-for(i in 1:length(Type)) {
-  yx$Type[which(yx$Type==Type[i])] = i
-}
-
-for(i in 1:length(subType)) {
-  yx$SubType[which(yx$SubType==subType[i])] = i
-}
-
-for(i in 1:length(N2_station)) {
-  yx$Station[which(yx$Station==N2_station[i])] = i
-}
-
-
-# check
-unique(yx$StructureType)
-unique(yx$StructureLevel)
-unique(yx$Type)
-unique(yx$SubType)
-unique(yx$Station)
-
-# Convert string to numeric
-yx$StructureType = as.numeric(yx$StructureType)
-yx$StructureLevel = as.numeric(yx$StructureLevel)
-yx$Type = as.numeric(yx$Type)
-yx$SubType = as.numeric(yx$SubType)
-yx$Station = as.numeric(yx$Station)
 
 # Add date of updating table
 ## Delete old ones

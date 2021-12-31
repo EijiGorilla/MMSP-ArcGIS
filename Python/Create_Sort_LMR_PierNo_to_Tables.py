@@ -13,6 +13,7 @@ import os
 # To allow overwriting the outputs change the overwrite option to true.
 arcpy.env.overwriteOutput = True
 
+# C:/Users/oc3512/OneDrive - Oriental Consultants Global JV/Documents/ArcGIS/Projects/During-Construction_nscrexn2/During-Construction_nscrexn2.gdb
 workSpace = arcpy.GetParameterAsText(0)
 inputLayer = arcpy.GetParameterAsText(1)
 outputLocation = arcpy.GetParameterAsText(2)
@@ -47,14 +48,9 @@ pilesRight = arcpy.MakeFeatureLayer_management(inputLayer, "Piles_Right", "PileN
 
 # Sort each
 ## Get Contract Package
-listLayer = []
-with arcpy.da.SearchCursor(inputLayer, ['Layer']) as cursor:
-    for row in cursor:
-        if row[0] is not None:
-            listLayer.append(str(row[0]))
-            
-uniqueList = list(Counter(listLayer))
-cp = uniqueList[0].replace('-', '')
+jj = arcpy.Describe(inputLayer).name
+cp = re.findall("N0+[0-9]|N-0[0-9]|N_0[0-9]|S0+[0-9]|S-0[0-9]|S_0[0-9]",jj)
+cp = ' '.join(cp)
 cpL = [f for f in cp if f in "N"]
 
 # SC
@@ -91,9 +87,9 @@ def addSequentialValueToTable(inLayer):
             cursor.updateRow(row)
     
     # Table to table conversion
-    fileName = arcpy.Describe(inLayer).name
-    exportFile = fileName + ".csv"
-    arcpy.TableToTable_conversion(inLayer, outputLocation, exportFile)
+    fileName = arcpy.Describe(inLayer).name + "_T.csv"
+    #exportFile = os.path.join(outputLocation, fileName)
+    arcpy.TableToTable_conversion(inLayer, outputLocation, fileName)
 
 addSequentialValueToTable(sortedPilesLeft)
 addSequentialValueToTable(sortedPilesMid)

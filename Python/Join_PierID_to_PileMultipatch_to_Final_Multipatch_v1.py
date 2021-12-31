@@ -51,14 +51,9 @@ with arcpy.da.UpdateCursor(sourceLayer, "Type") as cursor:
             cursor.deleteRow()
 
 # Merge all for a final multipatch layer
-listLayer = []
-with arcpy.da.SearchCursor(sourceLayer, ['Layer']) as cursor:
-    for row in cursor:
-        if row[0] is not None:
-            listLayer.append(str(row[0]))
-            
-uniqueList = list(Counter(listLayer))
-cp = uniqueList[0].replace('-', '')
+jj = arcpy.Describe(sourceLayer).name
+cp = re.findall("N0+[0-9]|N-0[0-9]|N_0[0-9]|S0+[0-9]|S-0[0-9]|S_0[0-9]",jj)
+cp = ' '.join(cp)
 
 finalLayer = "Viaduct" + "_" + cp + "_Final"
 mergedLayer = arcpy.Merge_management([sourceLayer, inputLayerL, inputLayerM, inputLayerR], finalLayer)

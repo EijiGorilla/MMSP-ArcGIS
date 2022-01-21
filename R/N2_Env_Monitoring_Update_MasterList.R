@@ -17,13 +17,13 @@ library(reshape2)
 # Autheticate Google Sheets Access
 ## Step 1
 # method 1: direct provision client ID and secret
-google_app <- httr::oauth_app(
-  "Desktop client 1",
-  key = "603155182488-fqkuqgl6jgn3qp3lstdj6liqlvirhag4.apps.googleusercontent.com",
-  secret = "bH1svdfg-ofOg3WR8S5WDzPu"
-)
-drive_auth_configure(app = google_app)
-drive_auth_configure(api_key = "AIzaSyCqbwFnO6csUya-zKcXKXh_-unE_knZdd0")
+#google_app <- httr::oauth_app(
+#  "Desktop client 1",
+#  key = "603155182488-fqkuqgl6jgn3qp3lstdj6liqlvirhag4.apps.googleusercontent.com",
+#  secret = "bH1svdfg-ofOg3WR8S5WDzPu"
+#)
+#drive_auth_configure(app = google_app)
+#drive_auth_configure(api_key = "AIzaSyCqbwFnO6csUya-zKcXKXh_-unE_knZdd0")
 drive_auth(path = "G:/My Drive/01-Google Clould Platform/service-account-token.json")
 
 
@@ -36,12 +36,12 @@ url = "https://docs.google.com/spreadsheets/d/1rAWKvOMNrecKoLGnHaDz2UqcGszb4BnAh
 
 # Choose working directory
 # C:\Users\oc3512\Dropbox\01-Railway\02-NSCR-Ex\01-N2\03-During-Construction\01-Environment\01-EIA
-a=choose.dir()
+a="C:/Users/oc3512/Dropbox/01-Railway/02-NSCR-Ex/01-N2/03-During-Construction/01-Environment/01-EIA"
 wd = setwd(a)
 
 # Read two tables: our GIs masterlist and master list from Envi Team
 # C:\Users\oc3512\Dropbox\01-Railway\02-NSCR-Ex\01-N2\03-During-Construction\01-Environment\01-EIA\N2_Envi_Monitoring_masterlist.xlsx
-MLTable = file.choose()
+MLTable = "C:/Users/oc3512/Dropbox/01-Railway/02-NSCR-Ex/01-N2/03-During-Construction/01-Environment/01-EIA/N2_Envi_Monitoring_masterlist.xlsx"
 x = read.xlsx(MLTable)
 basename = basename(MLTable)
 
@@ -80,6 +80,12 @@ v2$Latitude = gsub('” |"',"",v2$Latitude)
 
 v2$Longitude = gsub("°|’|'"," ",v2$Longitude)
 v2$Longitude = gsub('” |"',"",v2$Longitude)
+
+# some lat and long notations have redundant space before "N" or "E"
+v2$Latitude[] = gsub("[[:space:]]N$","N",x$Latitude)
+v2$Longitude[] = gsub("[[:space:]]E$","E",x$Longitude)
+
+
 
 # Reformat
 ## Follow the Domain in ArcGIS Pro for Type

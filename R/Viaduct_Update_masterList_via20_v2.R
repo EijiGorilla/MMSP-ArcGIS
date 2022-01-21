@@ -29,7 +29,7 @@
 
 #******************************************************************#
 ## Enter Date of Update ##
-date_update = "2021-12-31"
+date_update = "2022-01-21"
 
 #******************************************************************#
 
@@ -83,8 +83,9 @@ y = read.xlsx(MLTable)
 ## I used "IMPORTRANGE" to copy information from the source URL to suit our needs.
 url = "https://docs.google.com/spreadsheets/d/11YqYaenIB0l3Bpiv398-0QO3mEIR_BjvnMIsIOF3ILI/edit#gid=0"
 
-
+#################################
 ### N01: BORED PILES #############----
+#################################
 
 # Read and write as CSV and xlsx
 v = range_read(url, sheet = 1)
@@ -120,8 +121,10 @@ x$Status1[str_detect(x$Remarks,pattern="Casted")] = 4 # Bored Pile completed
 x$Status1[str_detect(x$Remarks,pattern="Inprogress")] = 2 # Under Construction
 x$Status1[str_detect(x$Remarks,pattern="Incomplete")] = 3 # Delayed
 
+unique(x$Status1)
 head(x)
 head(y)
+
 # Join new status to Viaduct masterlist
 y = read.xlsx(MLTable)
 
@@ -160,12 +163,10 @@ y$updated = as.Date(y$updated, origin = "1899-12-30")
 y$updated = as.Date(y$updated, format="%m/%d/%y %H:%M:%S")
 oldDate = gsub("-","",unique(y$updated))
 
-
-
 fileName = paste(oldDate,"_",basename(MLTable),sep="")
 direct = "C:\\Users\\oc3512\\Dropbox\\01-Railway\\02-NSCR-Ex\\01-N2\\03-During-Construction\\02-Civil\\03-Viaduct\\01-Masterlist\\02-Compiled\\old"
 
-write.xlsx(y,file.path(direct,fileName),row.names=FALSE)
+write.xlsx(y,file.path(direct,fileName))
 
 
 # Recover data in excel format
@@ -177,10 +178,11 @@ yx$end_date = as.Date(yx$end_date, format="%m/%d/%y %H:%M:%S")
 
 
 # 
-write.xlsx(yx, MLTable, row.names=FALSE,overwrite = TRUE)
+write.xlsx(yx, MLTable)
 
-
+###################################################
 # N-01: PILE CAP, PIER COLUN, and PIER HEAD:----
+###################################################
 
 v = range_read(url, sheet = 2)
 v = data.frame(v)
@@ -299,9 +301,8 @@ yxx$end_date = as.Date(yxx$end_date, format="%m/%d/%y %H:%M:%S")
 
 yxx[is.na(yxx$Status1),]
 
-
 # overwrite masterlist
-write.xlsx(yxx, MLTable, row.names=FALSE,overwrite = TRUE)
+write.xlsx(yxx, MLTable)
 
 
 
@@ -386,7 +387,7 @@ yx$end_date = as.Date(yx$end_date, format="%m/%d/%y %H:%M:%S")
 head(yx)
 
 # 
-write.xlsx(yx, MLTable, row.names=FALSE,overwrite = TRUE)
+write.xlsx(yx, MLTable)
 
 
 
@@ -472,7 +473,7 @@ yx$end_date = as.Date(yx$end_date, format="%m/%d/%y %H:%M:%S")
 head(yx)
 
 # 
-write.xlsx(yx, MLTable, row.names=FALSE,overwrite = TRUE)
+write.xlsx(yx, MLTable)
 
 
 ###############################################################
@@ -488,14 +489,16 @@ v = range_read(url, sheet = 1)
 v = data.frame(v)
 
 head(v)
+
 # Restruecture table
 ## I temporarliy used dummy field names to be discarded so need to remove it
-nChar = sapply(1:ncol(v), function(k) nchar(colnames(v)[k]))
-id = which(nChar > 1)
-x = v[,id]
+
+status_id =which(colnames(v)=="Status1")
+x = v[,c(1,2,status_id)]
 
 ## Remove empty rows
 head(x)
+
 rid = which(is.na(x$nPierNumber))
 
 if(length(rid)==0){
@@ -505,10 +508,6 @@ if(length(rid)==0){
 }
 
 x$nPierNumber = as.character(x$nPierNumber)
-
-## Add default status
-x$Status1 = 0
-head(x)
 
 # Remove hyphen from pierNumber
 ## correct with "P-"
@@ -523,16 +522,19 @@ x = x[str_detect(x$nPierNumber,"^P|^PLK|^DEP0"),]
 unique(x$nPierNumber)
 
 uniqueRem = unique(x$Remarks)
+head(x)
+unique(x$Status1)
 
+x$Status1[str_detect(x$Status1,pattern="Casted|casted")] = 4 # Bored Pile completed
+x$Status1[str_detect(x$Status1,pattern="Inprogress")] = 2 # Under Construction
+x$Status1[str_detect(x$Status1,pattern="Incomplete")] = 3 # Delayed
 
-x$Status1[str_detect(x$Remarks,pattern="Casted|casted")] = 4 # Bored Pile completed
-x$Status1[str_detect(x$Remarks,pattern="Inprogress")] = 2 # Under Construction
-x$Status1[str_detect(x$Remarks,pattern="Incomplete")] = 3 # Delayed
-
-del_id = which(x$Status1 == 0)
+# Delete na status
+del_id = which(is.na(x$Status1))
 x = x[-del_id,]
 
 head(x)
+
 # Join new status to Viaduct masterlist
 y = read.xlsx(MLTable)
 
@@ -579,7 +581,7 @@ yx$TargetDate = as.Date(yx$TargetDate, format="%m/%d/%y %H:%M:%S")
 head(yx)
 
 # 
-write.xlsx(yx, MLTable, row.names=FALSE,overwrite = TRUE)
+write.xlsx(yx, MLTable)
 
 ###################
 ### N-04: Pilec Caps #;----
@@ -627,6 +629,7 @@ xx$Status1[casted_id] = 4
 # Delete CP and Remarks
 del_id = which(str_detect(colnames(xx),"CP|Remarks"))
 xx = xx[,-del_id]
+head(xx)
 # Unlike bored piles, we need to use nPierNumber AND Type to join Status1 to our master list
 # This is because bored piles have unique nPierNumber, while other components do not.
 # This means that we cannot bind tables generated here between bored piles and others.
@@ -671,4 +674,4 @@ yxx[is.na(yxx$Status1),]
 
 
 # overwrite masterlist
-write.xlsx(yxx, MLTable, row.names=FALSE,overwrite = TRUE)
+write.xlsx(yxx, MLTable)

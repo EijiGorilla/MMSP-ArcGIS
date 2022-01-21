@@ -11,6 +11,7 @@ getwd()
 a=file.choose()
 x=read.xlsx(a)
 
+unique(x$StructureUse)
 head(x)
 tbm = unique(x$Line)
 
@@ -40,7 +41,24 @@ str(x)
 str(y)
 x[!x$ID %in% y$ID,]
 
-xy = left_join(x,y,by="ID")
+id = which(colnames(y)==c("LotID","Scale"))
+y = y[,id]
+
+
+xy = left_join(x,y,by="LotID")
+
+xy$Scale.x = xy$Scale.y
+
+xy = xy[,-ncol(xy)]
+colnames(xy)[which(colnames(xy)=="Scale.x")] = "Scale"
+head(xy)
+str(xy)
+
+xy$TotalArea = as.numeric(xy$TotalArea)
+xy$AffectedArea = as.numeric(xy$AffectedArea)
+xy$RemainingArea = as.numeric(xy$RemainingArea)
+
+head(xy)
 write.xlsx(xy,"merged.xlsx")
 
 # Check data type of LotID and make sure that LotID data types are both "chr"

@@ -73,7 +73,7 @@
 # DEFINE PARAMETERS
 #******************************************************************#
 ## Enter Date of Update ##
-date_update = "2021-12-31"
+date_update = "2022-01-21"
 
 
 strucType = c("Substructure", "Superstructure")
@@ -149,8 +149,9 @@ y = read.xlsx(MLTable)
 
 ## Google Sheet for monitoring sheet for station structure
 
-
+############################################
 ### N02: BORED PILES #############----
+#####################################
 url = "https://docs.google.com/spreadsheets/d/11YqYaenIB0l3Bpiv398-0QO3mEIR_BjvnMIsIOF3ILI/edit#gid=0"
 
 pile_sheet = 1
@@ -161,6 +162,7 @@ v = range_read(url, sheet = pile_sheet)
 v = data.frame(v)
 
 ## I temporarliy used dummy field names to be discarded so need to remove it
+
 nChar = sapply(1:ncol(v), function(k) nchar(colnames(v)[k]))
 id = which(nChar > 1)
 x = v[,id]
@@ -189,15 +191,19 @@ x$Status[str_detect(x$Remarks,pattern="Incomplete")] = 3 # Delayed
 # Bored Piles use "ID"
 colnames(x)[which(colnames(x)=="nPierNumber")] = "ID"
 
+x
+
 # Join new status to Viaduct masterlist
 ## Read master list table
 y = read.xlsx(MLTable)
 
+y$Status = as.numeric(y$Status)
+
 yx = left_join(y,x,by="ID")
+
 
 gg = which(yx$Status.y>1)
 yx$Status.x[gg] = yx$Status.y[gg]
-head(yx)
 
 delField = which(colnames(yx)=="Status.y" | colnames(yx)=="Remarks" | colnames(yx)=="CP.y")
 yx = yx[,-delField]
@@ -208,8 +214,9 @@ colnames(yx)[which(str_detect(colnames(yx),"CP|Status"))] = c("CP","Status")
 # Date
 library(lubridate)
 
+################# BACKUP IF necessary
 ## Backup old ones in case
-
+head(y)
 y$updated = as.Date(y$updated, origin = "1899-12-30")
 y$updated = as.Date(y$updated, format="%m/%d/%y %H:%M:%S")
 oldDate = gsub("-","",unique(y$updated))
@@ -220,6 +227,7 @@ direct = file.path(a,"old")
 
 write.xlsx(y,file.path(direct,fileName),row.names=FALSE)
 
+################# BACKUP IF necessary
 
 ## Overwrite master list with new date
 yx$updated = ymd(date_update)
@@ -235,10 +243,10 @@ yx$StartDate = as.Date(yx$StartDate, format="%m/%d/%y %H:%M:%S")
 yx$TargetDate = as.Date(yx$TargetDate, origin = "1899-12-30")
 yx$TargetDate = as.Date(yx$TargetDate, format="%m/%d/%y %H:%M:%S")
 
+head(yx)
 
 # 
-write.xlsx(yx, MLTable, row.names=FALSE,overwrite = TRUE)
-
+write.xlsx(yx, MLTable)
 
 
 ### N01: OTHERS #############----
@@ -328,6 +336,7 @@ x$CP = CP
 
 x$ID = as.character(x$ID)
 
+head(x)
 # Join 
 # Read Google Sheet 
 y = read.xlsx(MLTable)
@@ -336,6 +345,7 @@ yx = left_join(y,x,by="ID")
 
 
 # NA for status = 1 (To be Constructed)
+
 gg = which(yx$Status.y>0)
 
 yx$Status.x[gg] = yx$Status.y[gg]
@@ -369,7 +379,7 @@ yx$TargetDate = as.Date(yx$TargetDate, format="%m/%d/%y %H:%M:%S")
 head(yx)
 
 # 
-write.xlsx(yx, MLTable, row.names=FALSE,overwrite = TRUE)
+write.xlsx(yx, MLTable)
 
 
 
@@ -411,6 +421,7 @@ x$Status = as.numeric(x$Status)
 x$CP = CP
 
 x$ID = as.character(x$ID)
+head(x)
 
 # Join 
 y = read.xlsx(MLTable)
@@ -451,34 +462,54 @@ yx$TargetDate = as.Date(yx$TargetDate, format="%m/%d/%y %H:%M:%S")
 head(yx)
 
 # 
-write.xlsx(yx, MLTable, row.names=FALSE,overwrite = TRUE)
+write.xlsx(yx, MLTable)
 
 ###############################
 
 #############################
+z = choose.dir()
+setwd(z)
+
 
 aa = file.choose()
 y = read.xlsx(aa)
 
 
-
 bb = file.choose()
 x = read.xlsx(bb)
 
-yyy = rbind(x,y)
+head(x)
+head(y)
 
-str(yyy)
-str(yyy)
-unique(yyy$Station)
+head(y)
+id = which(colnames(y)=="ID" | colnames(y)=="Status")
 
-yyy$updated = as.Date(yyy$updated, origin = "1899-12-30")
-yyy$updated = as.Date(yyy$updated, format="%m/%d/%y %H:%M:%S")
+y1 = y[,id]
+na_id = which(is.na(y1$ID))
+y1 = y1[-na_id,]
+
+xy1 = left_join(x,y1,by="ID")
+
+gg = which(!is.na(xy1$ID))
+
+xy1$Status.x[gg] = xy1$Status.y[gg]
+
+xy1 = xy1[,-ncol(xy1)]
+head(xy1)
+colnames(xy1)[which(colnames(xy1)=="Status.x")] = "Status"
+
+xy1$updated = "2022-01-07"
+
+
+xy1$updated = as.Date(xy1$updated, origin = "1899-12-30")
+xy1$updated = as.Date(xy1$updated, format="%m/%d/%y %H:%M:%S")
 
 # Recover data in excel format
-yyy$StartDate = as.Date(yyy$StartDate, origin = "1899-12-30")
-yyy$StartDate = as.Date(yyy$StartDate, format="%m/%d/%y %H:%M:%S")
+xy1$StartDate = as.Date(xy1$StartDate, origin = "1899-12-30")
+xy1$StartDate = as.Date(xy1$StartDate, format="%m/%d/%y %H:%M:%S")
 
-yyy$TargetDate = as.Date(yyy$TargetDate, origin = "1899-12-30")
-yyy$TargetDate = as.Date(yyy$TargetDate, format="%m/%d/%y %H:%M:%S")
+xy1$TargetDate = as.Date(xy1$TargetDate, origin = "1899-12-30")
+xy1$TargetDate = as.Date(xy1$TargetDate, format="%m/%d/%y %H:%M:%S")
 
-write.xlsx(yyy,"APL_CALM_SF_ANGEL_CLK_merged.xlsx")
+
+write.xlsx(xy1,"N2_Station_Structure_masterList_new.xlsx")

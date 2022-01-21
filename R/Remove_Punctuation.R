@@ -1,5 +1,3 @@
-library(rgdal)
-library(sf)
 library(dplyr)
 library(stringr)
 library(openxlsx)
@@ -12,9 +10,6 @@ wd = setwd(z)
 a=file.choose()
 y = read.xlsx(a)
 
-temp = y
-ncol = colnames(temp)
-dCol = select.list(ncol, multiple = TRUE, title = "Choose Target Columns") 
 
 # Delete unwanted space;
 ?gsub
@@ -52,14 +47,20 @@ for(i in dCol){
 # Delete Punctuation "*", "**", "\n", white space before 1st letter and after the last letter
 for(i in dCol){
   temp[[i]] = gsub("[*]","",temp[[i]])
-  temp[[i]] = gsub("\n","",temp[[i]])
+  #temp[[i]] = gsub("\n","",temp[[i]])
   temp[[i]] = gsub("^\\s+|\\s+$", "",temp[[i]])
   
 }
 
 
 # Export
-write.xlsx(temp,paste(basename(a),"_fixed.xlsx",sep = ""),row.names = FALSE,overwrite=TRUE)
+write.xlsx(temp,paste(basename(a),"_fixed.xlsx",sep = ""))
+
+
+rem_id = which(is.na(temp$LotID))
+temp = temp[-rem_id,]
+str(temp)
+
 
 head(temp)
 unique(temp$Municipality)
@@ -68,3 +69,5 @@ sort(unique(temp$UTILITY.COMPANY))
 write.xlsx(sort(unique(temp$UTILITY.COMPANY)),"x_utilityCompany.xlsx",row.names=FALSE)
 
 
+str(temp)
+unique(temp$Priority)

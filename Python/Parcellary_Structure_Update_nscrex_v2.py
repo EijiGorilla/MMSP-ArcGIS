@@ -22,9 +22,12 @@ inputLayerLotOrigin = arcpy.GetParameterAsText(1)
 inputLayerStrucOrigin = arcpy.GetParameter(2)
 inputLayerOccupOrigin = arcpy.GetParameterAsText(3)
 inputLayerISFOrigin = arcpy.GetParameterAsText(4)
-inputListLot = arcpy.GetParameterAsText(5)
-inputListStruc = arcpy.GetParameterAsText(6)
-inputListISF = arcpy.GetParameterAsText(7)
+inputLayerBarangOrigin = arcpy.GetParameter(5)
+
+inputListLot = arcpy.GetParameterAsText(6)
+inputListStruc = arcpy.GetParameterAsText(7)
+inputListISF = arcpy.GetParameterAsText(8)
+inputListBarangay = arcpy.GetParameterAsText(9)
 
 
 #workSpace=r"C:/Users/emasu/oc3512/OneDrive - Oriental Consultants Global JV/Documents/ArcGIS/Projects/Pre-Construction_nscrexn2/Pre-Construction_nscrexn2.gdb"
@@ -32,6 +35,8 @@ inputListISF = arcpy.GetParameterAsText(7)
 #MasterList_xlsx = r"C:/Users/oc3512/OneDrive/Masterlist/Land_Acquisition/MasterList.xlsx/MasterList$"
 
 arcpy.env.workspace = workSpace
+
+###################### DEFINE COMMON ID
 
 ###########################################################################
 ##### STAGE 1: Update Existing Parcellary & Structure Feature Layers ######
@@ -41,9 +46,11 @@ arcpy.env.workspace = workSpace
 
 copyNameLot = 'LA_Temp'
 copyNameStruc = 'Struc_Temp'
+copyNameBarang = 'Brang_Temp'
 
 copyLot = arcpy.CopyFeatures_management(inputLayerLotOrigin, copyNameLot)
 copyStruc = arcpy.CopyFeatures_management(inputLayerStrucOrigin, copyNameStruc)
+copyBarang = arcpy.CopyFeatures_management(inputLayerBarangOrigin, copyNameBarang)
 
 
 #copyLot = arcpy.CopyFeatures_management(inputLayerLot, copyNameLot)
@@ -54,20 +61,25 @@ arcpy.AddMessage("Stage 1: Copy feature layer was success")
 # 2. Delete Field
 fieldNameLot = [f.name for f in arcpy.ListFields(copyLot)]
 fieldNameStruc = [f.name for f in arcpy.ListFields(copyStruc)]
+fieldNameBarang = [f.name for f in arcpy.ListFields(copyBarang)]
 
 ## 2.1. Identify fields to be dropped
 dropFieldLot = [e for e in fieldNameLot if e not in ('LotId', 'LotID','Shape','Shape_Length','Shape_Area','Shape.STArea()','Shape.STLength()','OBJECTID','GlobalID')]
 dropFieldStruc = [e for e in fieldNameStruc if e not in ('StrucID', 'strucID','Shape','Shape_Length','Shape_Area','Shape.STArea()','Shape.STLength()','OBJECTID','GlobalID')]
+dropFieldBarang = [e for e in fieldNameBarang if e not in ('Barangay', 'barangay','Shape','Shape_Length','Shape_Area','Shape.STArea()','Shape.STLength()','OBJECTID','GlobalID')]
+
 
 ## 2.2. Extract existing fields
 inFieldLot = [f.name for f in arcpy.ListFields(copyLot)]
 inFieldStruc = [f.name for f in arcpy.ListFields(copyStruc)]
+inFieldBarang = [f.name for f in arcpy.ListFields(copyBarang)]
 
 arcpy.AddMessage("Stage 1: Extract existing fields was success")
 
 ## 2.3. Check if there are fields to be dropped
 finalDropFieldLot = [f for f in inFieldLot if f in tuple(dropFieldLot)]
 finalDropFieldStruc = [f for f in inFieldStruc if f in tuple(dropFieldStruc)]
+finalDropFieldBarang = [f for f in inFieldBarang if f in tuple(dropFieldBarang)]
 
 arcpy.AddMessage("Stage 1: Checking for Fields to be dropped was success")
 
@@ -82,6 +94,9 @@ if len(finalDropFieldStruc) == 0:
 else:
     arcpy.DeleteField_management(copyStruc, finalDropFieldStruc)
 
+if len(finalDropFieldBarang) == 0:
+    arcpy.AddMessage("There is no field that can be dropped from the feature layer")
+    
 arcpy.AddMessage("Stage 1: Dropping Fields was success")
 arcpy.AddMessage("Section 2 of Stage 1 was successfully implemented")
 
@@ -89,38 +104,49 @@ arcpy.AddMessage("Section 2 of Stage 1 was successfully implemented")
 ## 3.1. Convert Excel tables to feature table
 MasterListLot = arcpy.TableToTable_conversion(inputListLot, workSpace, 'MasterListLot')
 MasterListStruc = arcpy.TableToTable_conversion(inputListStruc, workSpace, 'MasterListStruc')
+MasterListBarang = arcpy.TableToTable_conversion(inputListBarangay, workSpace, 'MasterListBarang')
 
 ## 3.2. Get Join Field from MasterList gdb table: Gain all fields except 'Id'
 inputFieldLot = [f.name for f in arcpy.ListFields(MasterListLot)]
 inputFieldStruc = [f.name for f in arcpy.ListFields(MasterListStruc)]
+inputFieldBarang = [f.name for f in arcpy.ListFields(MasterListBarang)]
 
 joinFieldLot = [e for e in inputFieldLot if e not in ('LotId', 'LotID','OBJECTID')]
 joinFieldStruc = [e for e in inputFieldStruc if e not in ('StrucID', 'strucID','OBJECTID')]
+joinFieldBarang = [e for e in inputFieldBarang if e not in ('Barangay', 'strucID','OBJECTID')]
 
 ## 3.3. Extract a Field from MasterList and Feature Layer to be used to join two tables
 tLot = [f.name for f in arcpy.ListFields(copyLot)]
 tStruc = [f.name for f in arcpy.ListFields(copyStruc)]
+tBarang = [f.name for f in arcpy.ListFields(copyBarang)]
 
 in_fieldLot = ' '.join(map(str, [f for f in tLot if f in ('LotId', 'LotID')]))
 in_fieldStruc = ' '.join(map(str, [f for f in tStruc if f in ('StrucID', 'strucID')]))
+in_fieldBarang = ' '.join(map(str, [f for f in tBarang if f in ('Barangay','barangay')]))
  
 uLot = [f.name for f in arcpy.ListFields(MasterListLot)]
 uStruc = [f.name for f in arcpy.ListFields(MasterListStruc)]
+uBarang = [f.name for f in arcpy.ListFields(MasterListBarang)]
 
 join_fieldLot=' '.join(map(str, [f for f in uLot if f in ('LotId', 'LotID')]))
 join_fieldStruc = ' '.join(map(str, [f for f in uStruc if f in ('StrucID', 'strucID')]))
+join_fieldBarang = ' '.join(map(str, [f for f in uBarang if f in ('Barangay', 'barangay')]))
 
 ## 3.4 Join
 arcpy.JoinField_management(in_data=copyLot, in_field=in_fieldLot, join_table=MasterListLot, join_field=join_fieldLot, fields=joinFieldLot)
 arcpy.JoinField_management(in_data=copyStruc, in_field=in_fieldStruc, join_table=MasterListStruc, join_field=join_fieldStruc, fields=joinFieldStruc)
+arcpy.JoinField_management(in_data=copyBarang, in_field=in_fieldBarang, join_table=MasterListBarang, join_field=join_fieldBarang, fields=joinFieldBarang)
+
 
 # 4. Trucnate
 arcpy.TruncateTable_management(inputLayerLotOrigin)
 arcpy.TruncateTable_management(inputLayerStrucOrigin)
+arcpy.TruncateTable_management(inputLayerBarangOrigin)
 
 # 5. Append
 arcpy.Append_management(copyLot, inputLayerLotOrigin, schema_type = 'NO_TEST')
 arcpy.Append_management(copyStruc, inputLayerStrucOrigin, schema_type = 'NO_TEST')
+arcpy.Append_management(copyBarang, inputLayerBarangOrigin, schema_type = 'NO_TEST')
 
 ###########################################################################
 ##### STAGE 2: Update Existing Structure (Occupancy) & Structure (ISF) ######
@@ -195,11 +221,13 @@ moa = "MoA"
 relocated = "Relocated"
 status = "Status"
 pte = "PTE"
+barang = "Barangay"
 
 varFieldLA = [paid, handOver, moa, pte]
 varFieldStruc = [paid, handOver, moa, status, pte]
 varFieldOccup= [paid, moa, status]
 varFieldISF = [paid, relocated]
+varFieldBarang = [barang]
 
 codeblock = """
 def reclass(status):
@@ -245,9 +273,15 @@ for field in varFieldISF:
     # Execute CalculateField
     arcpy.CalculateField_management(inputLayerISFOrigin, field, expression, "PYTHON3", codeblock)    
     
-    
+## 4. Status for Barangay
+for field in varFieldBarang:
+    arcpy.AddMessage(field)
+    expression = "reclass(!{}!)".format(field)
+        
+    # Execute CalculateField
+    arcpy.CalculateField_management(inputLayerBarangOrigin, field, expression, "PYTHON3", codeblock)  
 
 # Delete the copied feature layer
-deleteTempLayers = [copyLot, copyStruc, pointStruc, outLayerISF, MasterListLot, MasterListStruc, MasterListISF]
+deleteTempLayers = [copyLot, copyStruc, copyBarang, pointStruc, outLayerISF, MasterListLot, MasterListStruc, MasterListBarang, MasterListISF]
 arcpy.Delete_management(deleteTempLayers)
 

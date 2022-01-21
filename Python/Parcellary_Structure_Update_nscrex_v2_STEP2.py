@@ -25,11 +25,13 @@ land_fgdb = arcpy.GetParameterAsText(1)
 struc_fgdb = arcpy.GetParameter(2)
 strucOccup_fgdb = arcpy.GetParameterAsText(3)
 strucISF_fgdb = arcpy.GetParameterAsText(4)
+barang_fgdb = arcpy.GetParameterAsText(5)
 
-land_sde = arcpy.GetParameterAsText(5)
-struc_sde = arcpy.GetParameter(6)
-strucOccup_sde = arcpy.GetParameterAsText(7)
-strucISF_sde = arcpy.GetParameterAsText(8)
+land_sde = arcpy.GetParameterAsText(6)
+struc_sde = arcpy.GetParameter(7)
+strucOccup_sde = arcpy.GetParameterAsText(8)
+strucISF_sde = arcpy.GetParameterAsText(9)
+barang_sde = arcpy.GetParameterAsText(10)
 
 # Copy each layer in PRS92, Truncate, and append
 layerList_fgdb = list()
@@ -39,11 +41,13 @@ layerList_fgdb.append(land_fgdb)
 layerList_fgdb.append(struc_fgdb)
 layerList_fgdb.append(strucOccup_fgdb)
 layerList_fgdb.append(strucISF_fgdb)
+layerList_fgdb.append(barang_fgdb)
 
 layerList_sde.append(land_sde)
 layerList_sde.append(struc_sde)
 layerList_sde.append(strucOccup_sde)
 layerList_sde.append(strucISF_sde)
+layerList_sde.append(barang_sde)
 
 # Delete empty elements (i.e., if some layers are not selected, we need to vacate this element)
 layerList_fgdb = [s for s in layerList_fgdb if s != '']
@@ -78,6 +82,10 @@ for layer in layerList_fgdb:
         elif layer == layerList_fgdb[3]:
             arcpy.TruncateTable_management(strucISF_sde)
             arcpy.Append_management(copyL, strucISF_sde, schema_type = 'NO_TEST')
+        
+        elif layer == layerList_fgdb[4]:
+            arcpy.TruncateTable_management(barang_sde)
+            arcpy.Append_management(copyL, barang_sde, schema_type = 'NO_TEST')
             
             arcpy.AddMessage("Truncate and Append is Success")
             

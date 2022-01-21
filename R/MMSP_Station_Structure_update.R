@@ -63,7 +63,7 @@ a = "C:/Users/oc3512/Dropbox/01-Railway/01-MMSP/03-During-Construction/01-Statio
 wd = setwd(a)
 
 ## Enter Date of Update ##:----
-date_update = "2021-12-31"
+date_update = "2021-01-16"
 
 # Read our master list table
 MLTable = "C:/Users/oc3512/Dropbox/01-Railway/01-MMSP/03-During-Construction/01-Station Structure/01-Masterlist/01-Compiled/MMSP_Station_Structure.xlsx"
@@ -101,8 +101,7 @@ st_SN = 14 #  Senate
 
 ## Define URL where data is stored and updated
 ## I used "IMPORTRANGE" to copy information from the source URL to suit our needs.
-url = "https://docs.google.com/spreadsheets/d/1wD-fgFafpUDNU270J9ggjtUSgZelfEqbkdRnfr7L2NU/edit#gid=516171899"
-# 
+url = "https://docs.google.com/spreadsheets/d/1wD-fgFafpUDNU270J9ggjtUSgZelfEqbkdRnfr7L2NU/edit?usp=sharing"
 
 ## Define Google Sheet number
 nas_kp_sheet = 1
@@ -118,8 +117,11 @@ v = data.frame(v)
 # Find "KING POST ID" and "COMPLETED" column names
 ## #King POST ID" is at 5th columns and and 9th row
 ## COMPLETED is at at 22nd column and 9th row
+head(v)
 x = v[-c(1:9),c(5,22)]
 colnames(x) = c("ID","Status")
+
+head(x)
 
 #
 x$ID = as.character(x$ID)
@@ -165,6 +167,15 @@ yx = yx[, -rm_status]
 status_name = which(str_detect(colnames(yx),"Status"))
 colnames(yx)[status_name] = "Status"
 
+## Create backup files
+y$updated = as.Date(y$updated, origin = "1899-12-30")
+oldDate = gsub("-","",unique(y$updated))
+
+fileName = paste(oldDate,"_",basename(MLTable),sep="")
+direct = file.path(a,"old")
+
+write.xlsx(y,file.path(direct,fileName),row.names=FALSE)
+
 # Add the latest date
 yx$updated = date_update
 
@@ -178,7 +189,7 @@ yx$StartDate = as.Date(yx$StartDate, format="%m/%d/%y %H:%M:%S")
 yx$EndDate = as.Date(yx$EndDate, origin = "1899-12-30")
 yx$EndDate = as.Date(yx$EndDate, format="%m/%d/%y %H:%M:%S")
 
-write.xlsx(yx,MLTable,overwrite=TRUE)
+write.xlsx(yx,MLTable)
 
 
 ### NAS: D-Wall:----
@@ -190,12 +201,15 @@ v = data.frame(v)
 ## #King POST ID" is at 4th columns and and 6th row
 ## COMPLETED is at at 18th column and 6th row
 x = v[-c(1:6),c(4,18)]
+
 colnames(x) = c("ID","Status")
+
 
 #
 x$ID = as.character(x$ID)
 x$Status = as.character(x$Status)
 
+head(x)
 # Retain only KP-
 dwall_id = which(str_detect(x$ID,"^P|^p|^p"))
 x = x[dwall_id,]
@@ -206,6 +220,7 @@ x = x[-status_rm_id,]
 # Make sure that ID is uppercase letter and no space
 x$ID[] = gsub("[[:space:]]","",x$ID) # no space
 x$ID[] = toupper(x$ID)
+
 
 # Conver STatus to numeric
 x$Status = as.numeric(x$Status)
@@ -246,7 +261,7 @@ yx$StartDate = as.Date(yx$StartDate, format="%m/%d/%y %H:%M:%S")
 yx$EndDate = as.Date(yx$EndDate, origin = "1899-12-30")
 yx$EndDate = as.Date(yx$EndDate, format="%m/%d/%y %H:%M:%S")
 
-write.xlsx(yx,MLTable,overwrite=TRUE)
+write.xlsx(yx,MLTable)
 
 
 

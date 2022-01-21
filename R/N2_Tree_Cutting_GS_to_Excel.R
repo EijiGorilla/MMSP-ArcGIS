@@ -3,7 +3,7 @@
 
 
 #############################
-new_date = "20211221"
+new_date = "2022-01-12"
 
 
 
@@ -19,6 +19,7 @@ library(dplyr)
 library(googledrive)
 library(stringr)
 library(reshape2)
+library(lubridate)
 
 # This R script reads a Google Sheet and reshape the data table 
 # to import into ArcGIS Pro
@@ -40,7 +41,6 @@ drive_auth(path = "G:/My Drive/01-Google Clould Platform/service-account-token.j
 gs4_auth(email="matsuzakieiji0@gmail.com")
 
 # Choose working directory
-a=choose.dir() 
 a = "C:/Users/oc3512/Dropbox/01-Railway/02-NSCR-Ex/01-N2/02-Pre-Construction/01-Environment/02-Tree Cutting"
 wd = setwd(a)
 
@@ -50,36 +50,41 @@ url = "https://docs.google.com/spreadsheets/d/1LVcMTPahKD9-p_sTBL788qiUbFGTRc3jV
 MLTable = "C:\\Users\\oc3512\\Dropbox\\01-Railway\\02-NSCR-Ex\\01-N2\\02-Pre-Construction\\01-Environment\\02-Tree Cutting\\Trees_masterlist.xlsx"
 basename = basename(MLTable)
 
+y = read.xlsx(MLTable)
+
 # Read and write as CSV and xlsx
 v = range_read(url, sheet = 1)
 v = data.frame(v)
 
 
-
 # Create backup file of original masterlist
 # 
-dir = "C:/Users/oc3512/Dropbox/01-Railway/02-NSCR-Ex/01-N2/02-Pre-Construction/01-Environment/02-Tree Cutting/old"
-dates = gsub("-","",Sys.Date()) # today's date
 
-backup = paste(dates,"_",basename,sep="") 
+dir = "C:/Users/oc3512/Dropbox/01-Railway/02-NSCR-Ex/01-N2/02-Pre-Construction/01-Environment/02-Tree Cutting/old"
+
+y$updated = as.Date(y$updated, origin = "1899-12-30")
+y$updated = as.Date(y$updated, format="%m/%d/%y %H:%M:%S")
+
+
+old_date = gsub("-","",unique(y$updated))
+backup = paste(old_date,"_",basename,sep="") 
 
 write.xlsx(x,file.path(dir,backup),row.names=FALSE)
 
-
 ## Rename variables
 v2 = v
-if(sum(str_detect(colnames(v2),"compensation|Compensation"))==1){
-  colnames(v2)=c("TreeNo","Province","CP","CommonName","ScientificName",
-                "DBH","MH","TH","Volume","Latitude","Longitude",
-                "PNR","Status","Conservation","Compensation")
-  write.xlsx(v2,file.path(wd,basename),overwrite=TRUE)
-  
-} else {
-  colnames(v2)=c("TreeNo","Province","CP","CommonName","ScientificName",
-                "DBH","MH","TH","Volume","Latitude","Longitude",
-                "PNR","Status","Conservation")
-  v2$Compensation = as.integer(NA)
-  write.xlsx(v2,file.path(wd,basename),overwrite=TRUE)
-}
+v2$updated = new_date
+
+v2$updated = as.Date(v2$updated, origin = "1899-12-30")
+v2$updated = as.Date(v2$updated, format="%m/%d/%v2 %H:%M:%S")
+
+head(v2)
 
 
+# Rename colnames
+colnames(v2)=c("TreeNo","Province","CP","CommonName","ScientificName",
+               "DBH","MH","TH","Volume","Latitude","Longitude",
+               "PNR","Status","Conservation","Compensation","updated")
+
+
+write.xlsx(v2,file.path(wd,basename))

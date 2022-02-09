@@ -1,3 +1,6 @@
+# This code is used to re-number Viaduct bored piles
+
+
 # Make sure to sort by shape in ascending order in ArcGIS Pro first#
 # N2: Sort lower right (chainage direction from S to N)
 # SC: Sot upper left (chainage direction from N to S)
@@ -28,12 +31,13 @@ for(i in pier){
   temp = bind_rows(temp,x)
 }
 unique(temp$pp)
-head(temp)
-write.xlsx(temp,file.path(wd,"N2_Viaduct_L_sorted_S_to_N_numbered.xlsx"))
+head(temp,20)
+
+write.xlsx(temp,file.path(wd,"SC_Viaduct_L_sorted_N_to_S_numbered.xlsx"))
 
 ## Join "L" to M
-aL=file.choose()
-L = read.xlsx(aL)
+#aL=file.choose()
+L = read.xlsx(file.path(wd,"SC_Viaduct_L_sorted_N_to_S_numbered.xlsx"))
 head(L)
 
 tempL = data.frame()
@@ -51,9 +55,12 @@ aM=file.choose()
 M=read.xlsx(aM)
 head(M)
 
+
+
 # join
 head(tempL)
-id = which(colnames(tempLM)=="PierNumber" | colnames(tempLM)=="pp")
+#id = which(colnames(tempLM)=="PierNumber" | colnames(tempLM)=="pp")
+id = which(colnames(tempL)=="PierNumber" | colnames(tempL)=="pp")
 Lx = tempL[,id]
 
 MLx = left_join(M,Lx,by="PierNumber")
@@ -77,11 +84,11 @@ tempM = tempM[,-(ncol(tempM)-1)]
 colnames(tempM)[ncol(tempM)] = "pp"
 head(tempM)
 
-write.xlsx(tempM,file.path(wd,"N2_Viaduct_M_sorted_S_to_N_numbered.xlsx"))
+write.xlsx(tempM,file.path(wd,"SC_Viaduct_M_sorted_N_to_S_numbered.xlsx"))
 
 # Append L and M
-L = read.xlsx(file.path(wd,"N2_Viaduct_L_sorted_S_to_N_numbered.xlsx"))
-M = read.xlsx(file.path(wd, "N2_Viaduct_M_sorted_S_to_N_numbered.xlsx"))
+L = read.xlsx(file.path(wd,"SC_Viaduct_L_sorted_N_to_S_numbered.xlsx"))
+M = read.xlsx(file.path(wd, "SC_Viaduct_M_sorted_N_to_S_numbered.xlsx"))
 
 head(L)
 head(M)
@@ -137,19 +144,19 @@ head(tempLMR)
 tempLMR = tempLMR[,-(ncol(tempLMR)-1)]
 colnames(tempLMR)[ncol(tempLMR)] = "pp"
 
-write.xlsx(tempLMR,file.path(wd,"N2_Viaduct_R_sorted_S_to_N_numbered.xlsx"))
+write.xlsx(tempLMR,file.path(wd,"SC_Viaduct_R_sorted_N_to_S_numbered.xlsx"))
 
 # Append L, M, R 
-L=read.xlsx(file.path(wd,"N2_Viaduct_L_sorted_S_to_N_numbered.xlsx"))
-M=read.xlsx(file.path(wd,"N2_Viaduct_M_sorted_S_to_N_numbered.xlsx"))
-R=read.xlsx(file.path(wd,"N2_Viaduct_R_sorted_S_to_N_numbered.xlsx"))
+L=read.xlsx(file.path(wd,"SC_Viaduct_L_sorted_N_to_S_numbered.xlsx"))
+M=read.xlsx(file.path(wd,"SC_Viaduct_M_sorted_N_to_S_numbered.xlsx"))
+R=read.xlsx(file.path(wd,"SC_Viaduct_R_sorted_N_to_S_numbered.xlsx"))
 
 head(L);head(M);head(R)
 LMR=rbind(L,M,R)
 
 
 LMR = LMR[order(LMR$PierNumber),]
-write.xlsx(tempLMR,file.path(wd,"N2_Viaduct_LMR_sorted_S_to_N_numbered_temp.xlsx"))
+write.xlsx(tempLMR,file.path(wd,"SC_Viaduct_LMR_sorted_N_to_S_numbered_temp.xlsx"))
 
 # Re-format 
 str(LMR)
@@ -158,4 +165,4 @@ LMR$pp2 = "0"
 
 LMR$pp2=paste("0",LMR$pp,sep = "")
 
-write.xlsx(LMR,file.path(wd,"N2_Viaduct_LMR_sorted_S_to_N_numbered_final.xlsx"))
+write.xlsx(LMR,file.path(wd,"SC_Viaduct_LMR_sorted_N_to_S_numbered_final.xlsx"))

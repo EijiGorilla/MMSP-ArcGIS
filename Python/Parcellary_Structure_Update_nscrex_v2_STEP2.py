@@ -41,13 +41,13 @@ layerList_fgdb.append(land_fgdb)
 layerList_fgdb.append(struc_fgdb)
 layerList_fgdb.append(strucOccup_fgdb)
 layerList_fgdb.append(strucISF_fgdb)
-layerList_fgdb.append(barang_fgdb)
+#layerList_fgdb.append(barang_fgdb)
 
 layerList_sde.append(land_sde)
 layerList_sde.append(struc_sde)
 layerList_sde.append(strucOccup_sde)
 layerList_sde.append(strucISF_sde)
-layerList_sde.append(barang_sde)
+#layerList_sde.append(barang_sde)
 
 # Delete empty elements (i.e., if some layers are not selected, we need to vacate this element)
 layerList_fgdb = [s for s in layerList_fgdb if s != '']
@@ -92,6 +92,29 @@ for layer in layerList_fgdb:
     except:
         pass
     
-# Delete
+    # Delete
 arcpy.Delete_management(copyL)
 arcpy.AddMessage("Delete copied layer is Success")
+
+
+# We need to run Barangay independently from others.
+try:
+    copied = "copied_layer"
+    copyB = arcpy.CopyFeatures_management(barang_fgdb, copied)
+        
+    arcpy.AddMessage("Barangay Layer: Copy to CS tranformation for PRS92: Success")
+    
+    # Truncate and append
+    arcpy.TruncateTable_management(barang_sde)
+    arcpy.Append_management(copyB, barang_sde, schema_type = 'NO_TEST')
+    
+    arcpy.AddMessage("Barangay Layer:Truncate and Append is Success")
+    arcpy.Delete_management(copyB)
+    
+except:
+    pass
+
+
+arcpy.AddMessage("Delete copied layer is Success")
+    
+

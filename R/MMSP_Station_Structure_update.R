@@ -45,6 +45,7 @@ library(dplyr)
 library(googledrive)
 library(stringr)
 library(reshape2)
+library(fs)
 
 #google_app <- httr::oauth_app(
 #  "Desktop client 1",
@@ -58,15 +59,17 @@ drive_auth(path = "G:/My Drive/01-Google Clould Platform/service-account-token.j
 
 
 # Define Working Directory
-a = "C:/Users/oc3512/Dropbox/01-Railway/01-MMSP/03-During-Construction/01-Station Structure/01-Masterlist/01-Compiled"
+path = path_home()
+wd = file.path(path,"Dropbox/01-Railway/01-MMSP/03-During-Construction/01-Station Structure/01-Masterlist/01-Compiled")
+
 #a=choose.dir()
-wd = setwd(a)
+setwd(wd)
 
 ## Enter Date of Update ##:----
-date_update = "2021-01-16"
+date_update = "2022-02-07"
 
 # Read our master list table
-MLTable = "C:/Users/oc3512/Dropbox/01-Railway/01-MMSP/03-During-Construction/01-Station Structure/01-Masterlist/01-Compiled/MMSP_Station_Structure.xlsx"
+MLTable = file.path(wd,"MMSP_Station_Structure.xlsx")
 
 # Read the masterlist:----
 y = read.xlsx(MLTable)
@@ -148,8 +151,6 @@ x$Status[x$Status==1] = 4
 x$Type = type_kp
 x$Station = st_NA
 
-head(x)
-
 # Merge this to masterlist
 y = read.xlsx(MLTable)
 
@@ -189,7 +190,25 @@ yx$StartDate = as.Date(yx$StartDate, format="%m/%d/%y %H:%M:%S")
 yx$EndDate = as.Date(yx$EndDate, origin = "1899-12-30")
 yx$EndDate = as.Date(yx$EndDate, format="%m/%d/%y %H:%M:%S")
 
+# count for checking
+id = which(str_detect(yx$ID,"^KP-") & yx$Status==4)
+
 write.xlsx(yx,MLTable)
+
+###
+
+kingpost_yx = unique(yx$ID[id])
+kingpost_sour = unique(x$ID)
+
+test = paste(kingpost_sour,collapse="','",sep="")
+length(kingpost_sour)
+
+str(kingpost_yx)
+str(kingpost_sour)
+
+kingpost_yx[!kingpost_yx %in% kingpost_sour]
+kingpost_sour[!kingpost_sour %in% kingpost_yx]
+
 
 
 ### NAS: D-Wall:----
@@ -202,6 +221,7 @@ v = data.frame(v)
 ## COMPLETED is at at 18th column and 6th row
 x = v[-c(1:6),c(4,18)]
 
+head(v)
 colnames(x) = c("ID","Status")
 
 
@@ -231,6 +251,7 @@ x$Status[x$Status==1] = 4
 # Add type
 x$Type = type_dwall
 x$Station = st_NA
+
 
 # Merge this to masterlist
 y = read.xlsx(MLTable)

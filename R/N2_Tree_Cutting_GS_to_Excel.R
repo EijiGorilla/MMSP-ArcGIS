@@ -20,6 +20,7 @@ library(googledrive)
 library(stringr)
 library(reshape2)
 library(lubridate)
+library(fs)
 
 # This R script reads a Google Sheet and reshape the data table 
 # to import into ArcGIS Pro
@@ -33,7 +34,7 @@ library(lubridate)
 #  secret = "bH1svdfg-ofOg3WR8S5WDzPu"
 #)
 #drive_auth_configure(app = google_app)
-drive_auth_configure(api_key = "AIzaSyCqbwFnO6csUya-zKcXKXh_-unE_knZdd0")
+#drive_auth_configure(api_key = "AIzaSyCqbwFnO6csUya-zKcXKXh_-unE_knZdd0")
 drive_auth(path = "G:/My Drive/01-Google Clould Platform/service-account-token.json")
 
 
@@ -41,13 +42,18 @@ drive_auth(path = "G:/My Drive/01-Google Clould Platform/service-account-token.j
 gs4_auth(email="matsuzakieiji0@gmail.com")
 
 # Choose working directory
-a = "C:/Users/oc3512/Dropbox/01-Railway/02-NSCR-Ex/01-N2/02-Pre-Construction/01-Environment/02-Tree Cutting"
-wd = setwd(a)
+path = path_home()
+
+
+wd = file.path(path,"Dropbox/01-Railway/02-NSCR-Ex/01-N2/02-Pre-Construction/01-Environment/02-Tree Cutting")
+
+setwd(wd)
 
 ## Define URL where data is stored and updated
 url = "https://docs.google.com/spreadsheets/d/1LVcMTPahKD9-p_sTBL788qiUbFGTRc3jVgm_nlN-NQU/edit#gid=1298799693"
 
-MLTable = "C:\\Users\\oc3512\\Dropbox\\01-Railway\\02-NSCR-Ex\\01-N2\\02-Pre-Construction\\01-Environment\\02-Tree Cutting\\Trees_masterlist.xlsx"
+MLTable = file.path(wd,"Trees_masterlist.xlsx")
+
 basename = basename(MLTable)
 
 y = read.xlsx(MLTable)
@@ -56,11 +62,10 @@ y = read.xlsx(MLTable)
 v = range_read(url, sheet = 1)
 v = data.frame(v)
 
-
 # Create backup file of original masterlist
 # 
 
-dir = "C:/Users/oc3512/Dropbox/01-Railway/02-NSCR-Ex/01-N2/02-Pre-Construction/01-Environment/02-Tree Cutting/old"
+dir = file.path(wd,"Dropbox/01-Railway/02-NSCR-Ex/01-N2/02-Pre-Construction/01-Environment/02-Tree Cutting/old")
 
 y$updated = as.Date(y$updated, origin = "1899-12-30")
 y$updated = as.Date(y$updated, format="%m/%d/%y %H:%M:%S")
@@ -81,10 +86,12 @@ v2$updated = as.Date(v2$updated, format="%m/%d/%v2 %H:%M:%S")
 head(v2)
 
 
+
+
 # Rename colnames
 colnames(v2)=c("TreeNo","Province","CP","CommonName","ScientificName",
                "DBH","MH","TH","Volume","Latitude","Longitude",
                "PNR","Status","Conservation","Compensation","updated")
-
+for(i in 1:5) v2$CP = gsub(i,paste("N-0",i,sep=""),v2$CP)
 
 write.xlsx(v2,file.path(wd,basename))

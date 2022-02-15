@@ -73,7 +73,7 @@
 # DEFINE PARAMETERS
 #******************************************************************#
 ## Enter Date of Update ##
-date_update = "2022-01-21"
+date_update = "2022-02-14"
 
 
 strucType = c("Substructure", "Superstructure")
@@ -115,6 +115,7 @@ library(dplyr)
 library(googledrive)
 library(stringr)
 library(reshape2)
+library(fs)
 
 #google_app <- httr::oauth_app(
 #  "Desktop client 1",
@@ -131,17 +132,19 @@ drive_auth(path = "G:/My Drive/01-Google Clould Platform/service-account-token.j
 gs4_auth(email="matsuzaki-ei@ocglobal.jp")
 
 
-a = "C:/Users/oc3512/Dropbox/01-Railway/02-NSCR-Ex/01-N2/03-During-Construction/02-Civil/02-Station Structure/01-Masterlist/01-Compiled"
+path =  path_home()
+wd = file.path(path,"Dropbox/01-Railway/02-NSCR-Ex/01-N2/03-During-Construction/02-Civil/02-Station Structure/01-Masterlist/01-Compiled")
 #a=choose.dir()
-wd = setwd(a)
+setwd(wd)
 
 # Read our master list table
 # C:\Users\oc3512\Dropbox\01-Railway\02-NSCR-Ex\01-N2\03-During-Construction\02-Civil\03-Viaduct\01-Masterlist\02-Compiled\N2_Viaduct_MasterList.xlsx"
-MLTable = "C:/Users/oc3512/Dropbox/01-Railway/02-NSCR-Ex/01-N2/03-During-Construction/02-Civil/02-Station Structure/01-Masterlist/01-Compiled/N2_station_structure.xlsx"
+
+MLTable = file.path(wd,"N2_station_structure.xlsx")
+  
 #MLTable = file.choose(a_ML)
 # Read the masterlist:----
 y = read.xlsx(MLTable)
-
 
 ###############################################################
 #######################:---- N-01 #################################:----
@@ -223,7 +226,7 @@ oldDate = gsub("-","",unique(y$updated))
 
 
 fileName = paste(oldDate,"_",basename(MLTable),sep="")
-direct = file.path(a,"old")
+direct = file.path(wd,"old")
 
 write.xlsx(y,file.path(direct,fileName),row.names=FALSE)
 
@@ -298,7 +301,8 @@ yx$Station = as.numeric(yx$Station)
 ##############################################################
 
 ### N-02: BORED PILES #:----
-url = "https://docs.google.com/spreadsheets/d/1du9qnThdve1yXBv-W_lLzSa3RMd6wX6_NlNCz8PqFdg/edit?userstoinvite=junsanjose@gmail.com&actionButton=1#gid=0"
+#url = "https://docs.google.com/spreadsheets/d/1du9qnThdve1yXBv-W_lLzSa3RMd6wX6_NlNCz8PqFdg/edit?userstoinvite=junsanjose@gmail.com&actionButton=1#gid=0"
+url = "https://docs.google.com/spreadsheets/d/1du9qnThdve1yXBv-W_lLzSa3RMd6wX6_NlNCz8PqFdg/edit?usp=sharing"
 
 n02_pile = 1
 CP = "N-02"

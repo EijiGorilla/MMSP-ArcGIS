@@ -66,7 +66,7 @@ wd = file.path(path,"Dropbox/01-Railway/01-MMSP/03-During-Construction/01-Statio
 setwd(wd)
 
 ## Enter Date of Update ##:----
-date_update = "2022-02-14"
+date_update = "2022-03-07"
 
 # Read our master list table
 MLTable = file.path(wd,"MMSP_Station_Structure.xlsx")
@@ -156,6 +156,33 @@ y = read.xlsx(MLTable)
 
 head(y)
 yx = left_join(y,x,by=c("Station","Type","ID"))
+
+## Check if the number of Status1 for each Type is same between x and yx.
+head(x)
+head(yx)
+x_t = table(x$Status)
+yx_t = table(yx$Status.y[which(yx$Station==4 & yx$Type==4 & yx$Status.y==4)])
+
+
+check = x_t %in% yx_t
+if(str_detect(unique(check),"TRUE")){
+  print("GOOD! The number of Status1 for N-01 Bored piles is same between Civil and joined excel ML.")
+} else (
+  print("Number of Status of King's Post for NAS is DIFFERENT. PLEASE CHECK")
+)
+
+x_kp = x$ID
+yx_kp = yx$ID[which(yx$Station==4 & yx$Type==4 & yx$Status.y==4)]
+
+str(x_kp)
+str(yx_kp)
+
+x_kp[!x_kp %in% yx_kp]
+yx_kp[!yx_kp %in% x_kp]
+
+head(x_kp)
+
+
 
 ## Replace Status.x rows with only updated status from Status.y
 gg = which(yx$Status.y>0)
@@ -257,6 +284,23 @@ x$Station = st_NA
 y = read.xlsx(MLTable)
 
 yx = left_join(y,x,by=c("Station","Type","ID"))
+
+##
+
+## Check if the number of Status1 for each Type is same between x and yx.
+head(x)
+head(yx)
+x_t = table(x$Status)
+yx_t = table(yx$Status.y[which(yx$Station==4 & yx$Type==1 & yx$Status.y==4)])
+
+
+check = x_t %in% yx_t
+if(str_detect(unique(check),"TRUE")){
+  print("GOOD! The number of Status1 for N-01 Bored piles is same between Civil and joined excel ML.")
+} else (
+  print("Number of Status of King's Post for NAS is DIFFERENT. PLEASE CHECK")
+)
+
 
 ## Replace Status.x rows with only updated status from Status.y
 gg = which(yx$Status.y>0)

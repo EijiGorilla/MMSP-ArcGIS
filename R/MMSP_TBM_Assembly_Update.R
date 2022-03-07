@@ -4,6 +4,7 @@ library(dplyr)
 library(googledrive)
 library(stringr)
 library(reshape2)
+library(fs)
 
 # This R script reads a Google Sheet and reshape the data table 
 # to import into ArcGIS Pro
@@ -29,8 +30,12 @@ gs4_auth()
 
 # STEP 3: Compile all Google Sheet Tables:----
 ## Parameter
-a=choose.dir()
-wd = setwd(a)
+path = path_home()
+
+wd = file.path(path,"Dropbox\\01-Railway\\01-MMSP\\02-Pre-Construction\\02-Civil\\04-TBM Assembly\\01-MasterList")
+setwd(wd)
+getwd()
+
 
 ## Define URL where data is stored and updated
 url = "https://docs.google.com/spreadsheets/d/12mQTJH2SAwiQH2bUXLM2RkDA0kU4nzXmDb7Mi7rJm5E/edit#gid=762722994"
@@ -84,7 +89,7 @@ v3$Parts = as.numeric(v3$Parts)
 v3$Process = as.numeric(v3$Process)
 
 # Expoert
-write.xlsx(v3, file.path(wd,paste("TBM_manfaucturing_progress_",gsub("-","",Sys.Date()), ".xlsx", sep="")),row.names=FALSE)
+write.xlsx(v3, file.path(wd,"TBM_Assembly_ML.xlsx"))
 
 
 

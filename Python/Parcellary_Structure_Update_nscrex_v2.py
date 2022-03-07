@@ -22,11 +22,13 @@ inputLayerLotOrigin = arcpy.GetParameterAsText(1)
 inputLayerStrucOrigin = arcpy.GetParameter(2)
 inputLayerOccupOrigin = arcpy.GetParameterAsText(3)
 inputLayerISFOrigin = arcpy.GetParameterAsText(4)
+inputLayerN2PierOrigin = arcpy.GetParameterAsText(5)
 #inputLayerBarangOrigin = arcpy.GetParameter(5)
 
-inputListLot = arcpy.GetParameterAsText(5)
-inputListStruc = arcpy.GetParameterAsText(6)
-inputListISF = arcpy.GetParameterAsText(7)
+inputListLot = arcpy.GetParameterAsText(6)
+inputListStruc = arcpy.GetParameterAsText(7)
+inputListISF = arcpy.GetParameterAsText(8)
+inputListN2Pier = arcpy.GetParameterAsText(9)
 #inputListBarangay = arcpy.GetParameterAsText(9)
 
 
@@ -102,7 +104,58 @@ arcpy.Append_management(copyBarang, inputLayerBarangOrigin, schema_type = 'NO_TE
 """
 
 
-########################### End of Process for Barangay
+########################### Process for updating N2 Pier ##############################
+# 1. Copy
+try:
+    copyNameN2Pier = 'N2_Pier_test'
+    copyN2Pier = arcpy.CopyFeatures_management(inputLayerN2PierOrigin, copyNameN2Pier)
+    
+    # 2. Delete fields: 'Municipality' and 'AccessDate'
+    fieldNameN2Pier = [f.name for f in arcpy.ListFields(copyN2Pier)]
+    
+    ## 2.1. Fields to be dropped
+    dropFieldN2Pier = [e for e in fieldNameN2Pier if e not in ('PIER','CP','Shape','Shape_Length','Shape_Area','Shape.STArea()','Shape.STLength()','OBJECTID','GlobalID')]
+    
+    ## 2.2 Extract existing fields
+    inFieldN2Pier = [f.name for f in arcpy.ListFields(copyN2Pier)]
+    
+    ## 2.3. Check if there are fields to be dropped
+    finalDropFieldN2Pier = [f for f in inFieldN2Pier if f in tuple(dropFieldN2Pier)]
+    
+    ## 2.4 Drop
+    if len(finalDropFieldN2Pier) == 0:
+        arcpy.AddMessage("There is no field that can be dropped from the feature layer")
+    else:
+        arcpy.DeleteField_management(copyN2Pier, finalDropFieldN2Pier)
+        
+    # 3. Join Field
+    ## 3.1. Convert Excel tables to feature table
+    MasterListN2Pier = arcpy.TableToTable_conversion(inputListN2Pier, workSpace, 'MasterListN2Pier')
+    
+    ## 3.2. Get Join Field from MasterList gdb table: Gain all fields except 'Id'
+    inputFieldN2Pier = [f.name for f in arcpy.ListFields(MasterListN2Pier)]
+    joinFieldN2Pier = [e for e in inputFieldN2Pier if e not in ('PIER', 'Pier','OBJECTID')]
+    
+    ## 3.3. Extract a Field from MasterList and Feature Layer to be used to join two tables
+    tN2Pier = [f.name for f in arcpy.ListFields(copyN2Pier)]
+    in_fieldN2Pier = ' '.join(map(str, [f for f in tN2Pier if f in ('PIER', 'Pier')]))
+    
+    uN2Pier = [f.name for f in arcpy.ListFields(MasterListN2Pier)]
+    join_fieldN2Pier=' '.join(map(str, [f for f in uN2Pier if f in ('PIER', 'Pier')]))
+    
+    ## 3.4 Join
+    arcpy.JoinField_management(in_data=copyN2Pier, in_field=in_fieldN2Pier, join_table=MasterListN2Pier, join_field=join_fieldN2Pier, fields=joinFieldN2Pier)
+    
+    # 4. Trucnate
+    arcpy.TruncateTable_management(inputLayerN2PierOrigin)
+    
+    # 5. Append
+    arcpy.Append_management(copyN2Pier, inputLayerN2PierOrigin, schema_type = 'NO_TEST')
+    
+except:
+    pass
+
+#######################################################################################
 #######################################################################################
     
 # 1. Copy Original Feature Layers

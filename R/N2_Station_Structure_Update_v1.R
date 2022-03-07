@@ -73,7 +73,7 @@
 # DEFINE PARAMETERS
 #******************************************************************#
 ## Enter Date of Update ##
-date_update = "2022-02-14"
+date_update = "2022-03-07"
 
 
 strucType = c("Substructure", "Superstructure")
@@ -124,7 +124,7 @@ library(fs)
 #)
 #drive_auth_configure(app = google_app)
 #drive_auth_configure(api_key = "AIzaSyCqbwFnO6csUya-zKcXKXh_-unE_knZdd0")
-drive_auth(path = "G:/My Drive/01-Google Clould Platform/service-account-token.json")
+#drive_auth(path = "G:/My Drive/01-Google Clould Platform/service-account-token.json")
 
 
 ## Authorize (Choose 'matsuzakieiji0@gmail.com'. OCG gmail may not work)
@@ -194,7 +194,6 @@ x$Status[str_detect(x$Remarks,pattern="Incomplete")] = 3 # Delayed
 # Bored Piles use "ID"
 colnames(x)[which(colnames(x)=="nPierNumber")] = "ID"
 
-x
 
 # Join new status to Viaduct masterlist
 ## Read master list table
@@ -204,6 +203,19 @@ y$Status = as.numeric(y$Status)
 
 yx = left_join(y,x,by="ID")
 
+## Check if the number of Status1 for each Type is same between x and yx.
+x_t = table(x$Status)
+
+head(yx)
+yx_t = table(yx$Status.y[which(yx$CP.x=="N-01" & yx$SubType==1)])
+
+check = x_t %in% yx_t
+if(str_detect(unique(check),"TRUE")){
+  print("GOOD! The number of Status1 for N-01 Bored piles is same between Civil and joined excel ML.")
+} else (
+  print("Number of Status1 for N-01 Bored piles is DIFFERENT. PLEASE CHECK")
+)
+
 
 gg = which(yx$Status.y>1)
 yx$Status.x[gg] = yx$Status.y[gg]
@@ -212,7 +224,9 @@ delField = which(colnames(yx)=="Status.y" | colnames(yx)=="Remarks" | colnames(y
 yx = yx[,-delField]
 
 # Rename Status.x to Status
-colnames(yx)[which(str_detect(colnames(yx),"CP|Status"))] = c("CP","Status")
+colnames(yx)[which(str_detect(colnames(yx),"CP"))] = "CP"
+colnames(yx)[which(str_detect(colnames(yx),"Status"))] = "Status"
+
 
 # Date
 library(lubridate)
@@ -230,7 +244,7 @@ direct = file.path(wd,"old")
 
 write.xlsx(y,file.path(direct,fileName),row.names=FALSE)
 
-################# BACKUP IF necessary
+################# BACKUP IF necessary using above
 
 ## Overwrite master list with new date
 yx$updated = ymd(date_update)
@@ -348,6 +362,20 @@ y = read.xlsx(MLTable)
 yx = left_join(y,x,by="ID")
 
 
+## Check if the number of Status1 for each Type is same between x and yx.
+x_t = table(x$Status)
+head(yx)
+yx_t = table(yx$Status.y[which(yx$CP.x=="N-02" & yx$SubType==1)])
+
+check = x_t %in% yx_t
+if(str_detect(unique(check),"TRUE")){
+  print("GOOD! The number of Status1 for N-01 Bored piles is same between Civil and joined excel ML.")
+} else (
+  print("Number of Status1 for N-01 Bored piles is DIFFERENT. PLEASE CHECK")
+)
+
+
+
 # NA for status = 1 (To be Constructed)
 
 gg = which(yx$Status.y>0)
@@ -431,6 +459,21 @@ head(x)
 y = read.xlsx(MLTable)
 
 yx = left_join(y,x,by="ID")
+
+## Check if the number of Status1 for each Type is same between x and yx.
+x_t = table(x$Status)
+head(yx)
+yx_t = table(yx$Status.y[which(yx$CP.x=="N-03" & yx$SubType==1)])
+
+check = x_t %in% yx_t
+if(str_detect(unique(check),"TRUE")){
+  print("GOOD! The number of Status1 for N-01 Bored piles is same between Civil and joined excel ML.")
+} else (
+  print("Number of Status1 for N-01 Bored piles is DIFFERENT. PLEASE CHECK")
+)
+
+
+
 
 # NA for status = 1 (To be Constructed)
 gg = which(yx$Status.y>0)

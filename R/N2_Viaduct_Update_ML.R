@@ -127,7 +127,7 @@ write.xlsx(x,MLTable)
 
 #******************************************************************#
 ## Enter Date of Update ##
-date_update = "2022-03-07"
+date_update = "2022-03-11"
 
 #******************************************************************#
 
@@ -408,6 +408,19 @@ del_w = paste(del_w,collapse="|",sep="")
 ## Delete these words from nPierNumber
 xx$nPierNumber[id] = gsub(del_w,"",xx$nPierNumber[id])
 
+## Check pier Number
+unique(xx$nPierNumber)
+### make sure that nPierNumber is all uppercase letter
+xx$nPierNumber = toupper(xx$nPierNumber)
+
+### Remove all spaces
+xx$nPierNumber = gsub("[[:space:]]","",xx$nPierNumber)
+
+### Remove bracket if present
+xx$nPierNumber = gsub("[()]","",xx$nPierNumber)
+
+
+
 # Unlike bored piles, we need to use nPierNumber AND Type to join Status1 to our master list
 # This is because bored piles have unique nPierNumber, while other components do not.
 # This means that we cannot bind tables generated here between bored piles and others.
@@ -440,8 +453,9 @@ if(str_detect(unique(check),"TRUE")){
   print("Number of Status1 for N-01 Bored piles is DIFFERENT. PLEASE CHECK")
 )
 
-xx_pier = xx$nPierNumber[which(xx$Type==3 & xx$Status1==4)]
-yxx_pier = yxx$nPierNumber[which(yxx$Type==3 & yxx$Status1.y==4 & yxx$CP=="N-01")]
+### use the following when you need to check
+xx_pier = xx$nPierNumber[which(xx$Type>=2 & xx$Status1<5)]
+yxx_pier = yxx$nPierNumber[which(yxx$Type>=2 & yxx$Status1.y<5 & yxx$CP=="N-01")]
 
 xx_pier[!xx_pier %in% yxx_pier]
 yxx_pier[!yxx_pier %in% xx_pier]

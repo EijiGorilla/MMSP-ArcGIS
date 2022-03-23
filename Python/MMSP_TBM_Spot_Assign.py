@@ -24,7 +24,7 @@ TBM6 = []
 
 # First collect segment Numbers for each TBM line where status is completed
 fields = ["line","segmentno","status"]
-with arcpy.da.SearchCursor(layer, fields) as cursor:
+with arcpy.da.SearchCursor(inputLayer, fields) as cursor:
     for row in cursor:
         if row[0] == "TBM1" and row[2] == 4:
             TBM1.append(row[1])
@@ -41,7 +41,7 @@ with arcpy.da.SearchCursor(layer, fields) as cursor:
 
 # Now fill in tbmSpot
 fields1 = ["line","segmentno","tbmSpot"] 
-with arcpy.da.UpdateCursor(layer, fields1) as cursor:
+with arcpy.da.UpdateCursor(inputLayer, fields1) as cursor:
     for row in cursor:
         if row[0] == "TBM1" and row[1] == max(TBM1):
             row[2] = 1
@@ -55,3 +55,4 @@ with arcpy.da.UpdateCursor(layer, fields1) as cursor:
             row[2] = 1
         elif row[0] == "TBM6" and row[1] == max(TBM6):
             row[2] = 1
+        cursor.updateRow(row)

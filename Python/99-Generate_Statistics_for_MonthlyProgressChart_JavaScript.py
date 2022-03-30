@@ -40,21 +40,19 @@ pierH_2022 = {1:[],2:[],3:[],4:[],5:[],6:[],7:[],8:[],9:[],10:[],11:[],12:[]}
 precast_2022 = {1:[],2:[],3:[],4:[],5:[],6:[],7:[],8:[],9:[],10:[],11:[],12:[]}
 
 # 1. Update Year and Month field of inputLayer
-with arcpy.da.UpdateCursor(inpuLayer, ["end_date","Year","Month"]) as cursor:
+with arcpy.da.UpdateCursor(inputLayer, ["end_date","Year","Month"]) as cursor:
     for row in cursor:
         if row[0]:
-            dmY = datetime.strptime(row[0], '%B %Y').date()
-            row[1] = dmY.year
-            row[2] = dmY.month
+            row[1] = row[0].year
+            row[2] = row[0].month
         cursor.updateRow(row)
 
 
 # 2. Run 'Summary Statistics'
 outStatsTable = "outStatsTable"
-statsFields = [["Type"]]
+statsFields = [["Type", "COUNT"]]
 caseFields = ["Type","Year","Month"]
-stats = "COUNT"
-summaryT = arcpy.Statistics_analysis(inputLayer, outStatsTable, stats, caseFields)
+summaryT = arcpy.Statistics_analysis(inputLayer, outStatsTable, statsFields, caseFields)
 
 # 3. Append count to an empty dictionary by Type, Year, and Month
 inFields = ["Type","Year","Month","FREQUENCY"]

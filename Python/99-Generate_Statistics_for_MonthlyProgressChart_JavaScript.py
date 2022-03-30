@@ -96,3 +96,6 @@ print("const pile=2021" + str(pile_2022) + ";","\n",
       "const pile=2021" + str(pier_2022) + ";","\n",
       "const pile=2021" + str(pierH_2022) + ";","\n",
       "const pile=2021" + str(precast_2022) + ";","\n")
+
+# Delete
+arcpy.Delete_management(summaryT)

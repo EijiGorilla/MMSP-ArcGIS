@@ -156,8 +156,15 @@ x$Status[x$Status==1] = 4
 x$Type = type_kp
 x$Station = st_NA
 
+x$end_date = unlist(x$end_date)
+x$end_date = as.POSIXlt(x$end_date, origin="1970-01-01", tz="UTC")
+x$end_date = as.Date(x$end_date, origin = "1899-12-30")
+
 # Merge this to masterlist
 y = read.xlsx(MLTable)
+
+y$end_date = as.Date(y$end_date, origin = "1899-12-30")
+
 yx = left_join(y,x,by=c("Station","Type","ID"))
 
 ## Check if the number of Status1 for each Type is same between x and yx.
@@ -190,7 +197,9 @@ head(yx)
 ## Replace Status.x rows with only updated status from Status.y
 gg = which(yx$Status.y>0)
 yx$Status.x[gg] = yx$Status.y[gg]
-yx$end_date.x[gg] = yx$end_date.y[gg]
+
+gg1 = which(yx$end_date.y>0)
+yx$end_date.x[gg1] = yx$end_date.y[gg1]
 
 # Delete Status.y and rename Status.x to Status
 rm_status = which(colnames(yx)=="Status.y")
@@ -219,17 +228,13 @@ write.xlsx(y,file.path(direct,fileName),row.names=FALSE)
 # Add the latest date
 yx$updated = date_update
 
+
 # Convert date to Excel date format
 yx$updated = as.Date(yx$updated, origin = "1899-12-30")
 yx$updated = as.Date(yx$updated, format="%m/%d/%y %H:%M:%S")
 
 yx$StartDate = as.Date(yx$StartDate, origin = "1899-12-30")
 yx$StartDate = as.Date(yx$StartDate, format="%m/%d/%y %H:%M:%S")
-
-yx$end_date = unlist(yx$end_date)
-yx$end_date = as.POSIXlt(yx$end_date, origin="1970-01-01", tz="UTC")
-yx$end_date = as.Date(yx$end_date, origin = "1899-12-30")
-
 
 # count for checking
 id = which(str_detect(yx$ID,"^KP-") & yx$Status==4)
@@ -292,9 +297,14 @@ x$Status[x$Status==1] = 4
 x$Type = type_dwall
 x$Station = st_NA
 
+x$end_date = unlist(x$end_date)
+x$end_date = as.POSIXlt(x$end_date, origin="1970-01-01", tz="UTC")
+x$end_date = as.Date(x$end_date, origin = "1899-12-30")
 
 # Merge this to masterlist
 y = read.xlsx(MLTable)
+
+y$end_date = as.Date(y$end_date, origin = "1899-12-30")
 
 yx = left_join(y,x,by=c("Station","Type","ID"))
 
@@ -318,7 +328,9 @@ if(str_detect(unique(check),"TRUE")){
 ## Replace Status.x rows with only updated status from Status.y
 gg = which(yx$Status.y>0)
 yx$Status.x[gg] = yx$Status.y[gg]
-yx$end_date.x[gg] = yx$end_date.y[gg]
+
+gg1 = which(yx$end_date.y>0)
+yx$end_date.x[gg1] = yx$end_date.y[gg1]
 
 # Delete Status.y and rename Status.x to Status
 rm_status = which(colnames(yx)=="Status.y")
@@ -346,10 +358,6 @@ yx$updated = as.Date(yx$updated, format="%m/%d/%y %H:%M:%S")
 
 yx$StartDate = as.Date(yx$StartDate, origin = "1899-12-30")
 yx$StartDate = as.Date(yx$StartDate, format="%m/%d/%y %H:%M:%S")
-
-yx$end_date = unlist(yx$end_date)
-yx$end_date = as.POSIXlt(yx$end_date, origin="1970-01-01", tz="UTC")
-yx$end_date = as.Date(yx$end_date, origin = "1899-12-30")
 
 write.xlsx(yx,MLTable)
 

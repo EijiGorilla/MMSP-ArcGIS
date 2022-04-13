@@ -27,18 +27,18 @@ inputLayer = arcpy.GetParameterAsText(1)
 
 # 0. Create emtpy dictionary for each year, month, and type
 ## Year 2021
-pile_2021 = {1:[],2:[],3:[],4:[],5:[],6:[],7:[],8:[],9:[],10:[],11:[],12:[]}
-pileC_2021 = {1:[],2:[],3:[],4:[],5:[],6:[],7:[],8:[],9:[],10:[],11:[],12:[]}
-pier_2021 = {1:[],2:[],3:[],4:[],5:[],6:[],7:[],8:[],9:[],10:[],11:[],12:[]}
-pierH_2021 = {1:[],2:[],3:[],4:[],5:[],6:[],7:[],8:[],9:[],10:[],11:[],12:[]}
-precast_2021 = {1:[],2:[],3:[],4:[],5:[],6:[],7:[],8:[],9:[],10:[],11:[],12:[]}
+dwall_2021 = {1:[],2:[],3:[],4:[],5:[],6:[],7:[],8:[],9:[],10:[],11:[],12:[]}
+column_2021 = {1:[],2:[],3:[],4:[],5:[],6:[],7:[],8:[],9:[],10:[],11:[],12:[]}
+slab_2021 = {1:[],2:[],3:[],4:[],5:[],6:[],7:[],8:[],9:[],10:[],11:[],12:[]}
+kingpost_2021 = {1:[],2:[],3:[],4:[],5:[],6:[],7:[],8:[],9:[],10:[],11:[],12:[]}
+secantp_2021 = {1:[],2:[],3:[],4:[],5:[],6:[],7:[],8:[],9:[],10:[],11:[],12:[]}
 
 ## Year 2022
-pile_2022 = {1:[],2:[],3:[],4:[],5:[],6:[],7:[],8:[],9:[],10:[],11:[],12:[]}
-pileC_2022 = {1:[],2:[],3:[],4:[],5:[],6:[],7:[],8:[],9:[],10:[],11:[],12:[]}
-pier_2022 = {1:[],2:[],3:[],4:[],5:[],6:[],7:[],8:[],9:[],10:[],11:[],12:[]}
-pierH_2022 = {1:[],2:[],3:[],4:[],5:[],6:[],7:[],8:[],9:[],10:[],11:[],12:[]}
-precast_2022 = {1:[],2:[],3:[],4:[],5:[],6:[],7:[],8:[],9:[],10:[],11:[],12:[]}
+dwall_2022 = {1:[],2:[],3:[],4:[],5:[],6:[],7:[],8:[],9:[],10:[],11:[],12:[]}
+column_2022 = {1:[],2:[],3:[],4:[],5:[],6:[],7:[],8:[],9:[],10:[],11:[],12:[]}
+slab_2022 = {1:[],2:[],3:[],4:[],5:[],6:[],7:[],8:[],9:[],10:[],11:[],12:[]}
+kingpost_2022 = {1:[],2:[],3:[],4:[],5:[],6:[],7:[],8:[],9:[],10:[],11:[],12:[]}
+secantp_2022 = {1:[],2:[],3:[],4:[],5:[],6:[],7:[],8:[],9:[],10:[],11:[],12:[]}
 
 # Check if there are field names for 'Year' and 'Month'
 field1 = "Year"
@@ -71,49 +71,49 @@ with arcpy.da.SearchCursor(summaryT, inFields) as cursor:
     for row in cursor:            
         # Year 2021
         if row[0] == 1 and row[1] == 2021:
-            pile_2021[row[2]].append(row[3])
+            dwall_2021[row[2]].append(row[3])
         elif row[0] == 2 and row[1] == 2021:
-            pileC_2021[row[2]].append(row[3])
+            column_2021[row[2]].append(row[3])
         elif row[0] == 3 and row[1] == 2021:
-            pier_2021[row[2]].append(row[3])
+            slab_2021[row[2]].append(row[3])
         elif row[0] == 4 and row[1] == 2021:
-            pierH_2021[row[2]].append(row[3])
+            kingpost_2021[row[2]].append(row[3])
         elif row[0] == 5 and row[1] == 2021:
-            precast_2021[row[2]].append(row[3])
+            secantp_2021[row[2]].append(row[3])
             
         # Year 2022
         elif row[0] == 1 and row[1] == 2022:
-            pile_2022[row[2]].append(row[3])
+            dwall_2022[row[2]].append(row[3])
         elif row[0] == 2 and row[1] == 2022:
-            pileC_2022[row[2]].append(row[3])
+            column_2022[row[2]].append(row[3])
         elif row[0] == 3 and row[1] == 2022:
-            pier_2022[row[2]].append(row[3])
+            slab_2022[row[2]].append(row[3])
         elif row[0] == 4 and row[1] == 2022:
-            pierH_2022[row[2]].append(row[3])
+            kingpost_2022[row[2]].append(row[3])
         elif row[0] == 5 and row[1] == 2022:
-            precast_2022[row[2]].append(row[3])
+            secantp_2022[row[2]].append(row[3])
 
 # Print all
-arcpy.AddMessage("const pile_2021 = " + str(pile_2021) + ";")
+arcpy.AddMessage("const dwall_2021 = " + str(dwall_2021) + ";")
 arcpy.AddMessage("\n")
-arcpy.AddMessage("const pileC_2021 = " + str(pileC_2021) + ";")
+arcpy.AddMessage("const column_2021 = " + str(column_2021) + ";")
 arcpy.AddMessage("\n")
-arcpy.AddMessage("const pier_2021 = " + str(pier_2021) + ";")
+arcpy.AddMessage("const slab_2021 = " + str(slab_2021) + ";")
 arcpy.AddMessage("\n")
-arcpy.AddMessage("const pierH_2021 = " + str(pierH_2021) + ";")
+arcpy.AddMessage("const kingpost_2021 = " + str(kingpost_2021) + ";")
 arcpy.AddMessage("\n")
-arcpy.AddMessage("const precast_2021 = " + str(precast_2021) + ";")
+arcpy.AddMessage("const secantp_2021 = " + str(secantp_2021) + ";")
 arcpy.AddMessage("\n")
 
-arcpy.AddMessage("const pile_2022 = " + str(pile_2022) + ";")
+arcpy.AddMessage("const dwall_2022 = " + str(dwall_2022) + ";")
 arcpy.AddMessage("\n")
-arcpy.AddMessage("const pileC_2022 = " + str(pileC_2022) + ";")
+arcpy.AddMessage("const column_2022 = " + str(column_2022) + ";")
 arcpy.AddMessage("\n")
-arcpy.AddMessage("const pier_2022 = " + str(pier_2022) + ";")
+arcpy.AddMessage("const slab_2022 = " + str(slab_2022) + ";")
 arcpy.AddMessage("\n")
-arcpy.AddMessage("const pierH_2022 = " + str(pierH_2022) + ";")
+arcpy.AddMessage("const kingpost_2022 = " + str(kingpost_2022) + ";")
 arcpy.AddMessage("\n")
-arcpy.AddMessage("const precast_2022 = " + str(precast_2022) + ";")
+arcpy.AddMessage("const secantp_2022 = " + str(secantp_2022) + ";")
 
 # Delete
 arcpy.Delete_management(summaryT)

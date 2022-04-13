@@ -73,7 +73,7 @@
 # DEFINE PARAMETERS
 #******************************************************************#
 ## Enter Date of Update ##
-date_update = "2022-03-11"
+date_update = "2022-04-08"
 
 
 strucType = c("Substructure", "Superstructure")
@@ -268,7 +268,8 @@ write.xlsx(yx, MLTable)
 
 ### N01: OTHERS #############----
 
-## 
+## When you need to convert string to numeric for the following field names
+
 # We need to convert string to numbers for smart maps.
 ## These strings must be used for site palnners who will update the master list
 
@@ -361,11 +362,12 @@ y = read.xlsx(MLTable)
 
 yx = left_join(y,x,by="ID")
 
-
 ## Check if the number of Status1 for each Type is same between x and yx.
 x_t = table(x$Status)
 head(yx)
 yx_t = table(yx$Status.y[which(yx$CP.x=="N-02" & yx$SubType==1)])
+
+
 
 check = x_t %in% yx_t
 if(str_detect(unique(check),"TRUE")){
@@ -379,6 +381,7 @@ if(str_detect(unique(check),"TRUE")){
 # NA for status = 1 (To be Constructed)
 
 gg = which(yx$Status.y>0)
+yx[gg,]
 
 yx$Status.x[gg] = yx$Status.y[gg]
 delField = which(colnames(yx)=="Status.y" | colnames(yx)=="CP.y")

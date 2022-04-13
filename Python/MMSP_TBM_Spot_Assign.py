@@ -43,16 +43,19 @@ with arcpy.da.SearchCursor(inputLayer, fields) as cursor:
 fields1 = ["line","segmentno","tbmSpot"] 
 with arcpy.da.UpdateCursor(inputLayer, fields1) as cursor:
     for row in cursor:
-        if row[0] == "TBM1" and row[1] == max(TBM1):
-            row[2] = 1
-        elif row[0] == "TBM2" and row[1] == max(TBM2):
-            row[2] = 1
-        elif row[0] == "TBM3" and row[1] == max(TBM3):
-            row[2] = 1
-        elif row[0] == "TBM4" and row[1] == max(TBM4):
-            row[2] = 1
-        elif row[0] == "TBM5" and row[1] == max(TBM5):
-            row[2] = 1
-        elif row[0] == "TBM6" and row[1] == max(TBM6):
-            row[2] = 1
-        cursor.updateRow(row)
+        try:
+            if row[0] == "TBM1" and row[1] == max(TBM1):
+                row[2] = 1
+            elif row[0] == "TBM2" and row[1] == max(TBM2):
+                row[2] = 1
+            elif row[0] == "TBM3" and row[1] == max(TBM3):
+                row[2] = 1
+            elif row[0] == "TBM4" and row[1] == max(TBM4):
+                row[2] = 1
+            elif row[0] == "TBM5" and row[1] == max(TBM5):
+                row[2] = 1
+            elif row[0] == "TBM6" and row[1] == max(TBM6):
+                row[2] = 1
+            cursor.updateRow(row)
+        except:
+            pass

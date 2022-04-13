@@ -59,10 +59,20 @@ inputLayers = arcpy.GetParameterAsText(1)
 testL = inputLayers.replace("'","")
 listLayers = testL.split(';')
 
-Calendar = {1:"January", 2:"February", 3:"March", 4:"April", 5:"May", 6:"June", 7:"July", 8:"August", 9:"September", 10:"October", 11:"November", 12:"December"}
+#Calendar = {1:"January", 2:"February", 3:"March", 4:"April", 5:"May", 6:"June", 7:"July", 8:"August", 9:"September", 10:"October", 11:"November", 12:"December"}
 
 
 for layer in listLayers:
+    # First Add 'TargetDate1' if layer does not have this field name
+    #addField = "TargetDate1"
+    #temp = [f.name for f in arcpy.ListFields(layer)]
+    #listF = [f for f in temp if f in addField]
+
+    #try:
+    #    arcpy.AddField_management(layer, addField, "DATE", field_alias = addField, field_is_nullable="NULLABLE")
+    #except:
+    #    pass
+    
     # Assign Domains to Field
     arcpy.AssignDomainToField_management(layer, "Status", 'Utility Relocation Status')
     arcpy.AssignDomainToField_management(layer, "UtilType", 'Utility Type')
@@ -88,6 +98,8 @@ for layer in listLayers:
                     row[2] = 0
                 elif row[1] == 12:
                     row[2] = 7.5
+                elif row[1] in [10,11]:
+                    row[2] = -1                   
                 cursor.updateRow(row)
                 
         with arcpy.da.UpdateCursor(layer, ['Facility', 'UtilType2', 'SIZE']) as cursor:
@@ -99,20 +111,21 @@ for layer in listLayers:
                 cursor.updateRow(row)
         
         # Convert date text format
-        with arcpy.da.UpdateCursor(layer, ['TargetDate', 'TargetDate1']) as cursor:
-            for row in cursor:
-                if row[0]:
-                    dmY = datetime.strptime(row[0],'%d/%m/%Y').date() # date format
-                    row[1] = dmY
-                    mm = dmY.month
-                    years = dmY.year
-                    row[0] = str(Calendar[mm]) + " " + str(years) # string format
-                else:
-                    row[0] = None
-                    row[1] = None
-                cursor.updateRow(row)
+        #with arcpy.da.UpdateCursor(layer, ['TargetDate', 'TargetDate1']) as cursor:
+        #    for row in cursor:
+        #        if row[0]:
+        #            dmY = datetime.strptime(row[0], '%B %Y').date() # date format "December 2022"
+        #            row[1] = dmY
+        #            mm = dmY.month
+        #            years = dmY.year
+        #            row[0] = str(Calendar[mm]) + " " + str(years) # string format
+        #        else:
+        #            row[0] = None
+        #            row[1] = None
+        #        cursor.updateRow(row)
             
-    else: # Polyline
+    else:
+                
         arcpy.AssignDomainToField_management(layer, "UtilType2", 'Utility Line Type 2')
         
         cp = arcpy.Describe(layer).basename
@@ -146,18 +159,18 @@ for layer in listLayers:
                 cursor.updateRow(row)
         
                # Convert date text format
-        with arcpy.da.UpdateCursor(layer, ['TargetDate','TargetDate1']) as cursor:
-            for row in cursor:
-                if row[0]:
-                    dmY = datetime.strptime(row[0],'%d/%m/%Y').date() # date format
-                    row[1] = dmY
-                    mm = dmY.month
-                    years = dmY.year
-                    row[0] = str(Calendar[mm]) + " " + str(years) # string format
-                else:
-                    row[0] = None
-                    row[1] = None
-                cursor.updateRow(row)
+        #with arcpy.da.UpdateCursor(layer, ['TargetDate','TargetDate1']) as cursor:
+        #    for row in cursor:
+        #        if row[0]:
+        #            dmY = datetime.strptime(row[0], '%B %Y').date() # date format '%d/%m/%Y'
+        #            row[1] = dmY
+        #            mm = dmY.month
+        #            years = dmY.year
+        #            row[0] = str(Calendar[mm]) + " " + str(years) # string format
+        #        else:
+        #            row[0] = None
+        #            row[1] = None
+        #        cursor.updateRow(row)
 
 """
 Calendar = {1:"January", 2:"February", 3:"March", 4:"April", 5:"May", 6:"June", 7:"July", 8:"August", 9:"September", 10:"October", 11:"November", 12:"December"}

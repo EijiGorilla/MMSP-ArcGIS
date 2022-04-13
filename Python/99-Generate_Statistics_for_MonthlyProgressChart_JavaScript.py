@@ -21,6 +21,7 @@ from datetime import datetime
 arcpy.env.overwriteOutput = True
 
 # Define parameters
+# "C:/Users/eiji.LAPTOP-KSD9P6CP/OneDrive - Oriental Consultants Global JV/Documents/ArcGIS/Projects/During-Construction_nscrexn2"
 workSpace = arcpy.GetParameterAsText(0)
 inputLayer = arcpy.GetParameterAsText(1)
 
@@ -46,8 +47,6 @@ with arcpy.da.UpdateCursor(inputLayer, ["end_date","Year","Month"]) as cursor:
             row[1] = row[0].year
             row[2] = row[0].month
         cursor.updateRow(row)
-
-
 # 2. Run 'Summary Statistics'
 outStatsTable = "outStatsTable"
 statsFields = [["Type", "COUNT"]]
@@ -60,40 +59,49 @@ with arcpy.da.SearchCursor(summaryT, inFields) as cursor:
     for row in cursor:            
         # Year 2021
         if row[0] == 1 and row[1] == 2021:
-            pile_2021(row[2]).append(row[3])
+            pile_2021[row[2]].append(row[3])
         elif row[0] == 2 and row[1] == 2021:
-            pileC_2021(row[2]).append(row[3])
+            pileC_2021[row[2]].append(row[3])
         elif row[0] == 3 and row[1] == 2021:
-            pier_2021(row[2]).append(row[3])
+            pier_2021[row[2]].append(row[3])
         elif row[0] == 4 and row[1] == 2021:
-            pierH_2021(row[2]).append(row[3])
+            pierH_2021[row[2]].append(row[3])
         elif row[0] == 5 and row[1] == 2021:
-            precast_2021(row[2]).append(row[2])
+            precast_2021[row[2]].append(row[3])
             
         # Year 2022
         elif row[0] == 1 and row[1] == 2022:
-            pile_2022(row[2]).append(row[3])
+            pile_2022[row[2]].append(row[3])
         elif row[0] == 2 and row[1] == 2022:
-            pileC_2022(row[2]).append(row[3])
+            pileC_2022[row[2]].append(row[3])
         elif row[0] == 3 and row[1] == 2022:
-            pier_2022(row[2]).append(row[3])
+            pier_2022[row[2]].append(row[3])
         elif row[0] == 4 and row[1] == 2022:
-            pierH_2022(row[2]).append(row[3])
+            pierH_2022[row[2]].append(row[3])
         elif row[0] == 5 and row[1] == 2022:
-            precast_2022(row[2]).append(row[3])
+            precast_2022[row[2]].append(row[3])
 
 # Print all
-print("const pile=2021" + str(pile_2021) + ";","\n",
-      "const pile=2021" + str(pileC_2021) + ";","\n",
-      "const pile=2021" + str(pier_2021) + ";","\n",
-      "const pile=2021" + str(pierH_2021) + ";","\n",
-      "const pile=2021" + str(precast_2021) + ";","\n")
+arcpy.AddMessage("const pile_2021 = " + str(pile_2021) + ";")
+arcpy.AddMessage("\n")
+arcpy.AddMessage("const pileC_2021 = " + str(pileC_2021) + ";")
+arcpy.AddMessage("\n")
+arcpy.AddMessage("const pier_2021 = " + str(pier_2021) + ";")
+arcpy.AddMessage("\n")
+arcpy.AddMessage("const pierH_2021 = " + str(pierH_2021) + ";")
+arcpy.AddMessage("\n")
+arcpy.AddMessage("const precast_2021 = " + str(precast_2021) + ";")
+arcpy.AddMessage("\n")
 
-print("const pile=2021" + str(pile_2022) + ";","\n",
-      "const pile=2021" + str(pileC_2022) + ";","\n",
-      "const pile=2021" + str(pier_2022) + ";","\n",
-      "const pile=2021" + str(pierH_2022) + ";","\n",
-      "const pile=2021" + str(precast_2022) + ";","\n")
+arcpy.AddMessage("const pile_2022 = " + str(pile_2022) + ";")
+arcpy.AddMessage("\n")
+arcpy.AddMessage("const pileC_2022 = " + str(pileC_2022) + ";")
+arcpy.AddMessage("\n")
+arcpy.AddMessage("const pier_2022 = " + str(pier_2022) + ";")
+arcpy.AddMessage("\n")
+arcpy.AddMessage("const pierH_2022 = " + str(pierH_2022) + ";")
+arcpy.AddMessage("\n")
+arcpy.AddMessage("const precast_2022 = " + str(precast_2022) + ";")
 
 # Delete
 arcpy.Delete_management(summaryT)

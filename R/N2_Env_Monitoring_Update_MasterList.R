@@ -10,6 +10,7 @@ library(dplyr)
 library(googledrive)
 library(stringr)
 library(reshape2)
+library(fs)
 
 # This R script reads a Google Sheet and reshape the data table 
 # to import into ArcGIS Pro
@@ -24,7 +25,7 @@ library(reshape2)
 #)
 #drive_auth_configure(app = google_app)
 #drive_auth_configure(api_key = "AIzaSyCqbwFnO6csUya-zKcXKXh_-unE_knZdd0")
-drive_auth(path = "G:/My Drive/01-Google Clould Platform/service-account-token.json")
+#drive_auth(path = "G:/My Drive/01-Google Clould Platform/service-account-token.json")
 
 
 ## Authorize (Choose 'matsuzakieiji0@gmail.com'. OCG gmail may not work)
@@ -36,8 +37,9 @@ url = "https://docs.google.com/spreadsheets/d/1rAWKvOMNrecKoLGnHaDz2UqcGszb4BnAh
 
 # Choose working directory
 # C:\Users\oc3512\Dropbox\01-Railway\02-NSCR-Ex\01-N2\03-During-Construction\01-Environment\01-EIA
-a="C:/Users/oc3512/Dropbox/01-Railway/02-NSCR-Ex/01-N2/03-During-Construction/01-Environment/01-EIA"
-wd = setwd(a)
+path =  path_home()
+wd = file.path(path,"Dropbox/01-Railway/02-NSCR-Ex/01-N2/03-During-Construction/01-Environment/01-EIA")
+setwd(wd)
 
 # Read two tables: our GIs masterlist and master list from Envi Team
 # C:\Users\oc3512\Dropbox\01-Railway\02-NSCR-Ex\01-N2\03-During-Construction\01-Environment\01-EIA\N2_Envi_Monitoring_masterlist.xlsx
@@ -85,7 +87,8 @@ v2$Longitude = gsub('” |"',"",v2$Longitude)
 v2$Latitude[] = gsub("[[:space:]]N$","N",x$Latitude)
 v2$Longitude[] = gsub("[[:space:]]E$","E",x$Longitude)
 
-
+v2$Latitude = gsub("  ", " ", v2$Latitude)
+v2$Longitude = gsub("  ", " ", v2$Longitude)
 
 # Reformat
 ## Follow the Domain in ArcGIS Pro for Type
@@ -111,14 +114,13 @@ v2$Type[v2$typeName==surfacewater]=6
 
 # Create back up first
 # C:\\Users\\oc3512\\Dropbox\\01-Railway\\02-NSCR-Ex\\01-N2\\03-During-Construction\\01-Environment\\01-EIA\\old
-dir = choose.dir()
 dates = gsub("-","",Sys.Date()) # today's date
 
 backup = paste(dates,"_",basename,sep="") 
-write.xlsx(x,file.path(dir,backup),row.names=FALSE)
+write.xlsx(x,file.path(wd,"old",backup),row.names=FALSE)
 
 # Add Remarks for comments
 v2$Remarks = ""
   
 # Export
-write.xlsx(v2,file.path(wd,basename),row.names=FALSE,overwrite=TRUE)
+write.xlsx(v2,file.path(wd,basename))

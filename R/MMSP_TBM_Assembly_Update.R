@@ -19,14 +19,10 @@ library(fs)
 #)
 #drive_auth_configure(app = google_app)
 #drive_auth_configure(api_key = "AIzaSyCqbwFnO6csUya-zKcXKXh_-unE_knZdd0")
-drive_auth(path = "G:/My Drive/01-Google Clould Platform/service-account-token.json")
+#drive_auth(path = "G:/My Drive/01-Google Clould Platform/service-account-token.json")
 
 
-## Authorize (Choose 'matsuzakieiji0@gmail.com'. OCG gmail may not work)
-gs4_auth()
-
-# Choose "1!
-1
+gs4_auth(email="matsuzaki-ei@ocglobal.jp")
 
 # STEP 3: Compile all Google Sheet Tables:----
 ## Parameter

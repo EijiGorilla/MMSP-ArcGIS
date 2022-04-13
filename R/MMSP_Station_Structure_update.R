@@ -54,8 +54,9 @@ library(fs)
 #)
 #drive_auth_configure(app = google_app)
 #drive_auth_configure(api_key = "AIzaSyCqbwFnO6csUya-zKcXKXh_-unE_knZdd0")
-drive_auth(path = "G:/My Drive/01-Google Clould Platform/service-account-token.json")
+#drive_auth(path = "G:/My Drive/01-Google Clould Platform/service-account-token.json")
 
+gs4_auth(email="matsuzaki-ei@ocglobal.jp")
 
 
 # Define Working Directory
@@ -64,9 +65,9 @@ wd = file.path(path,"Dropbox/01-Railway/01-MMSP/03-During-Construction/01-Statio
 
 #a=choose.dir()
 setwd(wd)
-
+getwd()
 ## Enter Date of Update ##:----
-date_update = "2022-03-07"
+date_update = "2022-04-11"
 
 # Read our master list table
 MLTable = file.path(wd,"MMSP_Station_Structure.xlsx")
@@ -107,24 +108,21 @@ st_SN = 14 #  Senate
 url = "https://docs.google.com/spreadsheets/d/1wD-fgFafpUDNU270J9ggjtUSgZelfEqbkdRnfr7L2NU/edit?usp=sharing"
 
 ## Define Google Sheet number
-nas_kp_sheet = 1
-nas_dwall_sheet = 2
+nas_kp_sheet = 3
+nas_dwall_sheet = 1
 
 ### NAS: King post:----
 
 # Read and write as CSV and xlsx
 v = range_read(url, sheet = nas_kp_sheet)
-1
 v = data.frame(v)
 
 # Find "KING POST ID" and "COMPLETED" column names
 ## #King POST ID" is at 5th columns and and 9th row
 ## COMPLETED is at at 22nd column and 9th row
-head(v)
-x = v[-c(1:9),c(5,22)]
-colnames(x) = c("ID","Status")
-
-head(x)
+head(v,20)
+x = v[-c(1:10),c(5,11,22)]
+colnames(x) = c("ID","end_date","Status")
 
 #
 x$ID = as.character(x$ID)
@@ -134,8 +132,15 @@ x$Status = as.character(x$Status)
 kp_id = which(str_detect(x$ID,"^KP|^kp|^Kp"))
 x = x[kp_id,]
 
+unique(x$Status)
+
 status_rm_id = which(str_detect(x$Status,"NULL|null|Null|[[:space:]]"))
-x = x[-status_rm_id,]
+
+if(length(status_rm_id)>0){
+  x = x[-status_rm_id,]
+} else {
+  print("No observations to be dropped")
+}
 
 # Make sure that ID is uppercase letter and no space
 x$ID[] = gsub("[[:space:]]","",x$ID) # no space
@@ -153,8 +158,6 @@ x$Station = st_NA
 
 # Merge this to masterlist
 y = read.xlsx(MLTable)
-
-head(y)
 yx = left_join(y,x,by=c("Station","Type","ID"))
 
 ## Check if the number of Status1 for each Type is same between x and yx.
@@ -183,10 +186,11 @@ yx_kp[!yx_kp %in% x_kp]
 head(x_kp)
 
 
-
+head(yx)
 ## Replace Status.x rows with only updated status from Status.y
 gg = which(yx$Status.y>0)
 yx$Status.x[gg] = yx$Status.y[gg]
+yx$end_date.x[gg] = yx$end_date.y[gg]
 
 # Delete Status.y and rename Status.x to Status
 rm_status = which(colnames(yx)=="Status.y")
@@ -195,14 +199,22 @@ yx = yx[, -rm_status]
 status_name = which(str_detect(colnames(yx),"Status"))
 colnames(yx)[status_name] = "Status"
 
+# Delete end_date.y and rename it to end_date
+id = which(colnames(yx)=="end_date.y")
+yx = yx[,-id]
+
+colnames(yx)[which(str_detect(colnames(yx),"end_date"))] = "end_date"
+
+#####################################
 ## Create backup files
 y$updated = as.Date(y$updated, origin = "1899-12-30")
 oldDate = gsub("-","",unique(y$updated))
 
 fileName = paste(oldDate,"_",basename(MLTable),sep="")
-direct = file.path(a,"old")
+direct = file.path(wd,"old")
 
 write.xlsx(y,file.path(direct,fileName),row.names=FALSE)
+#########################################
 
 # Add the latest date
 yx$updated = date_update
@@ -214,8 +226,10 @@ yx$updated = as.Date(yx$updated, format="%m/%d/%y %H:%M:%S")
 yx$StartDate = as.Date(yx$StartDate, origin = "1899-12-30")
 yx$StartDate = as.Date(yx$StartDate, format="%m/%d/%y %H:%M:%S")
 
-yx$EndDate = as.Date(yx$EndDate, origin = "1899-12-30")
-yx$EndDate = as.Date(yx$EndDate, format="%m/%d/%y %H:%M:%S")
+yx$end_date = unlist(yx$end_date)
+yx$end_date = as.POSIXlt(yx$end_date, origin="1970-01-01", tz="UTC")
+yx$end_date = as.Date(yx$end_date, origin = "1899-12-30")
+
 
 # count for checking
 id = which(str_detect(yx$ID,"^KP-") & yx$Status==4)
@@ -243,13 +257,12 @@ kingpost_sour[!kingpost_sour %in% kingpost_yx]
 v = range_read(url, sheet = nas_dwall_sheet)
 v = data.frame(v)
 
+
 # Find "Dwall ID" and "COMPLETED" column names
 ## #King POST ID" is at 4th columns and and 6th row
 ## COMPLETED is at at 18th column and 6th row
-x = v[-c(1:6),c(4,18)]
-
-head(v)
-colnames(x) = c("ID","Status")
+x = v[-c(1:6),c(4,17,18)]
+colnames(x) = c("ID","end_date","Status")
 
 
 #
@@ -305,6 +318,7 @@ if(str_detect(unique(check),"TRUE")){
 ## Replace Status.x rows with only updated status from Status.y
 gg = which(yx$Status.y>0)
 yx$Status.x[gg] = yx$Status.y[gg]
+yx$end_date.x[gg] = yx$end_date.y[gg]
 
 # Delete Status.y and rename Status.x to Status
 rm_status = which(colnames(yx)=="Status.y")
@@ -312,6 +326,16 @@ yx = yx[, -rm_status]
 
 status_name = which(str_detect(colnames(yx),"Status"))
 colnames(yx)[status_name] = "Status"
+
+# Delete end_date.y and rename end_date.x to end_date
+id = which(colnames(yx)=="end_date.y")
+yx = yx[,-id]
+
+colnames(yx)[which(str_detect(colnames(yx),"end_date"))] = "end_date"
+
+
+
+length(yx$ID[yx$Type==1 & yx$Status==4])
 
 # Add the latest date
 yx$updated = date_update
@@ -323,8 +347,9 @@ yx$updated = as.Date(yx$updated, format="%m/%d/%y %H:%M:%S")
 yx$StartDate = as.Date(yx$StartDate, origin = "1899-12-30")
 yx$StartDate = as.Date(yx$StartDate, format="%m/%d/%y %H:%M:%S")
 
-yx$EndDate = as.Date(yx$EndDate, origin = "1899-12-30")
-yx$EndDate = as.Date(yx$EndDate, format="%m/%d/%y %H:%M:%S")
+yx$end_date = unlist(yx$end_date)
+yx$end_date = as.POSIXlt(yx$end_date, origin="1970-01-01", tz="UTC")
+yx$end_date = as.Date(yx$end_date, origin = "1899-12-30")
 
 write.xlsx(yx,MLTable)
 

@@ -22,8 +22,8 @@ library(lubridate)
 #rapFolder = in_params[[1]] # Directory where you saved master list excel tables from the RAP Team 
 #previous_date = in_params[[2]] # just string. 2022-01-26
 #result = out_params[[1]]
-previous_date = "2022-03-03"
-new_date = "2022-03-07"
+previous_date = "2022-03-14"
+new_date = "2022-03-21"
 
 
 # 1. Make sure that all the excel files are downloaded from the RAP Team's OneDrive in the following working directory;----
@@ -100,6 +100,8 @@ sc_pier1 = file.path(wd_rap,rap_files[which(str_detect(rap_files,"^SC.*Pier.*.xl
 sc_lot_rap = read.xlsx(sc_lot1)
 sc_struc_rap = read.xlsx(sc_struc1)
 sc_pier_rap = read.xlsx(sc_pier1)
+
+str(sc_pier_rap)
 
 ### 3.2.2. SC1 (Contractors' Submission):----
 sc1_lot = file.path(wd_rap,rap_files[which(str_detect(rap_files,"^SC1_.*Parcellary.*.xlsx"))])
@@ -283,13 +285,12 @@ id = which(!is.na(sc_lot_rap$HandOverDate) & sc_lot_rap$StatusLA==0) # StatusLA=
 
 if(length(id)>0){
   print("There is error in data entry for 'HandOverDate' and/or 'StatusLA'. PLEASE CHECK")
+  
+  # if you found that lots are already handed over but with HandOverDate, I will delete HandOverDate for these lots.
+  sc_lot_rap$HandOverDate[id] = NA
 } else {
   print("")
 }
-
-
-# if you found that lots are already handed over but with HandOverDate, I will delete HandOverDate for these lots.
-sc_lot_rap$HandOverDate[id] = NA
 
 
 ### 4.2. Join SC Land to SC1 Land, SC1 Structure to SC structure in the RAP Teams+----
@@ -383,6 +384,7 @@ backupF = function(){
   write.xlsx(sc_lot_gis, file.path(backup_dir_sc,paste(gsub("-","",previous_date),"_",basename(sc_lot),sep="")))
   write.xlsx(sc_struc_gis, file.path(backup_dir_sc,paste(gsub("-","",previous_date),"_",basename(sc_struc),sep="")))
   write.xlsx(sc_isf_gis, file.path(backup_dir_sc,paste(gsub("-","",previous_date),"_",basename(sc_isf),sep="")))
+  write.xlsx(sc_pier_gis, file.path(backup_dir_sc,paste(gsub("-","",previous_date),"_",basename(sc_pier),sep="")))
   
   # barangay
   write.xlsx(sc1_barang_gis, file.path(backup_dir_sc,paste(gsub("-","",previous_date),"_",SC1_Barangay_fileName,sep="")))
@@ -812,6 +814,7 @@ colnames(sc_pier_rap)[id] = "Municipality"
 colNames = colnames(sc_pier_rap)
 id = which(str_detect(colNames,"Pier|pier|PIER"))
 colnames(sc_pier_rap)[id] = "PIER"
+
 
 
 ## 8.2.4. Convert Date format

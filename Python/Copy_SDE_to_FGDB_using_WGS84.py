@@ -38,7 +38,9 @@ if sp_target == 3857:
     arcpy.env.outputCoordinateSystem = arcpy.SpatialReference("WGS 1984 Web Mercator (auxiliary sphere)")
 elif sp_target == 32651:
     arcpy.env.outputCoordinateSystem = arcpy.SpatialReference("WGS 1984 UTM Zone 51N")
-
+elif sp_target == 3123:
+    arcpy.env.outputCoordinateSystem = arcpy.SpatialReference("PRS 1992 Philippines Zone III")
+    
 copyL = arcpy.CopyFeatures_management(source_sde, copied)
 arcpy.TruncateTable_management(target_fgdb)
 arcpy.Append_management(copyL, target_fgdb, schema_type = 'NO_TEST')

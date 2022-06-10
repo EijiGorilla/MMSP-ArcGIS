@@ -39,7 +39,7 @@ copiedL = arcpy.CopyFeatures_management(inputLayerOrigin, copyLayer)
 fieldNames= [f.name for f in arcpy.ListFields(copiedL)]
 
 ## 2.1. Identify fields to be droppeds
-baseField = ['Shape','Shape_Length','Shape_Area','Shape.STArea()','Shape.STLength()','OBJECTID','GlobalID']
+baseField = ['Shape','Shape_Length','Shape_Area','Shape.STArea()','Shape.STLength()','OBJECTID','OBJECTID_1','GlobalID']
 fieldsKeep = tuple([joinField]) + tuple(baseField)
 
 dropField = [e for e in fieldNames if e not in fieldsKeep]

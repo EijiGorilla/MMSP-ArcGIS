@@ -22,12 +22,11 @@ library(lubridate)
 #rapFolder = in_params[[1]] # Directory where you saved master list excel tables from the RAP Team 
 #previous_date = in_params[[2]] # just string. 2022-01-26
 #result = out_params[[1]]
-previous_date = "2022-03-14"
-new_date = "2022-03-21"
+previous_date = "2022-03-21"
+new_date = "2022-06-20"
 
 
 # 1. Make sure that all the excel files are downloaded from the RAP Team's OneDrive in the following working directory;----
-
 path = path_home()
 
 
@@ -217,7 +216,7 @@ n2_struc_rap$StructureUse[id8] = 8
 
 n2_struc_rap$StructureUse = as.numeric(n2_struc_rap$StructureUse)
 
-## Contractor's Submission 
+## SC1: Contractor's Submission 
 colNames = colnames(sc1_lot_rap)
 id = which(str_detect(colNames,"^City|^city|Municipality$"))
 colnames(sc1_lot_rap)[id] = "Municipality"
@@ -262,35 +261,6 @@ sc1_barang_rap$Subcon[] = gsub("^\\s|\\s$","",sc1_barang_rap$Subcon)
 ### N2 Lot
 head(n2_lot_rap)
 unique(n2_lot_rap$HandOverDate)
-
-### Find lots which were already handedOver but with handOverDate (this is wrong)
-head(n2_lot_rap)
-id = which(!is.na(n2_lot_rap$HandOverDate) & n2_lot_rap$StatusLA==0)
-
-if(length(id)>0){
-  print("There is error in data entry for 'HandOverDate' and/or 'StatusLA'. PLEASE CHECK")
-} else {
-  print("")
-}
-
-
-# if you found that lots are already handed over but with HandOverDate, I will delete HandOverDate for these lots.
-n2_lot_rap$HandOverDate[id] = NA
-
-### SC Lot
-unique(sc_lot_rap$HandOverDate)
-
-### If handOverDate is entered in lots, these lots cannot have HandOver = 1
-id = which(!is.na(sc_lot_rap$HandOverDate) & sc_lot_rap$StatusLA==0) # StatusLA==0 is HandOver==1
-
-if(length(id)>0){
-  print("There is error in data entry for 'HandOverDate' and/or 'StatusLA'. PLEASE CHECK")
-  
-  # if you found that lots are already handed over but with HandOverDate, I will delete HandOverDate for these lots.
-  sc_lot_rap$HandOverDate[id] = NA
-} else {
-  print("")
-}
 
 
 ### 4.2. Join SC Land to SC1 Land, SC1 Structure to SC structure in the RAP Teams+----
@@ -415,11 +385,25 @@ id=which(str_detect("^TotalArea|^AffectedArea|^RemainingArea",colnames(sc_lot_ra
 for(i in id) sc_lot_rap[[i]] = as.numeric(sc_lot_rap[[i]])
 
 
-## 5.4. Change CP format from 'N01' to 'N-01'
-n2_lot_rap$CP = gsub("N","N-",n2_lot_rap$CP)
+## 5.4. Change CP format
+### N2
+id = which(str_detect(n2_lot_rap$CP,"^N\\d+|^n\\d+"))
+if (length(id)>0){
+  n2_lot_rap$CP[id] = gsub("N|n","N-",n2_lot_rap$CP[id])
+} else {
+  pring("OK")
+}
 n2_lot_rap$CP = gsub(",.*","",n2_lot_rap$CP)
 
-sc_lot_rap$CP = gsub("S","S-",sc_lot_rap$CP)
+## SC
+id = which(str_detect(sc_lot_rap$CP,"^S\\d+|^s\\d+"))
+if (length(id)>0){
+  sc_lot_rap$CP[id] = gsub("S|s","S-",sc_lot_rap$CP[id])
+} else {
+  pring("OK")
+}
+
+
 sc_lot_rap$CP = gsub(",.*","",sc_lot_rap$CP)
 
 ## 5.5. Fill in zero for all empty cells in HandOverArea
@@ -501,8 +485,6 @@ sc_lot_rap = sc_lot_rap[,-id]
 ## 0.1. N2 Lot
 id = which(str_detect(n2_lot_rap$CN,"^PNR|RP") & is.na(n2_lot_rap$AffectedArea) & n2_lot_rap$HandOverArea>0)
 
-
-
 if(length(id)==0){
   print("GOOD! No missing AffectedArea for PNR LANDS to calculate percent handedover")
 } else {
@@ -531,12 +513,20 @@ if(length(id)==0){
 }
 
 # check percentage with N-01 and calculate percentage
+id = which(str_detect(sc_lot_rap$CP,"--"))
+if (length(id) > 0){
+  sc_lot_rap$CP[id] = gsub("--","",sc_lot_rap$CP)[id]
+} else {
+  print("")
+}
+
+
+
 tt = sc_lot_rap[sc_lot_rap$CP=="S-02",]
 sum(tt$HandOverArea,na.rm=TRUE)/sum(tt$AffectedArea,na.rm=TRUE)
 
 id = which(sc_lot_rap$HandOverArea>=0)
 sc_lot_rap$percentHandedOver[id] = round(sc_lot_rap$HandOverArea[id]/sc_lot_rap$AffectedArea[id]*100,0)
-
 
 # 1. If Affected area = 0 or empty. This is error:----
 ## 1.1. N2 Lot:----
@@ -602,6 +592,7 @@ if(length(id)>0){
   error3_n2=data.frame(handOverArea_bigger_affectedArea=NA)
   print("GOOD!")
 }
+
 
 ## 3.2. SC lot:----
 id = which(sc_lot_rap$percentHandedOver > 100)
@@ -694,6 +685,14 @@ if(length(id)>0){
   print("GOOD!")
 }
 
+# 7. When HandOverArea = AffectedArea, HandOver = 1
+id = which(n2_lot_rap$AffectedArea == n2_lot_rap$HandOverArea)
+if(length(id)>0){
+  print("ERROR: HandOver = 0 when AffectedArea = HandOverArea. It should be one.")
+  n2_lot_rap$HandOver[id] = 1
+} else {
+  print("GOOD")
+}
 
 # 7. Compile all errors:----
 library(qpcR)
@@ -751,7 +750,6 @@ colnames(n2_pier_rap)[id] = "Municipality"
 colNames = colnames(n2_pier_rap)
 id = which(str_detect(colNames,"Pier|pier|PIER"))
 colnames(n2_pier_rap)[id] = "PIER"
-
 
 ## 8.1.4. Convert Date format
 n2_pier_rap$AccessDate = as.Date(n2_pier_rap$AccessDate, origin = "1899-12-30")
@@ -818,6 +816,7 @@ colnames(sc_pier_rap)[id] = "PIER"
 
 
 ## 8.2.4. Convert Date format
+str(sc_pier_rap)
 sc_pier_rap$AccessDate = as.Date(sc_pier_rap$AccessDate, origin = "1899-12-30")
 sc_pier_rap$AccessDate = as.Date(sc_pier_rap$AccessDate, format="%m/%d/%y %H:%M:%S")
 

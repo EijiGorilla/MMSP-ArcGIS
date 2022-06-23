@@ -1,6 +1,6 @@
 #******************************************************************#
 ## Enter Date of Update ##
-date_update = "2022-01-21"
+date_update = "2022-05-31"
 # This R code reads Google sheet monitoring sheets owned by N2 Civil Team and
 # updates GIS master list.
 
@@ -29,16 +29,14 @@ library(fs)
 #)
 #drive_auth_configure(app = google_app)
 #drive_auth_configure(api_key = "AIzaSyCqbwFnO6csUya-zKcXKXh_-unE_knZdd0")
-drive_auth(path = "G:/My Drive/01-Google Clould Platform/service-account-token.json")
+#drive_auth(path = "G:/My Drive/01-Google Clould Platform/service-account-token.json")
 
 
 ## Authorize (Choose 'matsuzakieiji0@gmail.com'. OCG gmail may not work)
 #gs4_auth(email="matsuzakieiji0@gmail.com")
 gs4_auth(email="matsuzaki-ei@ocglobal.jp")
 
-
 path = path_home()
-
 a = file.path(path,"Dropbox/01-Railway/02-NSCR-Ex/01-N2/03-During-Construction/02-Civil/04-Building_Depot/01-MasterList/01-Compiled")
 
 #a=choose.dir()
@@ -66,321 +64,151 @@ y = read.xlsx(MLTable)
 source_url = "https://docs.google.com/spreadsheets/d/1uo67rFwdQc4bi1y4TRugGJjT5hndnofN/edit#gid=2110596593"
 
 ### 2. Go to File and Save as Google Sheet
-### 3. Open the saved link from below
-https://docs.google.com/spreadsheets/u/0/?tgif=d
+### 3. Copy the link and paste it to the working_url below
+
 
 ### 4. Click and Open the copied Google Sheet
 ### 5. Copy new link and paste in the following "working_url"
-working_url = "https://docs.google.com/spreadsheets/d/1cnGA4c9nBMO5UI7qTd-A9jVrwCDnkyHYY90wx7P_L-k/edit?usp=sharing"
+working_url = "https://docs.google.com/spreadsheets/d/1ggKkuo83CCAQ2chcFD789-aAzc1tVexuyMNS_U3N7L8/edit?usp=sharing"
 
 #*****************************************************************************************************
 
 ######################################################################################
 # 1. BORED PILES:----
 ######################################################################################
-temp = data.frame()
+
 
 ## Sheet Number
-WS = 4
-LRS = 5
-OCC = 7
-TRC = 8
-CER = 9
-URS = 10
-UCS = 11
-WRS = 12
-DB1 = 13
-DB2 = 14
+WS = "WS ABR" # Workshop
+LRS = "LRS ABR"
+OCC = "OCC ABR"
+TRC = "TRC ABR" # TRCE is also included
+CER = "CER ABR"
+URS = "URS ABR"
+UCS = "UCS ABR"
+WRS = "WRS ABR"
+DB1 = "DB1 ABR"
+DB2 = "DB2 ABR"
 
-# 1. WS (Workshop):-----
-
-# Read and write as CSV and xlsx
-v = range_read(working_url, sheet = WS)
-v = data.frame(v)
-
-head(v[,c(3,4)],20)
-# Extract fields only needed
-x = v[,c(3,4)]
-
-## add Column names
-colnames(x) = c("PileNo", "Status")
-id = which(str_detect(x$PileNo,"^Bored|^bored"))
-
-x = x[(id+1):nrow(x),]
-
-# Delete null values
-id = which(is.na(x$PileNo))
-x = x[-id,]
-
-# Add column name
-x$Name = "WS"
-x$ID = paste(x$Name,"-",x$PileNo,sep="")
-
-# Compile
-temp = rbind(temp,x)
-
-unique(temp$Status)
-# 2. LRS :-----
+sheetID = c(WS,LRS,OCC,TRC,CER,URS,UCS,WRS,DB1,DB2)
 
 # Read and write as CSV and xlsx
-v = range_read(working_url, sheet = LRS)
-v = data.frame(v)
 
-head(v[,c(3,4)],20)
-# Extract fields only needed
-x = v[,c(3,4)]
+DEP_UPDATE_PILE = function()
+{
+  temp = data.frame()
+  for(i in sheetID){
+    #i=TRC
+    v = range_read(working_url, sheet = i)
+    v = data.frame(v)
+    
+    # Extract fields only needed
+    x = v[,c(3,4)]
+    
+    ## add Column names
+    colnames(x) = c("PileNo", "Status")
+    id = which(str_detect(x$PileNo,"[0-9]+"))
+    x = x[id,]
+  
+    # Check if data has any status or not. If not, skip this depot building
+    count = length(unique(x$Status[!is.na(x$Status)]))
+    if(count>0){
+      
+      # Delete null values in Status
+      id = which(is.na(x$Status))
+    
+      if(length(id)==0){
+        print("")
+      } else {
+        x = x[-id,]
+      }
+
+      # Add column name
+      x$Name = gsub(" ABR","",i) 
+      x$ID = paste(x$Name,"-P",x$PileNo,sep="")
+      
+      # If TRC, some observations need to be converted from TRC to TRCE
+    if(i=="TRC ABR"){
+      id=which(x$PileNo=="001")
+      ids = id[2]:nrow(x)
+      x$Name[ids] = "TRCE"
+      x$ID[ids] = gsub("TRC","TRCE",x$ID[ids])
+    } else {
+      print("")
+    }
+      # Compile
+      temp = rbind(temp,x)
+    
+      ## Update Status
+      completed_case = "^completed|^Completed|^complete|^Complete"
+      id=which(str_detect(temp$Status,completed_case))
+    
+      temp$Status[id] = 4
+
+      rem.id = which(temp$Status!="4")
+        if(length(rem.id)==0){
+          print("No rows to be removed")
+        } else {
+          temp = temp[-rem.id,]
+        }
+      
+    } else {
+      depName = gsub(" ABR","",i)
+      print(paste(depName," has NO Status.",sep = ""))
+    }
+  }
+  temp$Status = as.numeric(temp$Status)
+  save(temp,file="temp_compiled.rda")
+}
+
+DEP_UPDATE_PILE()
+load(file="temp_compiled.rda")
+
+## Join updated tables to ML
+y = read.xlsx(MLTable)
+
+### Check ID between x and y
+id=which(str_detect(colnames(temp),"Status|ID"))
+x = temp[,id]
+
+## Always check duplicated observations
+
+id.rem = x$ID[duplicated(x$ID)]
+if(length(id.rem)==0){
+  print("NO Duplicated Observations")
+} else {
+  print("Check and remove any duplicated observations")
+}
+
+x.ID = unique(x$ID)
+y.ID = unique(y$ID)
+
+x.ID[!x.ID %in% y.ID] # not present in y
+y.ID[!y.ID %in% x.ID]
+
+
+# join
+yx = left_join(y,x,by="ID")
+
+## 
+gg = which(!is.na(yx$Status.y))
+yx$Status.x[gg] = yx$Status.y[gg]
+
+str(yx)
 
-## add Column names
-colnames(x) = c("PileNo", "Status")
-id = which(str_detect(x$PileNo,"^Bored|^bored"))
+library(lubridate)
+yx$end_date = as.Date(yx$end_date, origin = "1899-12-30")
+yx$end_date = as.Date(yx$end_date, format="%m/%d/%y %H:%M:%S")
 
-x = x[(id+1):nrow(x),]
+#yx$Status1.y[is.na(yx$Status1.y)] = yx$Status1.x
 
-# Delete null values
-id = which(is.na(x$PileNo))
-x = x[-id,]
+delField = which(str_detect(colnames(yx),"Status.y"))
+yx = yx[,-delField]
 
-# Add column name
-x$Name = "LRS"
-x$ID = paste(x$Name,"-",x$PileNo,sep="")
+# Change Status name
+colnames(yx)[str_detect(colnames(yx),pattern="Status")] = "Status"
 
-# Compile
-temp = rbind(temp,x)
 
-
-# 3. OCC :-----
-
-# Read and write as CSV and xlsx
-v = range_read(working_url, sheet = OCC)
-v = data.frame(v)
-
-# Extract fields only needed
-x = v[,c(3,4)]
-
-## add Column names
-colnames(x) = c("PileNo", "Status")
-id = which(str_detect(x$PileNo,"^Bored|^bored"))
-
-x = x[(id+1):nrow(x),]
-
-# Delete null values
-id = which(is.na(x$PileNo))
-x = x[-id,]
-
-# Add column name
-x$Name = "OCC"
-x$ID = paste(x$Name,"-",x$PileNo,sep="")
-
-# Compile
-temp = rbind(temp,x)
-
-
-# 4. TRC :-----
-
-# Read and write as CSV and xlsx
-v = range_read(working_url, sheet = TRC)
-v = data.frame(v)
-
-# Extract fields only needed
-## TRC has unknown bored pile Nos. some are duplicated so I filtered only needed piles. Is this right?
-x = v[1:50,c(3,4)]
-
-
-## add Column names
-colnames(x) = c("PileNo", "Status")
-id = which(str_detect(x$PileNo,"^Bored|^bored"))
-
-x = x[(id+1):nrow(x),]
-
-
-# Delete null values
-id = which(is.na(x$PileNo))
-x = x[-id,]
-
-# Add column name
-x$Name = "TRC"
-x$ID = paste(x$Name,"-",x$PileNo,sep="")
-
-# Compile
-temp = rbind(temp,x)
-
-
-# 5. CER :-----
-
-# Read and write as CSV and xlsx
-v = range_read(working_url, sheet = CER)
-v = data.frame(v)
-
-# Extract fields only needed
-x = v[,c(3,4)]
-
-## add Column names
-colnames(x) = c("PileNo", "Status")
-id = which(str_detect(x$PileNo,"^Bored|^bored"))
-
-x = x[(id+1):nrow(x),]
-
-# Delete null values
-id = which(is.na(x$PileNo))
-x = x[-id,]
-
-# Add column name
-x$Name = "CER"
-x$ID = paste(x$Name,"-",x$PileNo,sep="")
-
-head(x)
-# Compile
-temp = rbind(temp,x)
-
-
-# 6. URS :-----
-
-# Read and write as CSV and xlsx
-v = range_read(working_url, sheet = URS)
-v = data.frame(v)
-
-# Extract fields only needed
-x = v[,c(3,4)]
-
-## add Column names
-colnames(x) = c("PileNo", "Status")
-id = which(str_detect(x$PileNo,"^Bored|^bored"))
-
-x = x[(id+1):nrow(x),]
-
-# Delete null values
-id = which(is.na(x$PileNo))
-x = x[-id,]
-
-# Add column name
-x$Name = "URS"
-x$ID = paste(x$Name,"-",x$PileNo,sep="")
-
-head(x)
-# Compile
-temp = rbind(temp,x)
-
-
-# 7. UCS :-----
-
-# Read and write as CSV and xlsx
-v = range_read(working_url, sheet = UCS)
-v = data.frame(v)
-
-# Extract fields only needed
-x = v[,c(3,4)]
-
-## add Column names
-colnames(x) = c("PileNo", "Status")
-id = which(str_detect(x$PileNo,"^Bored|^bored"))
-
-x = x[(id+1):nrow(x),]
-
-# Delete null values
-id = which(is.na(x$PileNo))
-x = x[-id,]
-
-# Add column name
-x$Name = "UCS"
-x$ID = paste(x$Name,"-",x$PileNo,sep="")
-
-head(x)
-# Compile
-temp = rbind(temp,x)
-
-
-# 8. WRS :-----
-
-# Read and write as CSV and xlsx
-v = range_read(working_url, sheet = WRS)
-v = data.frame(v)
-
-# Extract fields only needed
-x = v[,c(3,4)]
-
-## add Column names
-colnames(x) = c("PileNo", "Status")
-id = which(str_detect(x$PileNo,"^Bored|^bored"))
-
-x = x[(id+1):nrow(x),]
-
-# Delete null values
-id = which(is.na(x$PileNo))
-x = x[-id,]
-
-# Add column name
-x$Name = "WRS"
-x$ID = paste(x$Name,"-",x$PileNo,sep="")
-
-head(x)
-# Compile
-temp = rbind(temp,x)
-
-
-# 9. DB1 :-----
-
-# Read and write as CSV and xlsx
-v = range_read(working_url, sheet = DB1)
-v = data.frame(v)
-
-# Extract fields only needed
-x = v[,c(3,4)]
-
-## add Column names
-colnames(x) = c("PileNo", "Status")
-id = which(str_detect(x$PileNo,"^Bored|^bored"))
-
-x = x[(id+1):nrow(x),]
-
-# Delete null values
-id = which(is.na(x$PileNo))
-x = x[-id,]
-
-# Add column name
-x$Name = "DB1"
-x$ID = paste(x$Name,"-",x$PileNo,sep="")
-
-head(x)
-# Compile
-temp = rbind(temp,x)
-
-
-# 10. DB2 :-----
-
-# Read and write as CSV and xlsx
-v = range_read(working_url, sheet = DB2)
-v = data.frame(v)
-
-# Extract fields only needed
-x = v[,c(3,4)]
-
-## add Column names
-colnames(x) = c("PileNo", "Status")
-id = which(str_detect(x$PileNo,"^Bored|^bored"))
-
-x = x[(id+1):nrow(x),]
-
-# Delete null values
-id = which(is.na(x$PileNo))
-x = x[-id,]
-
-# Add column name
-x$Name = "DB2"
-x$ID = paste(x$Name,"-",x$PileNo,sep="")
-
-# Compile
-temp = rbind(temp,x)
-
-
-
-# Fix 
-xx = temp
-id_comp = which(str_detect(xx$Status,"^Compl|^compl")) # Comopleted
-id_under = which(str_detect(xx$Status,"remedial")) # under construction
-id_tobe = which(is.na(xx$Status))
-
-xx$Status[id_tobe] = "1"
-xx$Status[id_comp] = "4"
-xx$Status[id_under] = "2"
-
-xx$Status = as.numeric(xx$Status)
+unique(yx$end_date)
+## Output
+write.xlsx(yx,MLTable)

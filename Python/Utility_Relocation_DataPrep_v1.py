@@ -85,29 +85,43 @@ for layer in listLayers:
     if geometryType == 'Point':
         arcpy.AssignDomainToField_management(layer, "UtilType2", 'Utility Point Type 2')
         
-        cp = arcpy.Describe(layer).basename
-        cpName = re.search(r'N0\d|S0\d',cp).group()
+        ##cp = arcpy.Describe(layer).basename
+        ##cpName = re.search(r'N-0.*|S-0.*',cp).group()
+
+        with arcpy.da.UpdateCursor(layer, ['Facility','UtilType2']) as cursor:
+            for row in cursor:
+
+                # Enter Facility
+                if row[1] in [1, 2, 5, 7, 8, 14, 18, 19]:
+                    row[0] = 3
+                elif row[1] in [3, 4, 6, 10, 11, 17]:
+                    row[0] = 1
+                cursor.updateRow(row)
         
         with arcpy.da.UpdateCursor(layer, ['Facility', 'UtilType2', 'Height', 'CP', 'Type']) as cursor:
             for row in cursor:
-                row[3] == cpName
-                row[4] == "Point"
+                ##row[3] = cpName
+                row[4] = "Point"
                 
-                # Enter Height by Facility
-                if row[0] == 3:
-                    row[2] = 0
-                elif row[1] == 12:
-                    row[2] = 7.5
-                elif row[1] in [10,11]:
+                # Enter Height
+                if row[1] == 6:
+                    row[2] = -3
+                elif row[1] in [3, 4, 10, 11, 17]:
                     row[2] = -1                   
                 cursor.updateRow(row)
                 
         with arcpy.da.UpdateCursor(layer, ['Facility', 'UtilType2', 'SIZE']) as cursor:
             for row in cursor:
-                if row[1] in [3, 4, 5, 6, 9, 10, 11, 12, 13, 14, 15, 16]:
+
+                # Enter Size
+                if row[1] in [3, 4, 6, 9, 10, 11, 15, 17, 18]:
                     row[2] = 0.5
-                elif row[1] in [1, 2, 7, 8]:
+                elif row[1] == 5:
+                    row[2] = 0.2
+                elif row[1] in [1, 2, 7, 8, 19]:
                     row[2] = 8
+                elif row[1] == 14:
+                    row[2] = 3
                 cursor.updateRow(row)
         
         # Convert date text format
@@ -128,13 +142,13 @@ for layer in listLayers:
                 
         arcpy.AssignDomainToField_management(layer, "UtilType2", 'Utility Line Type 2')
         
-        cp = arcpy.Describe(layer).basename
-        cpName = re.search(r'N0\d|S0\d',cp).group()
+        ##cp = arcpy.Describe(layer).basename
+        ##cpName = re.search(r'N-0.*|S-0.*',cp).group()
         
         with arcpy.da.UpdateCursor(layer, ['Facility', 'UtilType2', 'Height', 'CP', 'Type']) as cursor:
             for row in cursor:
-                row[3] == cpName
-                row[4] == "Line"
+                ##row[3] = cpName
+                row[4] = "Line"
                 
                 # Enter Height by Facility
                 if row[0] == 1:
@@ -147,15 +161,13 @@ for layer in listLayers:
             for row in cursor:
                 # Enter Height by UtilType2
                 if row[1] == 3:
-                    row[2] = -1
-                elif row[0] == 2 and row[1] in [1,2]:
+                    row[2] = -3.5
+                elif row[0] == 1:
                     row[2] = -2
-                elif row[0] == 1 and row[1] in [1,8]:
-                    row[2] = 8
-                elif row[0] == 2 and row[1] in [8]:
-                    row[2] = -2.5
-                elif row[0] == 2 and row[1] in [4]:
+                elif row[0] in [2, 4, 5, 6, 7, 11]:
                     row[2] = -3
+                elif row[0] == 8:
+                    row[2] = -2.5
                 cursor.updateRow(row)
         
                # Convert date text format

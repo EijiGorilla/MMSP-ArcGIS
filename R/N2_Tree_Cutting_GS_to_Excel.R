@@ -85,7 +85,7 @@ v2$updated = as.Date(v2$updated, origin = "1899-12-30")
 v2$updated = as.Date(v2$updated, format="%m/%d/%v2 %H:%M:%S")
 
 head(v2)
-
+str(v2)
 
 
 
@@ -96,3 +96,15 @@ colnames(v2)=c("TreeNo","Province","CP","CommonName","ScientificName",
 for(i in 1:5) v2$CP = gsub(i,paste("N-0",i,sep=""),v2$CP)
 
 write.xlsx(v2,file.path(wd,basename))
+
+
+
+###############
+head(v2)
+x=v2
+cut = length(which(x$Status==1))
+total = nrow(x)
+cut/total
+
+head(x)
+length(x$TreeNo)

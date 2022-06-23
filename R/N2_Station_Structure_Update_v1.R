@@ -73,7 +73,7 @@
 # DEFINE PARAMETERS
 #******************************************************************#
 ## Enter Date of Update ##
-date_update = "2022-04-08"
+date_update = "2022-06-17"
 
 
 strucType = c("Substructure", "Superstructure")
@@ -153,7 +153,7 @@ y = read.xlsx(MLTable)
 ## Google Sheet for monitoring sheet for station structure
 
 ############################################
-### N02: BORED PILES #############----
+### N01: BORED PILES #############----
 #####################################
 url = "https://docs.google.com/spreadsheets/d/11YqYaenIB0l3Bpiv398-0QO3mEIR_BjvnMIsIOF3ILI/edit#gid=0"
 
@@ -165,7 +165,6 @@ v = range_read(url, sheet = pile_sheet)
 v = data.frame(v)
 
 ## I temporarliy used dummy field names to be discarded so need to remove it
-
 nChar = sapply(1:ncol(v), function(k) nchar(colnames(v)[k]))
 id = which(nChar > 1)
 x = v[,id]
@@ -194,6 +193,15 @@ x$Status[str_detect(x$Remarks,pattern="Incomplete")] = 3 # Delayed
 # Bored Piles use "ID"
 colnames(x)[which(colnames(x)=="nPierNumber")] = "ID"
 
+# Check duplicated pier numbers
+id = which(duplicated(x$nPierNumber))
+
+if(length(id)>0){
+  x = x[-id,]
+} else {
+  print("no duplicated observations")
+}
+
 
 # Join new status to Viaduct masterlist
 ## Read master list table
@@ -205,17 +213,18 @@ yx = left_join(y,x,by="ID")
 
 ## Check if the number of Status1 for each Type is same between x and yx.
 x_t = table(x$Status)
-
-head(yx)
 yx_t = table(yx$Status.y[which(yx$CP.x=="N-01" & yx$SubType==1)])
 
 check = x_t %in% yx_t
-if(str_detect(unique(check),"TRUE")){
-  print("GOOD! The number of Status1 for N-01 Bored piles is same between Civil and joined excel ML.")
-} else (
-  print("Number of Status1 for N-01 Bored piles is DIFFERENT. PLEASE CHECK")
-)
+check_function = function(){
+  if(length(which(check=="FALSE"))>0){
+    print("Number of Status1 for N-01 Bored piles is DIFFERENT. PLEASE CHECK")
+  } else (
+    print("GOOD! The number of Status1 for N-01 Bored piles is same between Civil and joined excel ML.")
+  )
+}
 
+check_function()
 
 gg = which(yx$Status.y>1)
 yx$Status.x[gg] = yx$Status.y[gg]
@@ -248,8 +257,6 @@ write.xlsx(y,file.path(direct,fileName),row.names=FALSE)
 
 ## Overwrite master list with new date
 yx$updated = ymd(date_update)
-
-
 yx$updated = as.Date(yx$updated, origin = "1899-12-30")
 yx$updated = as.Date(yx$updated, format="%m/%d/%y %H:%M:%S")
 
@@ -326,19 +333,16 @@ CP = "N-02"
 v = range_read(url, sheet = n02_pile)
 v = data.frame(v)
 
-id = which(str_detect(v[[2]], "SF Station"))
-del_row = 1:id
-x = v[-del_row,]
 
 # Restruecture table
 ## Remove empty rows and unneeded rows
-x = x[,c(2,ncol(x))]
-
+x = v[,c(2,ncol(v))]
 colnames(x)[1:2] = c("ID", "Status")
 x$Status = as.character(x$Status)
 
 ## Find pier numbers starting with only "P" and "MT"
-keep_row = which(str_detect(x$ID, "^SF-"))
+keep_row = which(str_detect(x$ID, "^SF-|^SFP-"))
+str(keep_row)
 x = x[keep_row,]
 
 # Recode Status1
@@ -355,31 +359,35 @@ x$CP = CP
 
 x$ID = as.character(x$ID)
 
-head(x)
+# Check duplicated pier numbers
+id = which(duplicated(x$nPierNumber))
+
+if(length(id)>0){
+  x = x[-id,]
+} else {
+  print("no duplicated observations")
+}
+
+
 # Join 
 # Read Google Sheet 
 y = read.xlsx(MLTable)
-
 yx = left_join(y,x,by="ID")
 
 ## Check if the number of Status1 for each Type is same between x and yx.
 x_t = table(x$Status)
-head(yx)
 yx_t = table(yx$Status.y[which(yx$CP.x=="N-02" & yx$SubType==1)])
 
-
-
 check = x_t %in% yx_t
-if(str_detect(unique(check),"TRUE")){
-  print("GOOD! The number of Status1 for N-01 Bored piles is same between Civil and joined excel ML.")
-} else (
-  print("Number of Status1 for N-01 Bored piles is DIFFERENT. PLEASE CHECK")
-)
+check_function()
 
+x.pile = x$ID
+yx.pile = yx$ID[which(yx$CP.x=="N-02" & yx$SubType==1)]
+
+x.pile[!x.pile %in% yx.pile]
 
 
 # NA for status = 1 (To be Constructed)
-
 gg = which(yx$Status.y>0)
 yx[gg,]
 
@@ -416,14 +424,15 @@ head(yx)
 # 
 write.xlsx(yx, MLTable)
 
-
-
 ###############################################################
 #######################:---- N-03 #################################:----
 ##############################################################
 
 ### N-03: BORED PILES #:----
-url = "https://docs.google.com/spreadsheets/d/19TBfdEpRuW7edwhiP7YdVSJQgrkot9wN7tDwzSTF76E/edit#gid=0"
+#url = "https://docs.google.com/spreadsheets/d/19TBfdEpRuW7edwhiP7YdVSJQgrkot9wN7tDwzSTF76E/edit#gid=0"
+
+# Temporary
+url = "https://docs.google.com/spreadsheets/d/19TBfdEpRuW7edwhiP7YdVSJQgrkot9wN7tDwzSTF76E/edit?usp=sharing"
 
 n03_pile = 1
 CP = "N-03"
@@ -438,7 +447,7 @@ colnames(x)[c(1,2)] = c("ID", "Status")
 x$Status = as.character(x$Status)
 
 # Extract only statin structure piles
-id = which(str_detect(x$ID, "^AS|^CK"))
+id = which(str_detect(x$ID, "^AS|^CK|^CS"))
 x = x[id,]
 
 # Restruecture table
@@ -456,7 +465,20 @@ x$Status = as.numeric(x$Status)
 x$CP = CP
 
 x$ID = as.character(x$ID)
-head(x)
+
+### Some IDS have redundant "0" so need to remove
+id = which(str_detect(x$ID,"-0\\d{2}|-00\\d{1}"))
+x$ID[id] = gsub("-0","-",x$ID[id])
+
+# Check duplicated pier numbers
+id = which(duplicated(x$nPierNumber))
+
+if(length(id)>0){
+  x = x[-id,]
+} else {
+  print("no duplicated observations")
+}
+
 
 # Join 
 y = read.xlsx(MLTable)
@@ -465,18 +487,10 @@ yx = left_join(y,x,by="ID")
 
 ## Check if the number of Status1 for each Type is same between x and yx.
 x_t = table(x$Status)
-head(yx)
 yx_t = table(yx$Status.y[which(yx$CP.x=="N-03" & yx$SubType==1)])
 
 check = x_t %in% yx_t
-if(str_detect(unique(check),"TRUE")){
-  print("GOOD! The number of Status1 for N-01 Bored piles is same between Civil and joined excel ML.")
-} else (
-  print("Number of Status1 for N-01 Bored piles is DIFFERENT. PLEASE CHECK")
-)
-
-
-
+check_function()
 
 # NA for status = 1 (To be Constructed)
 gg = which(yx$Status.y>0)

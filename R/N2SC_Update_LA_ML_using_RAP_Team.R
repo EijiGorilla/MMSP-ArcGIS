@@ -22,8 +22,8 @@ library(lubridate)
 #rapFolder = in_params[[1]] # Directory where you saved master list excel tables from the RAP Team 
 #previous_date = in_params[[2]] # just string. 2022-01-26
 #result = out_params[[1]]
-previous_date = "2022-06-24"
-new_date = "2022-06-28"
+previous_date = "2022-06-28"
+new_date = "2022-07-04"
 
 
 # 1. Make sure that all the excel files are downloaded from the RAP Team's OneDrive in the following working directory;----

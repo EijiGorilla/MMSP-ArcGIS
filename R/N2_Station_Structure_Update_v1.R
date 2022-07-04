@@ -73,7 +73,7 @@
 # DEFINE PARAMETERS
 #******************************************************************#
 ## Enter Date of Update ##
-date_update = "2022-06-27"
+date_update = "2022-07-01"
 
 
 strucType = c("Substructure", "Superstructure")

@@ -122,7 +122,7 @@ write.xlsx(x,MLTable)
 
 #******************************************************************#
 ## Enter Date of Update ##
-date_update = "2022-06-24"
+date_update = "2022-07-01"
 
 #******************************************************************#
 
@@ -743,8 +743,6 @@ gg2 = which(yx$Year.y>0)
 yx$Year.x[gg2] = yx$Year.y[gg2]
 yx$Month.x[gg2] = yx$Month.y[gg2]
 
-
-
 #yx$Status1.y[is.na(yx$Status1.y)] = yx$Status1.x
 delField = which(str_detect(colnames(yx),"Status1.y|start_date.y|end_date.y|Year.y|Month.y"))
 yx = yx[,-delField]
@@ -789,7 +787,6 @@ write.xlsx(yx, MLTable)
 ###############################################################
 ####################### N-02 #################################:----
 ##############################################################
-
 
 #url = "https://docs.google.com/spreadsheets/d/1du9qnThdve1yXBv-W_lLzSa3RMd6wX6_NlNCz8PqFdg/edit?userstoinvite=junsanjose@gmail.com&actionButton=1#gid=0"
 url = "https://docs.google.com/spreadsheets/d/1du9qnThdve1yXBv-W_lLzSa3RMd6wX6_NlNCz8PqFdg/edit?usp=sharing"

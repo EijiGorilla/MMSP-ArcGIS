@@ -73,7 +73,7 @@ wd = file.path(path,"Dropbox/01-Railway/01-MMSP/03-During-Construction/01-Statio
 setwd(wd)
 getwd()
 ## Enter Date of Update ##:----
-date_update = "2022-06-27"
+date_update = "2022-07-04"
 
 # Read our master list table
 MLTable = file.path(wd,"MMSP_Station_Structure.xlsx")
@@ -163,6 +163,10 @@ x$end_date = unlist(x$end_date)
 x$end_date = as.POSIXlt(x$end_date, origin="1970-01-01", tz="UTC")
 x$end_date = as.Date(x$end_date, origin = "1899-12-30")
 
+# Add Year and Month to generate stacked bar chart for monitoring monthly progress
+x$Year = as.numeric(format(x$end_date, format="%Y"))
+x$Month = as.numeric(format(x$end_date,format="%m"))
+
 # Merge this to masterlist
 y = read.xlsx(MLTable)
 
@@ -204,24 +208,26 @@ head(yx)
 unique(yx$ID)
 
 ## Replace Status.x rows with only updated status from Status.y
+
 gg = which(yx$Status.y>0)
 yx$Status.x[gg] = yx$Status.y[gg]
 
 gg1 = which(yx$end_date.y>0)
 yx$end_date.x[gg1] = yx$end_date.y[gg1]
 
+## Year and Date
+gg2 = which(yx$Year.y>0)
+yx$Year.x[gg2] = yx$Year.y[gg2]
+yx$Month.x[gg2] = yx$Month.y[gg2]
+
 # Delete Status.y and rename Status.x to Status
-rm_status = which(colnames(yx)=="Status.y")
+rm_status = which(str_detect(colnames(yx),"Status.y|end_date.y|Year.y|Month.y"))
 yx = yx[, -rm_status]
 
-status_name = which(str_detect(colnames(yx),"Status"))
-colnames(yx)[status_name] = "Status"
-
-# Delete end_date.y and rename it to end_date
-id = which(colnames(yx)=="end_date.y")
-yx = yx[,-id]
-
-colnames(yx)[which(str_detect(colnames(yx),"end_date"))] = "end_date"
+colnames(yx)[str_detect(colnames(yx),pattern="Status")] = "Status"
+colnames(yx)[str_detect(colnames(yx),pattern="end_date")] = "end_date"
+colnames(yx)[str_detect(colnames(yx),pattern="Year")] = "Year"
+colnames(yx)[str_detect(colnames(yx),pattern="Month")] = "Month"
 
 # Add the latest date
 yx$updated = date_update
@@ -303,6 +309,11 @@ x$end_date = unlist(x$end_date)
 x$end_date = as.POSIXlt(x$end_date, origin="1970-01-01", tz="UTC")
 x$end_date = as.Date(x$end_date, origin = "1899-12-30")
 
+# Add Year and Month to generate stacked bar chart for monitoring monthly progress
+x$Year = as.numeric(format(x$end_date, format="%Y"))
+x$Month = as.numeric(format(x$end_date,format="%m"))
+
+
 # Align Secant Piles IDs based on the GIS table
 x$ID = paste("NA-SP-",x$ID,sep="")
 
@@ -352,18 +363,19 @@ yx$Status.x[gg] = yx$Status.y[gg]
 gg1 = which(yx$end_date.y>0)
 yx$end_date.x[gg1] = yx$end_date.y[gg1]
 
+## Year and Date
+gg2 = which(yx$Year.y>0)
+yx$Year.x[gg2] = yx$Year.y[gg2]
+yx$Month.x[gg2] = yx$Month.y[gg2]
+
 # Delete Status.y and rename Status.x to Status
-rm_status = which(colnames(yx)=="Status.y")
+rm_status = which(str_detect(colnames(yx),"Status.y|end_date.y|Year.y|Month.y"))
 yx = yx[, -rm_status]
 
-status_name = which(str_detect(colnames(yx),"Status"))
-colnames(yx)[status_name] = "Status"
-
-# Delete end_date.y and rename it to end_date
-id = which(colnames(yx)=="end_date.y")
-yx = yx[,-id]
-
-colnames(yx)[which(str_detect(colnames(yx),"end_date"))] = "end_date"
+colnames(yx)[str_detect(colnames(yx),pattern="Status")] = "Status"
+colnames(yx)[str_detect(colnames(yx),pattern="end_date")] = "end_date"
+colnames(yx)[str_detect(colnames(yx),pattern="Year")] = "Year"
+colnames(yx)[str_detect(colnames(yx),pattern="Month")] = "Month"
 
 # Add the latest date
 yx$updated = date_update
@@ -390,7 +402,6 @@ v = data.frame(v)
 x = v[-c(1:6),c(4,17,18)]
 colnames(x) = c("ID","end_date","Status")
 
-
 #
 x$ID = as.character(x$ID)
 x$Status = as.character(x$Status)
@@ -401,7 +412,12 @@ dwall_id = which(str_detect(x$ID,"^P|^p|^p"))
 x = x[dwall_id,]
 
 status_rm_id = which(str_detect(x$Status,"NULL|null|Null|[[:space:]]"))
-x = x[-status_rm_id,]
+if (length(status_rm_id) > 0){
+  x = x[-status_rm_id,]
+} else {
+  print("no need to remove")
+}
+
 
 # Make sure that ID is uppercase letter and no space
 x$ID[] = gsub("[[:space:]]","",x$ID) # no space
@@ -415,10 +431,15 @@ x$Status = as.numeric(x$Status)
 x$Status[x$Status==1] = 4
 
 # Add type
+
 x$Type = type_dwall
 x$Station1 = NAS
 
-x$end_date = unlist(x$end_date)
+# re-format date
+id = which(x$end_date=="NULL")
+x$end_date[id] = NA
+
+x$end_date=unlist(x$end_date, use.names = FALSE)
 x$end_date = as.POSIXlt(x$end_date, origin="1970-01-01", tz="UTC")
 x$end_date = as.Date(x$end_date, origin = "1899-12-30")
 
@@ -458,7 +479,7 @@ yx$Year.x[gg2] = yx$Year.y[gg2]
 yx$Month.x[gg2] = yx$Month.y[gg2]
 
 # Delete Status.y and rename Status.x to Status
-rem_id = which(colnames(yx)=="Status.y|end_date.y|Year.y|Month.y")
+rem_id = which(str_detect(colnames(yx),"Status.y|end_date.y|Year.y|Month.y"))
 yx = yx[,-rem_id]
 
 # Rename columns

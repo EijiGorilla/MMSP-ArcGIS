@@ -122,7 +122,7 @@ write.xlsx(x,MLTable)
 
 #******************************************************************#
 ## Enter Date of Update ##
-date_update = "2022-06-17"
+date_update = "2022-06-24"
 
 #******************************************************************#
 
@@ -237,6 +237,9 @@ if(length(id)>0){
   print("no duplicated observations")
 }
 
+# Add Year and Month to generate stacked bar chart for monitoring monthly progress
+x$Year = as.numeric(format(x$end_date, format="%Y"))
+x$Month = as.numeric(format(x$end_date,format="%m"))
 
 # Join new status to Viaduct masterlist
 y = read.xlsx(MLTable)
@@ -285,19 +288,35 @@ library(lubridate)
 yx$end_date.x = as.Date(yx$end_date.x, origin = "1899-12-30")
 yx$end_date.x = as.Date(yx$end_date.x, format="%m/%d/%y %H:%M:%S")
 
-
 yx$Status1.x[gg] = yx$Status1.y[gg]
 yx$end_date.x[gg] = yx$end_date.y[gg]
 
+## Year and Date
+gg2 = which(yx$Year.y>0)
+yx$Year.x[gg2] = yx$Year.y[gg2]
+yx$Month.x[gg2] = yx$Month.y[gg2]
+
 #yx$Status1.y[is.na(yx$Status1.y)] = yx$Status1.x
 
-delField = which(str_detect(colnames(yx),"Status1.y|Remarks|CP.y|end_date.y"))
+delField = which(str_detect(colnames(yx),"Status1.y|Remarks|CP.y|end_date.y|Year.y|Month.y"))
 yx = yx[,-delField]
 
 # Change Status name
 colnames(yx)[str_detect(colnames(yx),pattern="Status1")] = "Status1"
 colnames(yx)[str_detect(colnames(yx),pattern="CP")] = "CP"
 colnames(yx)[str_detect(colnames(yx),pattern="end_date")] = "end_date"
+colnames(yx)[which(str_detect(colnames(yx),"Year"))] = "Year"
+colnames(yx)[which(str_detect(colnames(yx),"Month"))] = "Month"
+
+## Delete when Year and Month = 0
+id = which(yx$Year == 0)
+if(length(id) > 0){
+  yx$Year[id] = NA
+  yx$Month[id] = NA
+} else {
+  print("")
+}
+
 
 # Convert nA to 1 (to be Constructed)
 id = which(is.na(yx$Status1))
@@ -519,6 +538,17 @@ xxx = left_join(xx,xx1,by=c("nPierNumber","Type"))
 # This means that we cannot bind tables generated here between bored piles and others.
 # As such, we will join this updated table of other components to our original master list directly.
 
+# Add Year and Month to generate stacked bar chart for monitoring monthly progress
+xxx$Year = as.numeric(format(xxx$end_date, format="%Y"))
+xxx$Month = as.numeric(format(xxx$end_date,format="%m"))
+
+id = which(xxx$Status1 > 4)
+if(length(id) > 0){
+  xxx = xxx[-id,]
+} else {
+  print("")
+}
+
 # remove CP for join
 y = read.xlsx(MLTable)
 yxx = left_join(y,xxx,by=c("Type","nPierNumber"))
@@ -529,7 +559,7 @@ yxx = left_join(y,xxx,by=c("Type","nPierNumber"))
 # we replace Status1.x with only these pier numbers.
 
 ## Check if the number of Status1 for each Type is same between x and yx.
-xx_t = table(xx$Type,xx$Status1)
+xx_t = table(xxx$Type,xxx$Status1)
 id=which(yxx$CP=="N-01" & (yxx$Type>=2 & yxx$Type<5)) # pile cap, pier, pier head
 
 yxx_t = table(yxx$Type[id],yxx$Status1.y[id])
@@ -555,13 +585,22 @@ yxx$end_date.x = as.Date(yxx$end_date.x, format="%m/%d/%y %H:%M:%S")
 yxx$Status1.x[gg] = yxx$Status1.y[gg]
 yxx$end_date.x[gg] = yxx$end_date.y[gg]
 
+## Year and Date
+gg2 = which(yxx$Year.y>0)
+yxx$Year.x[gg2] = yxx$Year.y[gg2]
+yxx$Month.x[gg2] = yxx$Month.y[gg2]
+
+
+
 ## Rename and delete Status1.y
-delField = which(str_detect(colnames(yxx),"Status1.y|end_date.y"))
+delField = which(str_detect(colnames(yxx),"Status1.y|end_date.y|Year.y|Month.y"))
 yxx = yxx[,-delField]
 
 # Change Status name
 colnames(yxx)[str_detect(colnames(yxx),pattern="Status1")] = "Status1"
 colnames(yxx)[str_detect(colnames(yxx),pattern="end_date")] = "end_date"
+colnames(yxx)[which(str_detect(colnames(yxx),"Year"))] = "Year"
+colnames(yxx)[which(str_detect(colnames(yxx),"Month"))] = "Month"
 
 # Convert nA to 1 (to be Constructed)
 id = which(is.na(yxx$Status1))
@@ -665,6 +704,9 @@ if(length(id)>0){
   print("no duplicated observations")
 }
 
+# Add Year and Month to generate stacked bar chart for monitoring monthly progress
+x$Year = as.numeric(format(x$end_date, format="%Y"))
+x$Month = as.numeric(format(x$end_date,format="%m"))
 
 # Join new status to Viaduct masterlist
 y = read.xlsx(MLTable)
@@ -696,15 +738,23 @@ yx$end_date.x = as.Date(yx$end_date.x, format="%m/%d/%y %H:%M:%S")
 yx$Status1.x[gg] = yx$Status1.y[gg]
 yx$start_date.x[gg] = yx$start_date.y[gg]
 yx$end_date.x[gg] = yx$end_date.y[gg]
+## Year and Date
+gg2 = which(yx$Year.y>0)
+yx$Year.x[gg2] = yx$Year.y[gg2]
+yx$Month.x[gg2] = yx$Month.y[gg2]
+
+
 
 #yx$Status1.y[is.na(yx$Status1.y)] = yx$Status1.x
-delField = which(str_detect(colnames(yx),"Status1.y|start_date.y|end_date.y"))
+delField = which(str_detect(colnames(yx),"Status1.y|start_date.y|end_date.y|Year.y|Month.y"))
 yx = yx[,-delField]
 
 # Change Status name
 colnames(yx)[str_detect(colnames(yx),pattern="Status1")] = "Status1"
 colnames(yx)[str_detect(colnames(yx),pattern="start_date")] = "start_date"
 colnames(yx)[str_detect(colnames(yx),pattern="end_date")] = "end_date"
+colnames(yx)[str_detect(colnames(yx),pattern="Year")] = "Year"
+colnames(yx)[str_detect(colnames(yx),pattern="Month")] = "Month"
 
 # Convert nA to 1 (to be Constructed)
 id = which(is.na(yx$Status1))
@@ -745,9 +795,9 @@ write.xlsx(yx, MLTable)
 url = "https://docs.google.com/spreadsheets/d/1du9qnThdve1yXBv-W_lLzSa3RMd6wX6_NlNCz8PqFdg/edit?usp=sharing"
 
 # sheet no
-boredPile = 1
-pileCap = 2
-PierCol = 3
+boredPile = 2
+pileCap = 3
+PierCol = 4
 
 
 ###########################
@@ -812,6 +862,10 @@ if(length(id)>0){
   print("no duplicated observations")
 }
 
+# Add Year and Month to generate stacked bar chart for monitoring monthly progress
+x$Year = as.numeric(format(x$end_date, format="%Y"))
+x$Month = as.numeric(format(x$end_date,format="%m"))
+
 # Join 
 y = read.xlsx(MLTable)
 yx = left_join(y,x,by="nPierNumber")
@@ -858,14 +912,21 @@ yx$end_date.x = as.Date(yx$end_date.x, format="%m/%d/%y %H:%M:%S")
 
 yx$Status1.x[gg] = yx$Status1.y[gg]
 yx$end_date.x[gg] = yx$end_date.y[gg]
+## Year and Date
+gg2 = which(yx$Year.y>0)
+yx$Year.x[gg2] = yx$Year.y[gg2]
+yx$Month.x[gg2] = yx$Month.y[gg2]
 
-delField = which(str_detect(colnames(yx),"Status1.y|Remarks|CP.y|end_date.y"))
+# Rename column
+delField = which(str_detect(colnames(yx),"Status1.y|Remarks|CP.y|end_date.y|Year.y|Month.y"))
 yx = yx[,-delField]
 
 # Change Status name
 colnames(yx)[str_detect(colnames(yx),pattern="Status1")] = "Status1"
 colnames(yx)[str_detect(colnames(yx),pattern="CP")] = "CP"
 colnames(yx)[str_detect(colnames(yx),pattern="end_date")] = "end_date"
+colnames(yx)[str_detect(colnames(yx),pattern="Year")] = "Year"
+colnames(yx)[str_detect(colnames(yx),pattern="Month")] = "Month"
 
 # Convert nA to 1 (to be Constructed)
 id = which(is.na(yx$Status1))
@@ -938,6 +999,10 @@ x$end_date = as.Date(x$end_date, format="%m/%d/%y %H:%M:%S")
 # type
 x$Type = 2
 
+# Add Year and Month to generate stacked bar chart for monitoring monthly progress
+x$Year = as.numeric(format(x$end_date, format="%Y"))
+x$Month = as.numeric(format(x$end_date,format="%m"))
+
 
 # Join 
 y = read.xlsx(MLTable)
@@ -976,15 +1041,21 @@ yx$end_date.x = as.Date(yx$end_date.x, format="%m/%d/%y %H:%M:%S")
 
 yx$Status1.x[gg] = yx$Status1.y[gg]
 yx$end_date.x[gg] = yx$end_date.y[gg]
+## Year and Date
+gg2 = which(yx$Year.y>0)
+yx$Year.x[gg2] = yx$Year.y[gg2]
+yx$Month.x[gg2] = yx$Month.y[gg2]
 
 str(yx)
-delField = which(str_detect(colnames(yx),"Status1.y|CP.y|end_date.y"))
+delField = which(str_detect(colnames(yx),"Status1.y|CP.y|end_date.y|Year.y|Month.y"))
 yx = yx[,-delField]
 
 # Change Status name
 colnames(yx)[str_detect(colnames(yx),pattern="Status1")] = "Status1"
 colnames(yx)[str_detect(colnames(yx),pattern="CP")] = "CP"
 colnames(yx)[str_detect(colnames(yx),pattern="end_date")] = "end_date"
+colnames(yx)[str_detect(colnames(yx),pattern="Year")] = "Year"
+colnames(yx)[str_detect(colnames(yx),pattern="Month")] = "Month"
 
 # Convert nA to 1 (to be Constructed)
 id = which(is.na(yx$Status1))
@@ -1058,6 +1129,9 @@ x$end_date = as.Date(x$end_date, format="%m/%d/%y %H:%M:%S")
 # type
 x$Type = 3
 
+# Add Year and Month to generate stacked bar chart for monitoring monthly progress
+x$Year = as.numeric(format(x$end_date, format="%Y"))
+x$Month = as.numeric(format(x$end_date,format="%m"))
 
 # Join 
 y = read.xlsx(MLTable)
@@ -1092,15 +1166,20 @@ yx$end_date.x = as.Date(yx$end_date.x, format="%m/%d/%y %H:%M:%S")
 
 yx$Status1.x[gg] = yx$Status1.y[gg]
 yx$end_date.x[gg] = yx$end_date.y[gg]
+## Year and Date
+gg2 = which(yx$Year.y>0)
+yx$Year.x[gg2] = yx$Year.y[gg2]
+yx$Month.x[gg2] = yx$Month.y[gg2]
 
-str(yx)
-delField = which(str_detect(colnames(yx),"Status1.y|CP.y|end_date.y"))
+delField = which(str_detect(colnames(yx),"Status1.y|CP.y|end_date.y|Year.y|Month.y"))
 yx = yx[,-delField]
 
 # Change Status name
 colnames(yx)[str_detect(colnames(yx),pattern="Status1")] = "Status1"
 colnames(yx)[str_detect(colnames(yx),pattern="CP")] = "CP"
 colnames(yx)[str_detect(colnames(yx),pattern="end_date")] = "end_date"
+colnames(yx)[str_detect(colnames(yx),pattern="Year")] = "Year"
+colnames(yx)[str_detect(colnames(yx),pattern="Month")] = "Month"
 
 # Convert nA to 1 (to be Constructed)
 id = which(is.na(yx$Status1))
@@ -1205,6 +1284,10 @@ if(length(id)>0){
   print("no duplicated observations")
 }
 
+# Add Year and Month to generate stacked bar chart for monitoring monthly progress
+x$Year = as.numeric(format(x$end_date, format="%Y"))
+x$Month = as.numeric(format(x$end_date,format="%m"))
+
 
 # Read master list and join
 y = read.xlsx(MLTable)
@@ -1239,8 +1322,12 @@ yx$end_date.x = as.Date(yx$end_date.x, format="%m/%d/%y %H:%M:%S")
 
 yx$Status1.x[gg] = yx$Status1.y[gg]
 yx$end_date.x[gg] = yx$end_date.y[gg]
+## Year and Date
+gg2 = which(yx$Year.y>0)
+yx$Year.x[gg2] = yx$Year.y[gg2]
+yx$Month.x[gg2] = yx$Month.y[gg2]
 
-delField = which(str_detect(colnames(yx), "Status1.y|CP.y|end_date.y"))
+delField = which(str_detect(colnames(yx), "Status1.y|CP.y|end_date.y|Year.y|Month.y"))
 yx = yx[,-delField]
 
 # Change Status name
@@ -1248,6 +1335,8 @@ head(yx)
 colnames(yx)[str_detect(colnames(yx),pattern="Status1")] = "Status1"
 colnames(yx)[str_detect(colnames(yx),pattern="CP")] = "CP"
 colnames(yx)[str_detect(colnames(yx),pattern="end_date")] = "end_date"
+colnames(yx)[str_detect(colnames(yx),pattern="Year")] = "Year"
+colnames(yx)[str_detect(colnames(yx),pattern="Month")] = "Month"
 
 # Convert nA to 1 (to be Constructed)
 id = which(is.na(yx$Status1))
@@ -1366,6 +1455,11 @@ if(length(id)>0){
   print("no duplicated observations")
 }
 
+# Add Year and Month to generate stacked bar chart for monitoring monthly progress
+x$Year = as.numeric(format(x$end_date, format="%Y"))
+x$Month = as.numeric(format(x$end_date,format="%m"))
+
+
 #id = which(str_detect(x$nPierNumber,'^DEP'))
 # Join new status to Viaduct masterlist
 
@@ -1375,7 +1469,7 @@ yx = left_join(y,x,by="nPierNumber")
 ## Check if the number of Status1 for each Type is same between x and yx.
 ## Check for piles with completed status
 x.pile = x$nPierNumber[x$Status1==4]
-yx.pile = yx$nPierNumber[which(yx$Status1.y==4 & yx$Type==1 & yx$CP=="N-04")]
+yx.pile = yx$nPierNumber[which(yx$Status1.y==4 & yx$Type==1 & yx$CP.x=="N-04")]
 
 missing_in_yx = x.pile[!x.pile %in% yx.pile] # not exist in yx table
 missing_in_x = yx.pile[!yx.pile %in% x.pile] # not exist in x table
@@ -1384,7 +1478,7 @@ check_Completed()
 
 # check all statuses
 x_t = table(x$Status1)
-yx_t = table(yx$Status1.y[which(yx$CP=="N-04" & yx$Type==1)])
+yx_t = table(yx$Status1.y[which(yx$CP.x=="N-04" & yx$Type==1)])
 
 check = x_t %in% yx_t
 check_function()
@@ -1397,14 +1491,21 @@ yx$end_date.x = as.Date(yx$end_date.x, format="%m/%d/%y %H:%M:%S")
 
 yx$Status1.x[gg] = yx$Status1.y[gg]
 yx$end_date.x[gg] = yx$end_date.y[gg]
+## Year and Date
+gg2 = which(yx$Year.y>0)
+yx$Year.x[gg2] = yx$Year.y[gg2]
+yx$Month.x[gg2] = yx$Month.y[gg2]
 
-delField = which(str_detect(colnames(yx), "Status1.y|Remarks|CP.y|end_date.y"))
+delField = which(str_detect(colnames(yx), "Status1.y|Remarks|CP.y|end_date.y|Year.y|Month.y"))
 yx = yx[,-delField]
 
 # Change Status name
 colnames(yx)[str_detect(colnames(yx),pattern="Status1")] = "Status1"
 colnames(yx)[str_detect(colnames(yx),pattern="CP")] = "CP"
 colnames(yx)[str_detect(colnames(yx),pattern="end_date")] = "end_date"
+colnames(yx)[str_detect(colnames(yx),pattern="Year")] = "Year"
+colnames(yx)[str_detect(colnames(yx),pattern="Month")] = "Month"
+
 
 # Convert nA to 1 (to be Constructed)
 id = which(is.na(yx$Status1))
@@ -1578,6 +1679,9 @@ for(i in type){
   
 }
 
+# Add Year and Month to generate stacked bar chart for monitoring monthly progress
+xx1$Year = as.numeric(format(xx1$end_date, format="%Y"))
+xx1$Month = as.numeric(format(xx1$end_date,format="%m"))
 
 #
 y = read.xlsx(MLTable)
@@ -1585,11 +1689,16 @@ y = read.xlsx(MLTable)
 yxx = left_join(y,xx1,by=c("Type","nPierNumber"))
 
 ## Check if the number of Status1 for each Type is same between x and yx.
-
 xx_t = table(xx1$Type,xx1$Status1)
 id=which(yxx$CP=="N-04" & (yxx$Type==2 & yxx$Type<5)) # pile cap, pier, pier head
 
 yxx_t = table(yxx$Type[id],yxx$Status1.y[id])
+
+xx1_pileC = xx1$nPierNumber[xx1$Type == 2 & xx1$Status1 == 4]
+yxx_pileC = yxx$nPierNumber[yxx$Type == 2 & yxx$Status1.y == 4]
+
+xx1_pileC[!xx1_pileC %in% yxx_pileC]
+
 
 check = xx_t %in% yxx_t
 check_function()
@@ -1605,13 +1714,19 @@ yxx$end_date.x = as.Date(yxx$end_date.x,format="%m/%d/%y %H:%M:%S")
 
 yxx$Status1.x[gg]=yxx$Status1.y[gg]
 yxx$end_date.x[gg]=yxx$end_date.y[gg]
+## Year and Date
+gg2 = which(yxx$Year.y>0)
+yxx$Year.x[gg2] = yxx$Year.y[gg2]
+yxx$Month.x[gg2] = yxx$Month.y[gg2]
 
 ## Rename and delete Status1.y
-id = which(str_detect(colnames(yxx),"Status1.y|end_date.y"))
+id = which(str_detect(colnames(yxx),"Status1.y|end_date.y|Year.y|Month.y"))
 yxx = yxx[,-id]
 
 colnames(yxx)[which(str_detect(colnames(yxx),"Status1"))] = "Status1"
 colnames(yxx)[which(str_detect(colnames(yxx),"end_date"))] = "end_date"
+colnames(yxx)[which(str_detect(colnames(yxx),"Year"))] = "Year"
+colnames(yxx)[which(str_detect(colnames(yxx),"Month"))] = "Month"
 
 # Convert nA to 1 (to be Constructed)
 

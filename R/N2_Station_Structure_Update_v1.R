@@ -73,7 +73,7 @@
 # DEFINE PARAMETERS
 #******************************************************************#
 ## Enter Date of Update ##
-date_update = "2022-06-17"
+date_update = "2022-06-27"
 
 
 strucType = c("Substructure", "Superstructure")
@@ -131,7 +131,6 @@ library(fs)
 #gs4_auth(email="matsuzakieiji0@gmail.com")
 gs4_auth(email="matsuzaki-ei@ocglobal.jp")
 
-
 path =  path_home()
 wd = file.path(path,"Dropbox/01-Railway/02-NSCR-Ex/01-N2/03-During-Construction/02-Civil/02-Station Structure/01-Masterlist/01-Compiled")
 #a=choose.dir()
@@ -145,6 +144,21 @@ MLTable = file.path(wd,"N2_station_structure.xlsx")
 #MLTable = file.choose(a_ML)
 # Read the masterlist:----
 y = read.xlsx(MLTable)
+
+
+################# BACKUP IF necessary
+## Backup old ones in case
+head(y)
+y$updated = as.Date(y$updated, origin = "1899-12-30")
+y$updated = as.Date(y$updated, format="%m/%d/%y %H:%M:%S")
+oldDate = gsub("-","",unique(y$updated))
+
+fileName = paste(oldDate,"_",basename(MLTable),sep="")
+direct = file.path(wd,"old")
+
+write.xlsx(y,file.path(direct,fileName),row.names=FALSE)
+
+################# BACKUP IF necessary using above
 
 ###############################################################
 #######################:---- N-01 #################################:----
@@ -240,20 +254,6 @@ colnames(yx)[which(str_detect(colnames(yx),"Status"))] = "Status"
 # Date
 library(lubridate)
 
-################# BACKUP IF necessary
-## Backup old ones in case
-head(y)
-y$updated = as.Date(y$updated, origin = "1899-12-30")
-y$updated = as.Date(y$updated, format="%m/%d/%y %H:%M:%S")
-oldDate = gsub("-","",unique(y$updated))
-
-
-fileName = paste(oldDate,"_",basename(MLTable),sep="")
-direct = file.path(wd,"old")
-
-write.xlsx(y,file.path(direct,fileName),row.names=FALSE)
-
-################# BACKUP IF necessary using above
 
 ## Overwrite master list with new date
 yx$updated = ymd(date_update)
@@ -326,7 +326,7 @@ yx$Station = as.numeric(yx$Station)
 #url = "https://docs.google.com/spreadsheets/d/1du9qnThdve1yXBv-W_lLzSa3RMd6wX6_NlNCz8PqFdg/edit?userstoinvite=junsanjose@gmail.com&actionButton=1#gid=0"
 url = "https://docs.google.com/spreadsheets/d/1du9qnThdve1yXBv-W_lLzSa3RMd6wX6_NlNCz8PqFdg/edit?usp=sharing"
 
-n02_pile = 1
+n02_pile = 2
 CP = "N-02"
 
 # Read and write as CSV and xlsx

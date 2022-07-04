@@ -22,8 +22,8 @@ library(lubridate)
 #rapFolder = in_params[[1]] # Directory where you saved master list excel tables from the RAP Team 
 #previous_date = in_params[[2]] # just string. 2022-01-26
 #result = out_params[[1]]
-previous_date = "2022-03-21"
-new_date = "2022-06-20"
+previous_date = "2022-06-24"
+new_date = "2022-06-28"
 
 
 # 1. Make sure that all the excel files are downloaded from the RAP Team's OneDrive in the following working directory;----
@@ -385,7 +385,7 @@ id=which(str_detect("^TotalArea|^AffectedArea|^RemainingArea",colnames(sc_lot_ra
 for(i in id) sc_lot_rap[[i]] = as.numeric(sc_lot_rap[[i]])
 
 
-## 5.4. Change CP format
+## 5.4. Check and Change CP format
 ### N2
 id = which(str_detect(n2_lot_rap$CP,"^N\\d+|^n\\d+"))
 if (length(id)>0){
@@ -400,21 +400,49 @@ id = which(str_detect(sc_lot_rap$CP,"^S\\d+|^s\\d+"))
 if (length(id)>0){
   sc_lot_rap$CP[id] = gsub("S|s","S-",sc_lot_rap$CP[id])
 } else {
-  pring("OK")
+  print("OK")
 }
 
 
 sc_lot_rap$CP = gsub(",.*","",sc_lot_rap$CP)
 
-## 5.5. Fill in zero for all empty cells in HandOverArea
-### n2_lot_rap
+## 5.5. Fix HandOverArea and percentHandedOver:-----
+## when affectedArea is missing, percentHandedOver = 0
+
+### n2_lot_rap:-----
 id=which(is.na(n2_lot_rap$HandOverArea))
 n2_lot_rap$HandOverArea[id] = 0
 
+# Percentage handed over area
+id = which(n2_lot_rap$HandOverArea>=0)
+n2_lot_rap$percentHandedOver[id] = round(n2_lot_rap$HandOverArea[id]/n2_lot_rap$AffectedArea[id]*100,0)
 
-### sc_lot_rap
+## When HandOverArea = 0, percentHandedOver = 0
+id = which(n2_lot_rap$HandOverArea == 0)
+n2_lot_rap$percentHandedOver = as.numeric(NA)
+n2_lot_rap$percentHandedOver[id] = 0
+
+## When HandOver == 1, percentHandedOver must be 100
+id = which(n2_lot_rap$HandOver == 1)
+n2_lot_rap$percentHandedOver[id] = 100
+
+
+### sc_lot_rap:----
 id=which(is.na(sc_lot_rap$HandOverArea))
 sc_lot_rap$HandOverArea[id] = 0
+
+# Percentage handed over area
+id = which(sc_lot_rap$HandOverArea>=0)
+sc_lot_rap$percentHandedOver[id] = round(sc_lot_rap$HandOverArea[id]/sc_lot_rap$AffectedArea[id]*100,0)
+
+## When HandOverArea = 0, percentHandedOver = 0
+id = which(sc_lot_rap$HandOverArea == 0)
+sc_lot_rap$percentHandedOver = as.numeric(NA)
+sc_lot_rap$percentHandedOver[id] = 0
+
+## When HandOver == 1, percentHandedOver must be 100
+id = which(sc_lot_rap$HandOver == 1)
+sc_lot_rap$percentHandedOver[id] = 100
 
 ####################################################################
 ## 5.6. Convert dates used in the dropdown list in smart maps:----
@@ -491,13 +519,6 @@ if(length(id)==0){
   n2_lot_rap$AffectedArea[id] = n2_lot_rap$HandOverArea[id]
 }
 
-# check percentage with N-01 and calculate percentage
-
-tt = n2_lot_rap[n2_lot_rap$CP=="N-02",]
-sum(tt$HandOverArea,na.rm=TRUE)/sum(tt$AffectedArea,na.rm=TRUE)
-
-id = which(n2_lot_rap$HandOverArea>=0)
-n2_lot_rap$percentHandedOver[id] = round(n2_lot_rap$HandOverArea[id]/n2_lot_rap$AffectedArea[id]*100,0)
 
 ## 0.2. SC Lot
 # Add percent handed over
@@ -520,13 +541,6 @@ if (length(id) > 0){
   print("")
 }
 
-
-
-tt = sc_lot_rap[sc_lot_rap$CP=="S-02",]
-sum(tt$HandOverArea,na.rm=TRUE)/sum(tt$AffectedArea,na.rm=TRUE)
-
-id = which(sc_lot_rap$HandOverArea>=0)
-sc_lot_rap$percentHandedOver[id] = round(sc_lot_rap$HandOverArea[id]/sc_lot_rap$AffectedArea[id]*100,0)
 
 # 1. If Affected area = 0 or empty. This is error:----
 ## 1.1. N2 Lot:----
@@ -846,3 +860,4 @@ write.xlsx(sc1_barang_rap,file.path(wd_gis_sc,SC1_Barangay_fileName),overwrite=T
 
 
 }
+

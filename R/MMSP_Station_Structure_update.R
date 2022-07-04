@@ -73,7 +73,7 @@ wd = file.path(path,"Dropbox/01-Railway/01-MMSP/03-During-Construction/01-Statio
 setwd(wd)
 getwd()
 ## Enter Date of Update ##:----
-date_update = "2022-06-20"
+date_update = "2022-06-27"
 
 # Read our master list table
 MLTable = file.path(wd,"MMSP_Station_Structure.xlsx")
@@ -163,7 +163,6 @@ x$end_date = unlist(x$end_date)
 x$end_date = as.POSIXlt(x$end_date, origin="1970-01-01", tz="UTC")
 x$end_date = as.Date(x$end_date, origin = "1899-12-30")
 
-head(x)
 # Merge this to masterlist
 y = read.xlsx(MLTable)
 
@@ -316,7 +315,6 @@ str(x)
 
 yx = left_join(y,x,by=c("Station1","Type","ID"))
 
-
 ## Check if the number of Status1 for each Type is same between x and yx.
 x_t = table(x$Status)
 yx_t = table(yx$Status.y[which(yx$Station1==NAS & yx$Type==5 & yx$Status.y==4)])
@@ -424,6 +422,10 @@ x$end_date = unlist(x$end_date)
 x$end_date = as.POSIXlt(x$end_date, origin="1970-01-01", tz="UTC")
 x$end_date = as.Date(x$end_date, origin = "1899-12-30")
 
+# Add Year and Month to generate stacked bar chart for monitoring monthly progress
+x$Year = as.numeric(format(x$end_date, format="%Y"))
+x$Month = as.numeric(format(x$end_date,format="%m"))
+
 # Merge this to masterlist
 y = read.xlsx(MLTable)
 
@@ -451,20 +453,30 @@ yx$Status.x[gg] = yx$Status.y[gg]
 gg1 = which(yx$end_date.y>0)
 yx$end_date.x[gg1] = yx$end_date.y[gg1]
 
+gg2 = which(yx$Year.y>0)
+yx$Year.x[gg2] = yx$Year.y[gg2]
+yx$Month.x[gg2] = yx$Month.y[gg2]
+
 # Delete Status.y and rename Status.x to Status
-rm_status = which(colnames(yx)=="Status.y")
-yx = yx[, -rm_status]
+rem_id = which(colnames(yx)=="Status.y|end_date.y|Year.y|Month.y")
+yx = yx[,-rem_id]
 
-status_name = which(str_detect(colnames(yx),"Status"))
-colnames(yx)[status_name] = "Status"
-
-# Delete end_date.y and rename end_date.x to end_date
-id = which(colnames(yx)=="end_date.y")
-yx = yx[,-id]
-
+# Rename columns
+colnames(yx)[which(str_detect(colnames(yx),"Status"))] = "Status"
 colnames(yx)[which(str_detect(colnames(yx),"end_date"))] = "end_date"
+colnames(yx)[which(str_detect(colnames(yx),"Year"))] = "Year"
+colnames(yx)[which(str_detect(colnames(yx),"Month"))] = "Month"
 
-length(yx$ID[yx$Type==1 & yx$Status==4])
+
+## Delete when Year and Month = 0
+id = which(yx$Year == 0)
+if(length(id) > 0){
+  yx$Year[id] = NA
+  yx$Month[id] = NA
+} else {
+  print("")
+}
+
 
 # Add the latest date
 yx$updated = date_update
@@ -477,7 +489,6 @@ yx$StartDate = as.Date(yx$StartDate, origin = "1899-12-30")
 yx$StartDate = as.Date(yx$StartDate, format="%m/%d/%y %H:%M:%S")
 
 write.xlsx(yx,MLTable)
-
 
 
 

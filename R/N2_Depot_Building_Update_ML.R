@@ -1,6 +1,6 @@
 #******************************************************************#
 ## Enter Date of Update ##
-date_update = "2022-05-31"
+date_update = "2022-06-24"
 # This R code reads Google sheet monitoring sheets owned by N2 Civil Team and
 # updates GIS master list.
 
@@ -66,10 +66,8 @@ source_url = "https://docs.google.com/spreadsheets/d/1uo67rFwdQc4bi1y4TRugGJjT5h
 ### 2. Go to File and Save as Google Sheet
 ### 3. Copy the link and paste it to the working_url below
 
-
-### 4. Click and Open the copied Google Sheet
-### 5. Copy new link and paste in the following "working_url"
-working_url = "https://docs.google.com/spreadsheets/d/1ggKkuo83CCAQ2chcFD789-aAzc1tVexuyMNS_U3N7L8/edit?usp=sharing"
+### 4. Copy new link and paste in the following "working_url"
+working_url = "https://docs.google.com/spreadsheets/d/1TdUTIpp7pyjkPNpZDvNa6l8BDvYBu5agO6jOEfPbvhg/edit?usp=sharing"
 
 #*****************************************************************************************************
 
@@ -207,8 +205,7 @@ yx = yx[,-delField]
 
 # Change Status name
 colnames(yx)[str_detect(colnames(yx),pattern="Status")] = "Status"
-
-
 unique(yx$end_date)
+head(yx)
 ## Output
 write.xlsx(yx,MLTable)

@@ -789,7 +789,6 @@ if(length(id)>0){
 } else {print("GOOD")}
 
 
-
 ## 8.2.2. We need to delete this Pier numbers, as they do not often agree with ones in the GIS attribute tables
 # If we use their format, the N2 Pier point feature may have wrong pier numbers.
 id = which(colnames(sc_pier_rap)=="CP")

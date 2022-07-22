@@ -73,7 +73,7 @@
 # DEFINE PARAMETERS
 #******************************************************************#
 ## Enter Date of Update ##
-date_update = "2022-07-01"
+date_update = "2022-07-15"
 
 
 strucType = c("Substructure", "Superstructure")
@@ -491,6 +491,13 @@ yx_t = table(yx$Status.y[which(yx$CP.x=="N-03" & yx$SubType==1)])
 
 check = x_t %in% yx_t
 check_function()
+
+
+x.pile = x$ID
+yx.pile = yx$ID[which(yx$CP.x=="N-03" & yx$SubType==1)]
+
+x.pile[!x.pile %in% yx.pile]
+
 
 # NA for status = 1 (To be Constructed)
 gg = which(yx$Status.y>0)

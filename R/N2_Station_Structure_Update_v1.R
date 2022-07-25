@@ -73,7 +73,7 @@
 # DEFINE PARAMETERS
 #******************************************************************#
 ## Enter Date of Update ##
-date_update = "2022-07-15"
+date_update = "2022-07-22"
 
 
 strucType = c("Substructure", "Superstructure")
@@ -238,6 +238,10 @@ check_function = function(){
   )
 }
 
+x_pile = x$ID
+yx_pile = yx$ID[which(yx$Status.y==4 & yx$CP.x=="N-01" & yx$SubType==1)]
+x_pile[!x_pile %in% yx_pile]
+
 check_function()
 
 gg = which(yx$Status.y>1)
@@ -259,6 +263,7 @@ library(lubridate)
 yx$updated = ymd(date_update)
 yx$updated = as.Date(yx$updated, origin = "1899-12-30")
 yx$updated = as.Date(yx$updated, format="%m/%d/%y %H:%M:%S")
+
 
 # Recover data in excel format
 yx$StartDate = as.Date(yx$StartDate, origin = "1899-12-30")
@@ -482,7 +487,6 @@ if(length(id)>0){
 
 # Join 
 y = read.xlsx(MLTable)
-
 yx = left_join(y,x,by="ID")
 
 ## Check if the number of Status1 for each Type is same between x and yx.

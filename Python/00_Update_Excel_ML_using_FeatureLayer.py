@@ -19,6 +19,26 @@ workSpace = arcpy.GetParameterAsText(0) # Choose a folder where the excel master
 inputFeature = arcpy.GetParameterAsText(1)
 
 # 1. Refresh uniqueID by adding sequential number
+field_ID = "uniqueID"
+
+codeblock = """
+rec = 0
+def reclass():
+    global rec
+    pStart = 1
+    pInterval = 1
+    if rec == 0:
+        rec = pStart
+        return rec
+    else:
+        rec = rec + pInterval
+        return rec"""
+expression = "reclass()"
+arcpy.CalculateField_management(inputFeature, field_ID, expression, "PYTHON3", codeblock)
+
+
+
+"""
 rec=0
 with arcpy.da.UpdateCursor(inputFeature, ["uniqueID"]) as cursor:
     for row in cursor:
@@ -31,6 +51,8 @@ with arcpy.da.UpdateCursor(inputFeature, ["uniqueID"]) as cursor:
             rec = rec + pInterval
             row[0] = rec
         cursor.updateRow(row)
+"""
+
 
 # 2. Export inputFeature to Excel sheet
 out_xlsx = os.path.join(workSpace,inputFeature + "_NEW_ML.xlsx")

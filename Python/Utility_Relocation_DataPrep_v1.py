@@ -115,8 +115,10 @@ for layer in listLayers:
             for row in cursor:
                 if row[1] in (1, 2, 7, 8, 19):
                     row[0] = 8
-                elif row[1] in (3, 4, 5, 10, 11, 17, 6):
+                elif row[1] in (3, 4, 5, 10, 11, 17, 18, 6):
                     row[0] = 0.5
+                elif row[1] == 14:
+                    row[0] = 3
                 cursor.updateRow(row)
         
         # Convert date text format
@@ -163,6 +165,10 @@ for layer in listLayers:
                 # Telecome Line/Internet Cable Line/Electric Line and Aboveground, height = 8.0
                 elif row[0] in (1, 2, 8) and row[1] == 1:
                     row[2] = 8
+
+                # Internet Cable Line for Underground
+                elif row[0] == 2 and row[1] == 2:
+                    row[2] = -3
 
                 # Sewerage/Drainage/Canal/Creek and Underground, Height = -3.0
                 elif row[0] in (4, 5, 6, 7, 11):

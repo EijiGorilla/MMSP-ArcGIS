@@ -114,6 +114,7 @@ aR=file.choose()
 R=read.xlsx(aR)
 head(R)
 
+
 # join
 head(tempLM)
 id = which(colnames(tempLM)=="PierNumber" | colnames(tempLM)=="pp")
@@ -127,6 +128,7 @@ head(LMR,100)
 
 LMR$ppR = 0
 
+head(LMR)
 
 pier = unique(LMR$PierNumber)
 tempLMR = data.frame()

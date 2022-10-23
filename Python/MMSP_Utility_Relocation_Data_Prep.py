@@ -81,6 +81,8 @@ if geometryType == 'Point':
             # Define height
             if row[0] == 3:
                 row[2] = 0
+            elif row[1] == 9: # Valve
+                row[2] = -2
             elif row[0] == 2:
                 row[2] = -3
             elif row[0] == 1:
@@ -96,7 +98,9 @@ if geometryType == 'Point':
         for row in cursor:
             if row[1] in [1,2,3,13,14,15,16]:
                 row[2] = 8
-            elif row[1] in [4,5,6,7,8,9,10,11,17,19,20,21]:
+            elif row[1] == 9:
+                row[2] = 2
+            elif row[1] in [4,5,6,7,8,10,11,17,19,20,21]:
                 row[2] = 0.5
             elif row[1] == 12:
                 row[2] = 0.2

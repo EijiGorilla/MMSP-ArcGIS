@@ -3,7 +3,7 @@
 
 
 #############################
-new_date = "2022-02-10"
+new_date = "2022-08-01"
 
 
 
@@ -35,11 +35,11 @@ library(fs)
 #)
 #drive_auth_configure(app = google_app)
 #drive_auth_configure(api_key = "AIzaSyCqbwFnO6csUya-zKcXKXh_-unE_knZdd0")
-drive_auth(path = "G:/My Drive/01-Google Clould Platform/service-account-token.json")
+#drive_auth(path = "G:/My Drive/01-Google Clould Platform/service-account-token.json")
 
 
 ## Authorize (Choose 'matsuzakieiji0@gmail.com'. OCG gmail may not work)
-gs4_auth(email="matsuzakieiji0@gmail.com")
+gs4_auth(email="matsuzaki-ei@ocglobal.jp")
 
 # Choose working directory
 path = path_home()

@@ -22,8 +22,8 @@ library(lubridate)
 #rapFolder = in_params[[1]] # Directory where you saved master list excel tables from the RAP Team 
 #previous_date = in_params[[2]] # just string. 2022-01-26
 #result = out_params[[1]]
-previous_date = "2022-06-28"
-new_date = "2022-07-04"
+previous_date = "2022-08-30"
+new_date = "2022-10-03"
 
 
 # 1. Make sure that all the excel files are downloaded from the RAP Team's OneDrive in the following working directory;----
@@ -100,8 +100,6 @@ sc_lot_rap = read.xlsx(sc_lot1)
 sc_struc_rap = read.xlsx(sc_struc1)
 sc_pier_rap = read.xlsx(sc_pier1)
 
-str(sc_pier_rap)
-
 ### 3.2.2. SC1 (Contractors' Submission):----
 sc1_lot = file.path(wd_rap,rap_files[which(str_detect(rap_files,"^SC1_.*Parcellary.*.xlsx"))])
 sc1_struc = file.path(wd_rap,rap_files[which(str_detect(rap_files,"^SC1_.*Structure.*.xlsx"))])
@@ -115,7 +113,12 @@ sc1_barang_rap = read.xlsx(sc1_barang)
 sc_lot_rap$HandOver = as.numeric(sc_lot_rap$HandOver)
 
 id = which(sc_lot_rap$HandOver == 1)
-sc_lot_rap$StatusLA[id] = 0
+if(length(id) == 0){
+  print("")
+} else {
+  sc_lot_rap$StatusLA[id] = 0
+}
+
 
 #
 sc1_lot_rap$ContSubm = 1 # we need to define this to filter by lot based on Contractors submission
@@ -256,12 +259,10 @@ sc1_barang_rap$Barangay[] = gsub("^\\s|\\s$","",sc1_barang_rap$Barangay)
 
 sc1_barang_rap$Subcon[] = gsub("^\\s|\\s$","",sc1_barang_rap$Subcon)
 
-
 ## Check HandOverDate
 ### N2 Lot
 head(n2_lot_rap)
 unique(n2_lot_rap$HandOverDate)
-
 
 ### 4.2. Join SC Land to SC1 Land, SC1 Structure to SC structure in the RAP Teams+----
 ####### SC Lot
@@ -297,7 +298,6 @@ if(length(sc1_lot_iid)!= length(sc_lot_iid)){
 } else {
   print("LotIDs match between sc_lot_rap and sc1_lot_rap")
 }
-
 
 ####### SC Structure
 id = which(str_detect(colnames(sc1_struc_rap),"StrucID|Subcon|BasicPlan|ContSubm"))
@@ -377,13 +377,21 @@ sc_lot_rap = left_join(sc_lot_rap,y,by="LotID")
 
 ## 5.3. Fix totalArea, AffectedArea and RemainingArea, Priority, and Status
 ## n2_lot_rap
+## Remove empty space
 id=which(str_detect("^TotalArea|^AffectedArea|^RemainingArea",colnames(n2_lot_rap)))
-for(i in id) n2_lot_rap[[i]] = as.numeric(n2_lot_rap[[i]])
+for(i in id) {
+  n2_lot_rap[[i]] = gsub("-","",n2_lot_rap[[i]])
+  n2_lot_rap[[i]] = gsub("[[:space:]]","",n2_lot_rap[[i]])
+  n2_lot_rap[[i]] = as.numeric(n2_lot_rap[[i]])
+}
 
 ## sc_lot_rap
 id=which(str_detect("^TotalArea|^AffectedArea|^RemainingArea",colnames(sc_lot_rap)))
-for(i in id) sc_lot_rap[[i]] = as.numeric(sc_lot_rap[[i]])
-
+for(i in id) {
+  sc_lot_rap[[i]] = gsub("-","",sc_lot_rap[[i]])
+  sc_lot_rap[[i]] = gsub("[[:space:]]","",sc_lot_rap[[i]])
+  sc_lot_rap[[i]] = as.numeric(sc_lot_rap[[i]])
+}
 
 ## 5.4. Check and Change CP format
 ### N2
@@ -403,8 +411,7 @@ if (length(id)>0){
   print("OK")
 }
 
-
-sc_lot_rap$CP = gsub(",.*","",sc_lot_rap$CP)
+#sc_lot_rap$CP = gsub(",.*","",sc_lot_rap$CP)
 
 ## 5.5. Fix HandOverArea and percentHandedOver:-----
 ## when affectedArea is missing, percentHandedOver = 0
@@ -413,36 +420,68 @@ sc_lot_rap$CP = gsub(",.*","",sc_lot_rap$CP)
 id=which(is.na(n2_lot_rap$HandOverArea))
 n2_lot_rap$HandOverArea[id] = 0
 
-# Percentage handed over area
+# 1. Percentage handed over area
 id = which(n2_lot_rap$HandOverArea>=0)
 n2_lot_rap$percentHandedOver[id] = round(n2_lot_rap$HandOverArea[id]/n2_lot_rap$AffectedArea[id]*100,0)
 
-## When HandOverArea = 0, percentHandedOver = 0
+# 2. When percentHandedOver = 100, HandOver = 1 and StatusLA = 0
+id = which(n2_lot_rap$percentHandedOver == 100)
+n2_lot_rap$HandOver[id] = 1
+n2_lot_rap$StatusLA[id] = 0
+
+n2_lot_rap[which(is.na(n2_lot_rap$StatusLA) & n2_lot_rap$HandOver == 1),]
+
+## 3. When HandOverArea = 0, HandOver = 0 & percentHandedOver = 0
 id = which(n2_lot_rap$HandOverArea == 0)
-n2_lot_rap$percentHandedOver = as.numeric(NA)
+n2_lot_rap$HandOver[id] = 0
 n2_lot_rap$percentHandedOver[id] = 0
 
-## When HandOver == 1, percentHandedOver must be 100
+## 4. when HandedOver = 1, percentHandedOver = 100
 id = which(n2_lot_rap$HandOver == 1)
 n2_lot_rap$percentHandedOver[id] = 100
 
+## 5.
+n2_lot_rap$HandOverDate = as.Date(n2_lot_rap$HandOverDate, origin = "1899-12-30")
+n2_lot_rap$HandOverDate = as.Date(n2_lot_rap$HandOverDate, format="%m/%d/%y %H:%M:%S")
+
+##id = which(n2_lot_rap$HandOverDate <= new_date)
+##n2_lot_rap$HandOver[id] = 1
+##n2_lot_rap$percentHandedOver[id] = 100
+#n2_lot_rap$HandOverArea[id] = n2_lot_rap$AffectedArea
+##n2_lot_rap$HandOverArea[id] = n2_lot_rap$AffectedArea[id]
 
 ### sc_lot_rap:----
 id=which(is.na(sc_lot_rap$HandOverArea))
 sc_lot_rap$HandOverArea[id] = 0
 
-# Percentage handed over area
+# 1. Percentage handed over area
 id = which(sc_lot_rap$HandOverArea>=0)
 sc_lot_rap$percentHandedOver[id] = round(sc_lot_rap$HandOverArea[id]/sc_lot_rap$AffectedArea[id]*100,0)
 
-## When HandOverArea = 0, percentHandedOver = 0
+# 2. When percentHandedOver = 100, HandOver = 1
+id = which(sc_lot_rap$percentHandedOver == 100)
+sc_lot_rap$HandOver[id] = 1
+sc_lot_rap$StatusLA[id] = 0
+
+## 3. When HandOverArea = 0, HandOver = 0 & percentHandedOver = 0
 id = which(sc_lot_rap$HandOverArea == 0)
-sc_lot_rap$percentHandedOver = as.numeric(NA)
+sc_lot_rap$HandOver[id] = 0
 sc_lot_rap$percentHandedOver[id] = 0
 
-## When HandOver == 1, percentHandedOver must be 100
+## 4. when HandedOver = 1, percentHandedOver = 100
 id = which(sc_lot_rap$HandOver == 1)
 sc_lot_rap$percentHandedOver[id] = 100
+
+## 5.
+sc_lot_rap$HandOverDate = as.Date(sc_lot_rap$HandOverDate, origin = "1899-12-30")
+sc_lot_rap$HandOverDate = as.Date(sc_lot_rap$HandOverDate, format="%m/%d/%y %H:%M:%S")
+
+
+##id = which(sc_lot_rap$HandOverDate <= new_date)
+##sc_lot_rap$HandOver[id] = 1
+##sc_lot_rap$percentHandedOver[id] = 100
+##sc_lot_rap$HandOverArea[id] = sc_lot_rap$AffectedArea[id]
+
 
 ####################################################################
 ## 5.6. Convert dates used in the dropdown list in smart maps:----
@@ -470,7 +509,12 @@ for(i in 1:12){
   n2_lot_rap$HandOverDate1[id] = paste(month_list[i],n2_lot_rap$YEARS[id],sep=" ")
 }
 
-# 5.6.1.4. Delete temporary YEARS and MONTH:----
+### 5.6.1.4. When 'HandedOver' = 1, null 'HandedOverDate1'
+#### Handed-over dates should not be included in the hand-over dropdown list
+id = which(n2_lot_rap$HandOver == 1)
+n2_lot_rap$HandOverDate1[id] = NA
+
+# 5.6.1.5. Delete temporary YEARS and MONTH:----
 id = which(str_detect(colnames(n2_lot_rap),"YEARS|MONTH"))
 n2_lot_rap = n2_lot_rap[,-id]
 
@@ -499,7 +543,12 @@ for(i in 1:12){
   sc_lot_rap$HandOverDate1[id] = paste(month_list[i],sc_lot_rap$YEARS[id],sep=" ")
 }
 
-# 5.6.2.4. Delete temporary YEARS and MONTH:----
+### 5.6.2.4. When 'HandedOver' = 1, null 'HandedOverDate1'
+#### Handed-over dates should not be included in the hand-over dropdown list
+id = which(sc_lot_rap$HandOver == 1)
+sc_lot_rap$HandOverDate1[id] = NA
+
+# 5.6.2.5. Delete temporary YEARS and MONTH:----
 id = which(str_detect(colnames(sc_lot_rap),"YEARS|MONTH"))
 sc_lot_rap = sc_lot_rap[,-id]
 
@@ -699,24 +748,76 @@ if(length(id)>0){
   print("GOOD!")
 }
 
-# 7. When HandOverArea = AffectedArea, HandOver = 1
-id = which(n2_lot_rap$AffectedArea == n2_lot_rap$HandOverArea)
+
+# 7. Missing LotID
+id = which(is.na(n2_lot_rap$LotID))
 if(length(id)>0){
-  print("ERROR: HandOver = 0 when AffectedArea = HandOverArea. It should be one.")
-  n2_lot_rap$HandOver[id] = 1
+  print("ERROR: There is(are) missing LotID.")
+  error7_n2 = data.frame(missing_LotID = n2_lot_rap$SurveyNo[id])
 } else {
   print("GOOD")
+  error7_n2 = data.frame(missing_LotID = NA)
 }
+
+id = which(is.na(sc_lot_rap$LotID))
+if(length(id)>0){
+  print("ERROR: There is(are) missing LotID.")
+  error7_sc = data.frame(missing_LotID = sc_lot_rap$SurveyNo[id])
+} else {
+  print("GOOD")
+  error7_sc = data.frame(missing_LotID = NA)
+}
+
+# 8. Missing Municipality
+id = which(is.na(n2_lot_rap$Municipality))
+if(length(id)>0){
+  print("ERROR: There is(are) missing Municipality.")
+  error8_n2 = data.frame(missing_Municipality = n2_lot_rap$LotID[id])
+} else {
+  print("GOOD")
+  error8_n2 = data.frame(missing_Municipality = NA)
+}
+
+id = which(is.na(sc_lot_rap$Municipality))
+if(length(id)>0){
+  print("ERROR: There is(are) missing Municipality.")
+  error8_sc = data.frame(missing_Municipality = sc_lot_rap$LotID[id])
+} else {
+  print("GOOD")
+  error8_sc = data.frame(missing_Municipality = NA)
+}
+
+
+# 9. Missing Barangay
+id = which(is.na(n2_lot_rap$Barangay))
+if(length(id)>0){
+  print("ERROR: There is(are) missing Barangay.")
+  error9_n2 = data.frame(missing_Barangay = n2_lot_rap$LotID[id])
+} else {
+  print("GOOD")
+  error9_n2 = data.frame(missing_Barangay = NA)
+}
+
+id = which(is.na(sc_lot_rap$Barangay))
+if(length(id)>0){
+  print("ERROR: There is(are) missing Barangay.")
+  error9_sc = data.frame(missing_Barangay = sc_lot_rap$LotID[id])
+} else {
+  print("GOOD")
+  error9_sc = data.frame(missing_Barangay = NA)
+}
+
+
 
 # 7. Compile all errors:----
 library(qpcR)
 
 ## 7.1. N2 Lot:----
-c_n2 = qpcR:::cbind.na(error1_n2,error2_n2,error3_n2,error4_n2,error5_n2,error6_n2)
+c_n2 = qpcR:::cbind.na(error1_n2,error2_n2,error3_n2,error4_n2,error5_n2,error6_n2,error7_n2,error8_n2,error9_n2)
 write.xlsx(c_n2, file.path(wd_gis_n2,"Error_table_N2.xlsx"))
 
 ## 7.2. SC Lot:----
-c_sc = qpcR:::cbind.na(error1_sc,error2_sc,error3_sc,error4_sc,error5_sc,error6_sc)
+c_sc = qpcR:::cbind.na(error1_sc,error2_sc,error3_sc,error4_sc,error5_sc,error6_sc,error7_sc,error8_sc,error9_sc)
 write.xlsx(c_sc, file.path(wd_gis_n2,"Error_table_SC.xlsx"))
 
 
@@ -755,8 +856,6 @@ n2_pier_rap$Pier[id] = gsub("-2","-02",n2_pier_rap$Pier[id])
 n2_pier_rap$Pier[id] = gsub("-3","-03",n2_pier_rap$Pier[id])
 n2_pier_rap$Pier[id] = gsub("-4","-04",n2_pier_rap$Pier[id])
 
-head(n2_pier_rap)
-
 colNames = colnames(n2_pier_rap)
 id = which(str_detect(colNames,"^City|^city|Municipality$"))
 colnames(n2_pier_rap)[id] = "Municipality"
@@ -768,7 +867,6 @@ colnames(n2_pier_rap)[id] = "PIER"
 ## 8.1.4. Convert Date format
 n2_pier_rap$AccessDate = as.Date(n2_pier_rap$AccessDate, origin = "1899-12-30")
 n2_pier_rap$AccessDate = as.Date(n2_pier_rap$AccessDate, format="%m/%d/%y %H:%M:%S")
-
 
 ## 8.2. SC_PIer_masterlist (sc_pier_rap):----
 
@@ -830,6 +928,7 @@ colnames(sc_pier_rap)[id] = "PIER"
 
 ## 8.2.4. Convert Date format
 str(sc_pier_rap)
+sc_pier_rap$AccessDate = as.numeric(sc_pier_rap$AccessDate)
 sc_pier_rap$AccessDate = as.Date(sc_pier_rap$AccessDate, origin = "1899-12-30")
 sc_pier_rap$AccessDate = as.Date(sc_pier_rap$AccessDate, format="%m/%d/%y %H:%M:%S")
 

@@ -103,8 +103,12 @@ class ULTool(object):
                 ## 1. Enter Height
                 with arcpy.da.UpdateCursor(inFeature, ['UtilType2', 'Facility', 'Height']) as cursor:
                     for row in cursor:
+                        # Height = 0 when Facility is at-grade (3).
+                        if row[1] == 3:
+                            row[2] = 0
+
                         # Telecom Line and Underground, Height = -2.0
-                        if row[0] == 1 and row[1] == 2: 
+                        elif row[0] == 1 and row[1] == 2: 
                             row[2] = -2
                 
                         # Telecome Line/Internet Cable Line/Electric Line and Aboveground, height = 8.0

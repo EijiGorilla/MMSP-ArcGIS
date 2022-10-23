@@ -29,7 +29,7 @@ library(fs)
 
 
 ## Authorize (Choose 'matsuzakieiji0@gmail.com'. OCG gmail may not work)
-gs4_auth(email="matsuzakieiji0@gmail.com")
+gs4_auth(email="matsuzaki-ei@ocglobal.jp")
 
 # URL of Google Sheet provided by Envi. Team
 url = "https://docs.google.com/spreadsheets/d/1rAWKvOMNrecKoLGnHaDz2UqcGszb4BnAhwVIkvXTtL4/edit#gid=1183706342"
@@ -43,9 +43,17 @@ setwd(wd)
 
 # Read two tables: our GIs masterlist and master list from Envi Team
 # C:\Users\oc3512\Dropbox\01-Railway\02-NSCR-Ex\01-N2\03-During-Construction\01-Environment\01-EIA\N2_Envi_Monitoring_masterlist.xlsx
-MLTable = "C:/Users/oc3512/Dropbox/01-Railway/02-NSCR-Ex/01-N2/03-During-Construction/01-Environment/01-EIA/N2_Envi_Monitoring_masterlist.xlsx"
+MLTable = file.path(wd,"N2_Envi_Monitoring_masterlist.xlsx")
 x = read.xlsx(MLTable)
 basename = basename(MLTable)
+
+# Create back up first
+# C:\\Users\\oc3512\\Dropbox\\01-Railway\\02-NSCR-Ex\\01-N2\\03-During-Construction\\01-Environment\\01-EIA\\old
+previous_date = "20220228"
+
+backup = paste(previous_date,"_",basename,sep="")
+write.xlsx(x,file.path(wd,"old",backup),row.names=FALSE)
+
 
 # Read and write as CSV and xlsx
 v = range_read(url, sheet = 1)
@@ -111,13 +119,6 @@ v2$Type[v2$typeName==groundwater]=5
 surfacewater = typeName[str_detect(typeName,"Surface|Surface")]
 v2$Type[v2$typeName==surfacewater]=6
 
-
-# Create back up first
-# C:\\Users\\oc3512\\Dropbox\\01-Railway\\02-NSCR-Ex\\01-N2\\03-During-Construction\\01-Environment\\01-EIA\\old
-dates = gsub("-","",Sys.Date()) # today's date
-
-backup = paste(dates,"_",basename,sep="") 
-write.xlsx(x,file.path(wd,"old",backup),row.names=FALSE)
 
 # Add Remarks for comments
 v2$Remarks = ""

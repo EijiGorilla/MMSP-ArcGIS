@@ -73,7 +73,7 @@
 # DEFINE PARAMETERS
 #******************************************************************#
 ## Enter Date of Update ##
-date_update = "2022-07-22"
+date_update = "2022-10-21"
 
 
 strucType = c("Substructure", "Superstructure")
@@ -145,7 +145,6 @@ MLTable = file.path(wd,"N2_station_structure.xlsx")
 # Read the masterlist:----
 y = read.xlsx(MLTable)
 
-
 ################# BACKUP IF necessary
 ## Backup old ones in case
 head(y)
@@ -169,19 +168,32 @@ write.xlsx(y,file.path(direct,fileName),row.names=FALSE)
 ############################################
 ### N01: BORED PILES #############----
 #####################################
-url = "https://docs.google.com/spreadsheets/d/11YqYaenIB0l3Bpiv398-0QO3mEIR_BjvnMIsIOF3ILI/edit#gid=0"
+url = "https://docs.google.com/spreadsheets/d/11NMBpr1nKXuOgooHDl-CARvrieVN7VjEpLM1XgNwR0c/edit?usp=sharing"
 
-pile_sheet = 1
+pile_sheet = 3
 
 
 # Read and write as CSV and xlsx
 v = range_read(url, sheet = pile_sheet)
 v = data.frame(v)
 
+#x = v[,id]
+x = v[,c(3,12,22)]
+
+colnames(x) = c("nPierNumber","end_date","Remarks")
+x = x[-c(1,2),]
+
+#id = which(str_detect(colnames(x),"K"))
+#colnames(x)[3] = "end_date"
+
+## Remove empty rows
+rid = which(is.na(x$nPierNumber))
+x = x[-rid,]
+
 ## I temporarliy used dummy field names to be discarded so need to remove it
-nChar = sapply(1:ncol(v), function(k) nchar(colnames(v)[k]))
-id = which(nChar > 1)
-x = v[,id]
+#nChar = sapply(1:ncol(v), function(k) nchar(colnames(v)[k]))
+#id = which(nChar > 1)
+#x = v[,id]
 
 # Keep bored piles of station structure
 pile_st = min(which(str_detect(x$nPierNumber,"^APS")))
@@ -216,6 +228,16 @@ if(length(id)>0){
   print("no duplicated observations")
 }
 
+# unlist for end_date and Remarks
+# Unlist end_date
+id = which(x$end_date == "NULL")
+x$end_date[id] = NA
+
+end_date_ = unlist(x$end_date, use.names = FALSE)
+x$end_date = end_date_
+
+# No need to keep Remarks
+x = x[,-which(str_detect(colnames(x),"Remarks"))]
 
 # Join new status to Viaduct masterlist
 ## Read master list table
@@ -227,23 +249,24 @@ yx = left_join(y,x,by="ID")
 
 ## Check if the number of Status1 for each Type is same between x and yx.
 x_t = table(x$Status)
-yx_t = table(yx$Status.y[which(yx$CP.x=="N-01" & yx$SubType==1)])
+yx_t = table(yx$Status.y[which(yx$CP == "N-01" & yx$SubType==1)])
 
 check = x_t %in% yx_t
 check_function = function(){
   if(length(which(check=="FALSE"))>0){
-    print("Number of Status1 for N-01 Bored piles is DIFFERENT. PLEASE CHECK")
+    print("Number of Status1 is DIFFERENT. PLEASE CHECK")
   } else (
-    print("GOOD! The number of Status1 for N-01 Bored piles is same between Civil and joined excel ML.")
+    print("GOOD! The number of Status1 is same between Civil and joined excel ML.")
   )
 }
 
 x_pile = x$ID
-yx_pile = yx$ID[which(yx$Status.y==4 & yx$CP.x=="N-01" & yx$SubType==1)]
+yx_pile = yx$ID[which(yx$Status.y==4 & yx$CP=="N-01" & yx$SubType==1)]
 x_pile[!x_pile %in% yx_pile]
 
 check_function()
 
+# Update Status
 gg = which(yx$Status.y>1)
 yx$Status.x[gg] = yx$Status.y[gg]
 
@@ -272,55 +295,13 @@ yx$StartDate = as.Date(yx$StartDate, format="%m/%d/%y %H:%M:%S")
 yx$TargetDate = as.Date(yx$TargetDate, origin = "1899-12-30")
 yx$TargetDate = as.Date(yx$TargetDate, format="%m/%d/%y %H:%M:%S")
 
-head(yx)
+
+# For now, remove end_date from this table
+id = which(str_detect(colnames(yx),"end_date"))
+yx = yx[,-id]
 
 # 
 write.xlsx(yx, MLTable)
-
-
-### N01: OTHERS #############----
-
-## When you need to convert string to numeric for the following field names
-
-# We need to convert string to numbers for smart maps.
-## These strings must be used for site palnners who will update the master list
-
-for(i in 1:length(strucType)) {
-  yx$StructureType[which(yx$StructureType==strucType[i])] = i
-}
-
-for(i in 1:length(strucLevel)) {
-  yx$StructureLevel[which(yx$StructureLevel==strucLevel[i])] = i
-}
-
-for(i in 1:length(Type)) {
-  yx$Type[which(yx$Type==Type[i])] = i
-}
-
-for(i in 1:length(subType)) {
-  yx$SubType[which(yx$SubType==subType[i])] = i
-}
-
-for(i in 1:length(N2_station)) {
-  yx$Station[which(yx$Station==N2_station[i])] = i
-}
-
-
-# check
-unique(yx$StructureType)
-unique(yx$StructureLevel)
-unique(yx$Type)
-unique(yx$SubType)
-unique(yx$Station)
-
-# Convert string to numeric
-yx$StructureType = as.numeric(yx$StructureType)
-yx$StructureLevel = as.numeric(yx$StructureLevel)
-yx$Type = as.numeric(yx$Type)
-yx$SubType = as.numeric(yx$SubType)
-yx$Station = as.numeric(yx$Station)
-
-
 
 
 ###############################################################
@@ -349,6 +330,11 @@ x$Status = as.character(x$Status)
 keep_row = which(str_detect(x$ID, "^SF-|^SFP-"))
 str(keep_row)
 x = x[keep_row,]
+
+## note that if 'SFP-' is found, this is error. We need to convert 'SFP-' to 'SF-Pxx'
+id = which(str_detect(x$ID,"^SFP-"))
+x$ID[id] = gsub("SFP-","SF-P",x$ID[id])
+
 
 # Recode Status1
 st = unique(x$Status1)

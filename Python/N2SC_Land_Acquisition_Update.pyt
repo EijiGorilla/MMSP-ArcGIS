@@ -101,7 +101,7 @@ class UpdateFGDB(object):
     def updateMessages(self, params):
         return
 
-    def excecute(self, params, messages):
+    def execute(self, params, messages):
         workspace = params[0].valueAsText
         inLot = params[1].valueAsText
         inStruc = params[2].valueAsText
@@ -442,6 +442,14 @@ class UpdateSDE(object):
             direction = "Input"
         )
 
+        pier_fgdb = arcpy.Parameter(
+            displayName = "Pier in file geodatabase",
+            name = "Pier in file geodatabase",
+            datatype = "GPFeatureLayer",
+            parameterType = "Optional",
+            direction = "Input"
+        )
+
         lot_sde = arcpy.Parameter(
             displayName = "Status of Lot in enterprise geodatabase",
             name = "Status of Lot in enterprise geodatabase",
@@ -482,25 +490,35 @@ class UpdateSDE(object):
             direction = "Input"
         )
 
-        params = [ws, lot_fgdb, struc_fgdb, occup_fgdb, isf_fgdb, barang_fgdb,
-                  lot_sde, struc_sde, occup_sde ,isf_sde, barang_sde]
+        pier_sde = arcpy.Parameter(
+            displayName = "Pier in enterprise geodatabase",
+            name = "Pier in enterprise geodatabase",
+            datatype = "GPFeatureLayer",
+            parameterType = "Optional",
+            direction = "Input"
+        )
+
+        params = [ws, lot_fgdb, struc_fgdb, occup_fgdb, isf_fgdb, barang_fgdb, pier_fgdb,
+                  lot_sde, struc_sde, occup_sde ,isf_sde, barang_sde, pier_sde]
         return params
 
     def updateMessages(self, params):
         return
 
-    def excecute(self, params, messages):
+    def execute(self, params, messages):
         workspace = params[0].valueAsText
         lot_fgdb = params[1].valueAsText
         struc_fgdb = params[2].valueAsText
         occup_fgdb = params[3].valueAsText
         isf_fgdb = params[4].valueAsText
         barang_fgdb = params[5].valueAsText
-        lot_sde = params[6].valueAsText
-        struc_sde = params[7].valueAsText
-        occup_sde = params[8].valueAsText
-        isf_sde = params[9].valueAsText
-        barang_sde = params[10].valueAsText
+        pier_fgdb = params[6].valueAsText
+        lot_sde = params[7].valueAsText
+        struc_sde = params[8].valueAsText
+        occup_sde = params[9].valueAsText
+        isf_sde = params[10].valueAsText
+        barang_sde = params[11].valueAsText
+        pier_sde = params[12].valueAsText
 
         arcpy.env.overwriteOutput = True
 
@@ -585,6 +603,24 @@ class UpdateSDE(object):
         except:
             pass
 
+        arcpy.AddMessage("Delete copied layer is Success")
+
+        # We need to run pier independently from others.
+        try:
+            copied = "copied_layer"
+            copyP = arcpy.CopyFeatures_management(pier_fgdb, copied)
+                
+            arcpy.AddMessage("Pier Layer: Copy to CS tranformation for PRS92: Success")
+            
+            # Truncate and append
+            arcpy.TruncateTable_management(pier_sde)
+            arcpy.Append_management(copyP, pier_sde, schema_type = 'NO_TEST')
+            
+            arcpy.AddMessage("Pier Layer:Truncate and Append is Success")
+            arcpy.Delete_management(copyP)
+            
+        except:
+            pass
 
         arcpy.AddMessage("Delete copied layer is Success")
 
@@ -625,6 +661,7 @@ class UpdateUsingMasterList(object):
             parameterType = "Required",
             direction = "Input"            
         )
+        jField.parameterDependencies = [in_fc.name]
 
         params = [ws, in_fc, ml, jField]
         return params
@@ -632,7 +669,7 @@ class UpdateUsingMasterList(object):
     def updateMessages(self, params):
         return
 
-    def excecute(self, params, messages):
+    def execute(self, params, messages):
         workspace = params[0].valueAsText
         in_fc = params[1].valueAsText
         ml = params[2].valueAsText

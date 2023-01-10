@@ -22,8 +22,8 @@ library(lubridate)
 #rapFolder = in_params[[1]] # Directory where you saved master list excel tables from the RAP Team 
 #previous_date = in_params[[2]] # just string. 2022-01-26
 #result = out_params[[1]]
-previous_date = "2022-08-30"
-new_date = "2022-10-03"
+previous_date = "2022-12-01"
+new_date = "2023-01-05"
 
 
 # 1. Make sure that all the excel files are downloaded from the RAP Team's OneDrive in the following working directory;----
@@ -242,6 +242,15 @@ sc_lot_rap$Priority = as.numeric(sc_lot_rap$Priority)
 sc_lot_rap$Priority = as.numeric(sc_lot_rap$Priority)
 sc1_lot_rap$Priority1 = as.numeric(sc1_lot_rap$Priority1)
 
+## SC1 Land: Priority
+### Create Priority1_1 (for smart map)
+head(sc1_lot_rap)
+sc1_lot_rap$Priority1_1 = ""
+unique(sc1_lot_rap$Priority1)
+sc1_lot_rap$Priority1_1[sc1_lot_rap$Priority1 == 1] = "1st"
+sc1_lot_rap$Priority1_1[sc1_lot_rap$Priority1 == 2] = "2nd"
+sc1_lot_rap$Priority1_1[sc1_lot_rap$Priority1 == 3] = "3rd"
+
 ## Remove redundant space for uqniue ID: LotID, StrucID, barangay
 unique(n2_lot_rap$LotID)
 n2_lot_rap$LotID[] = gsub("[[:space:]]","",n2_lot_rap$LotID)
@@ -264,7 +273,7 @@ sc1_barang_rap$Subcon[] = gsub("^\\s|\\s$","",sc1_barang_rap$Subcon)
 head(n2_lot_rap)
 unique(n2_lot_rap$HandOverDate)
 
-### 4.2. Join SC Land to SC1 Land, SC1 Structure to SC structure in the RAP Teams+----
+### 4.2. Join SC1 Land to SC Land, SC1 Structure to SC structure in the RAP Teams+----
 ####### SC Lot
 id = which(str_detect(colnames(sc1_lot_rap),"LotID|Subcon|Priority1|Reqs|ContSubm"))
 y = sc1_lot_rap[,id]
@@ -394,21 +403,66 @@ for(i in id) {
 }
 
 ## 5.4. Check and Change CP format
-### N2
+### N2 Land
 id = which(str_detect(n2_lot_rap$CP,"^N\\d+|^n\\d+"))
 if (length(id)>0){
   n2_lot_rap$CP[id] = gsub("N|n","N-",n2_lot_rap$CP[id])
 } else {
-  pring("OK")
+  print("OK")
 }
 n2_lot_rap$CP = gsub(",.*","",n2_lot_rap$CP)
 
-## SC
+### N2 Structure
+id = which(str_detect(n2_struc_rap$CP,"^N\\d+|^n\\d+"))
+if (length(id)>0){
+  n2_struc_rap$CP[id] = gsub("N|n","N-",n2_struc_rap$CP[id])
+} else {
+  print("OK")
+}
+n2_struc_rap$CP = gsub(",.*","",n2_struc_rap$CP)
+
+### N2 ISF
+head(n2_isf_rap)
+id = which(str_detect(n2_isf_rap$CP,"^N\\d+|^n\\d+"))
+if (length(id)>0){
+  n2_isf_rap$CP[id] = gsub("N|n","N-",n2_isf_rap$CP[id])
+} else {
+  print("OK")
+}
+n2_isf_rap$CP = gsub(",.*","",n2_isf_rap$CP)
+
+## SC Land
 id = which(str_detect(sc_lot_rap$CP,"^S\\d+|^s\\d+"))
 if (length(id)>0){
   sc_lot_rap$CP[id] = gsub("S|s","S-",sc_lot_rap$CP[id])
 } else {
   print("OK")
+}
+
+### SC Structure
+if (is.null(sc_struc_rap$CP)) {
+  print("CP for SC Structure does not exist. Contact the RAP Team.")
+} else {
+  id = which(str_detect(sc_struc_rap$CP,"^S\\d+|^s\\d+"))
+  if (length(id)>0){
+    sc_struc_rap$CP[id] = gsub("S|s","S-",sc_struc_rap$CP[id])
+    sc_struc_rap$CP = gsub(",.*","",sc_struc_rap$CP)
+  } else {
+    print("OK")
+  }
+}
+
+
+### SC ISF
+if(is.null(sc_isf_rap$CP)) {
+  print("CP for SC ISF does not exist. Contact the RAP Team.")
+} else {
+  id = which(str_detect(sc_isf_rap$CP,"^S\\d+|^s\\d+"))
+  if (length(id)>0){
+    sc_isf_rap$CP[id] = gsub("S|s","S-",sc_isf_rap$CP[id])
+  } else {
+    print("OK")
+  }
 }
 
 #sc_lot_rap$CP = gsub(",.*","",sc_lot_rap$CP)
@@ -826,7 +880,6 @@ write.xlsx(c_sc, file.path(wd_gis_n2,"Error_table_SC.xlsx"))
 ## 8.1. N2_PIer_masterlist (n2_pier_rap):----
 
 ## This code gives access date for each pier (i.e., pier-based access date)
-
 ## 8.1.1. Make sure that there are no redundant space
 n2_pier_rap$Pier = gsub("[[:space:]]","",n2_pier_rap$Pier)
 
@@ -945,7 +998,6 @@ write.xlsx(n2_pier_rap,file.path(wd_gis_n2,basename(n2_pier)),overwrite=TRUE)
 
 
 ### SC
-
 write.xlsx(sc_lot_rap,file.path(wd_gis_sc,basename(sc_lot)),overwrite=TRUE)
 write.xlsx(sc_struc_rap,file.path(wd_gis_sc,basename(sc_struc)),overwrite=TRUE)
 write.xlsx(sc_pier_rap,file.path(wd_gis_sc,basename(sc_pier)),overwrite=TRUE)

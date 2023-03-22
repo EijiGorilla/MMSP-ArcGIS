@@ -148,7 +148,7 @@ class CreatePierPointFeature(object):
         )
 
         jField = arcpy.Parameter(
-            displayName = "Join Field",
+            displayName = "Join Field ('uniqueID')",
             name = "Join Field",
             datatype = "Field",
             parameterType = "Required",
@@ -157,7 +157,7 @@ class CreatePierPointFeature(object):
         jField.parameterDependencies = [in_fc.name]
 
         addField = arcpy.Parameter(
-            displayName = "Add Field",
+            displayName = "Add Field (choose 'pier_id' generated during the first step)",
             name = "Add Field",
             datatype = "Field",
             parameterType = "Required",

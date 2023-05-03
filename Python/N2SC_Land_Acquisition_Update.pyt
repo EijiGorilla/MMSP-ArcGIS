@@ -8,7 +8,7 @@ class Toolbox(object):
 
 class UpdateFGDB(object):
     def __init__(self):
-        self.label = "Update File Geodatabase"
+        self.label = "1. Update File Geodatabase"
         self.description = "Update feature layers in file geodatabase for land, structure, and ISF of N2/SC"
 
     def getParameterInfo(self):
@@ -140,7 +140,8 @@ class UpdateFGDB(object):
                 
             # 3. Join Field
             ## 3.1. Convert Excel tables to feature table
-            MasterListN2Pier = arcpy.TableToTable_conversion(mlPier, workspace, 'MasterListN2Pier')
+            ##MasterListN2Pier = arcpy.TableToTable_conversion(mlPier, workspace, 'MasterListN2Pier')
+            MasterListN2Pier = arcpy.conversion.ExportTable(mlPier, 'MasterListN2Pier')
             
             ## 3.2. Get Join Field from MasterList gdb table: Gain all fields except 'Id'
             inputFieldN2Pier = [f.name for f in arcpy.ListFields(MasterListN2Pier)]
@@ -217,8 +218,10 @@ class UpdateFGDB(object):
 
         # 3. Join Field
         ## 3.1. Convert Excel tables to feature table
-        MasterListLot = arcpy.TableToTable_conversion(mlLot, workspace, 'MasterListLot')
-        MasterListStruc = arcpy.TableToTable_conversion(mlStruct, workspace, 'MasterListStruc')
+        ##MasterListLot = arcpy.TableToTable_conversion(mlLot, workspace, 'MasterListLot')
+        ##MasterListStruc = arcpy.TableToTable_conversion(mlStruct, workspace, 'MasterListStruc')
+        MasterListLot = arcpy.conversion.ExportTable(mlLot, 'MasterListLot')
+        MasterListStruc = arcpy.conversion.ExportTable(mlStruct, 'MasterListStruc')
             
         ## 3.2. Get Join Field from MasterList gdb table: Gain all fields except 'Id'
         inputFieldLot = [f.name for f in arcpy.ListFields(MasterListLot)]
@@ -275,7 +278,8 @@ class UpdateFGDB(object):
 
         # STAGE: 2-2. Create and Update ISF Feture Layer
         ## 2-2.1. Convert ISF (Relocation excel) to Feature table
-        MasterListISF = arcpy.TableToTable_conversion(mlISF, workspace, 'MasterListISF')
+        ##MasterListISF = arcpy.TableToTable_conversion(mlISF, workspace, 'MasterListISF')
+        MasterListISF = arcpy.conversion.ExportTable(mlISF, 'MasterListISF')
 
         ## 2-2.2. Get Join Field from MasterList gdb table: Gain all fields except 'StrucId'
         inputFieldISF = [f.name for f in arcpy.ListFields(MasterListISF)]
@@ -314,75 +318,6 @@ class UpdateFGDB(object):
         ## 2-2.6. Append to the Original ISF
         arcpy.Append_management(outLayerISF, inISF, schema_type = 'NO_TEST')
 
-        ###########################################################################
-        ##### STAGE 3: Convert 0 to Null ######
-        ###########################################################################
-        paid = "Paid"
-        handOver = "HandOver"
-        moa = "MoA"
-        relocated = "Relocated"
-        status = "Status"
-        pte = "PTE"
-        #barang = "Barangay"
-
-        varFieldLA = [paid, handOver, moa, pte]
-        varFieldStruc = [paid, handOver, moa, status, pte]
-        varFieldOccup= [paid, moa, status]
-        varFieldISF = [paid, relocated]
-        #varFieldBarang = [barang]
-        
-        codeblock = """
-        def reclass(status):
-            if status == None:
-                return None
-            elif status == 0:
-                return None
-            else:
-                return status"""
-            
-        #Apply to four layers: 'Status for LA', 'Status of Structure', 'Status of Relocation (occupany)', and
-        # 'Status for Relocation (ISF)'
-
-        ## 1. Status for LA
-        for field in varFieldLA:
-            arcpy.AddMessage(field)
-            expression = "reclass(!{}!)".format(field)
-                
-            # Execute CalculateField
-            arcpy.CalculateField_management(inLot, field, expression, "PYTHON3", codeblock)
-            
-            ## 2. Status for Structure
-        for field in varFieldStruc:
-            arcpy.AddMessage(field)
-            expression = "reclass(!{}!)".format(field)
-                
-            # Execute CalculateField
-            arcpy.CalculateField_management(inStruc, field, expression, "PYTHON3", codeblock)
-        ## 2. Status for Relocation (Occupancy)
-        for field in varFieldOccup: 
-            arcpy.AddMessage(field)
-            expression = "reclass(!{}!)".format(field)
-                
-            # Execute CalculateField
-            arcpy.CalculateField_management(inOccup, field, expression, "PYTHON3", codeblock)
-            
-            ## 3. Status for Relocation (ISF)
-        for field in varFieldISF:
-            arcpy.AddMessage(field)
-            expression = "reclass(!{}!)".format(field)
-            
-            # Execute CalculateField
-            arcpy.CalculateField_management(inISF, field, expression, "PYTHON3", codeblock)    
-
-        """
-            ## 4. Status for Barangay
-        for field in varFieldBarang:
-            arcpy.AddMessage(field)
-            expression = "reclass(!{}!)".format(field)
-                
-            # Execute CalculateField
-            arcpy.CalculateField_management(inputLayerBarangOrigin, field, expression, "PYTHON3", codeblock)  
-        """
 
         # Delete the copied feature layer
         deleteTempLayers = [copyLot, copyStruc, pointStruc, outLayerISF, MasterListLot, MasterListStruc, MasterListISF]
@@ -390,7 +325,7 @@ class UpdateFGDB(object):
 
 class UpdateSDE(object):
     def __init__(self):
-        self.label = "Update Enterprise Geodatabase"
+        self.label = "2. Update Enterprise Geodatabase"
         self.description = "Update feature layers in enterprise geodatabase for land, structure, and ISF of N2/SC"
 
     def getParameterInfo(self):
@@ -626,8 +561,8 @@ class UpdateSDE(object):
 
 class UpdateUsingMasterList(object):
     def __init__(self):
-        self.label = "Update Feature Layer using Excel Master List"
-        self.description = "Update any type of feature layers using excel master list table"
+        self.label = "Update Feature Layer using Excel Master List (Run case-by-case)"
+        self.description = "Update any type of feature layers using excel master list table."
 
     def getParameterInfo(self):
         ws = arcpy.Parameter(
@@ -712,7 +647,8 @@ class UpdateUsingMasterList(object):
 
         # 3. Join Field
         ## 3.1. Convert Excel tables to feature table
-        MasterList = arcpy.TableToTable_conversion(ml, workspace, 'MasterList')
+        ##MasterList = arcpy.TableToTable_conversion(ml, workspace, 'MasterList')
+        MasterList = arcpy.conversion.ExportTable(ml, 'MasterList')
 
         ## 3.2. Get Join Field from MasterList gdb table: Gain all fields except 'Id'
         inputField = [f.name for f in arcpy.ListFields(MasterList)]

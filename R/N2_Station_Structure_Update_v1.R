@@ -73,7 +73,7 @@
 # DEFINE PARAMETERS
 #******************************************************************#
 ## Enter Date of Update ##
-date_update = "2022-10-21"
+date_update = "2023-04-24"
 
 
 strucType = c("Substructure", "Superstructure")
@@ -170,7 +170,7 @@ write.xlsx(y,file.path(direct,fileName),row.names=FALSE)
 #####################################
 url = "https://docs.google.com/spreadsheets/d/11NMBpr1nKXuOgooHDl-CARvrieVN7VjEpLM1XgNwR0c/edit?usp=sharing"
 
-pile_sheet = 3
+pile_sheet = 2
 
 
 # Read and write as CSV and xlsx
@@ -196,7 +196,8 @@ x = x[-rid,]
 #x = v[,id]
 
 # Keep bored piles of station structure
-pile_st = min(which(str_detect(x$nPierNumber,"^APS")))
+x$nPierNumber
+pile_st = min(which(str_detect(x$nPierNumber,"^APS|^CPS")))
 rows = pile_st:nrow(x)
 x = x[rows,] 
 
@@ -212,7 +213,7 @@ x$nPierNumber[] = toupper(x$nPierNumber)
 ## Add default status
 x$Status = 0
 
-x$Status[str_detect(x$Remarks,pattern="Casted")] = 4 # Bored Pile completed
+x$Status[str_detect(x$Remarks,pattern="Casted|casted|CASTED")] = 4 # Bored Pile completed
 x$Status[str_detect(x$Remarks,pattern="Inprogress")] = 2 # Under Construction
 x$Status[str_detect(x$Remarks,pattern="Incomplete")] = 3 # Delayed
 
@@ -239,12 +240,17 @@ x$end_date = end_date_
 # No need to keep Remarks
 x = x[,-which(str_detect(colnames(x),"Remarks"))]
 
+# Check spelling error (correct format = "APS-xxx" and "CPS-xxx")
+id = which(str_detect(x$ID, "^APS-|^CPS-"))
+## then find IDs not conforming to this format
+x$ID[-id] = gsub("APS", "APS-", x$ID[-id])
+x$ID[-id] = gsub("CPS", "CPS-", x$ID[-id])
+
 # Join new status to Viaduct masterlist
 ## Read master list table
 y = read.xlsx(MLTable)
 
 y$Status = as.numeric(y$Status)
-
 yx = left_join(y,x,by="ID")
 
 ## Check if the number of Status1 for each Type is same between x and yx.
@@ -410,19 +416,25 @@ yx$StartDate = as.Date(yx$StartDate, format="%m/%d/%y %H:%M:%S")
 yx$TargetDate = as.Date(yx$TargetDate, origin = "1899-12-30")
 yx$TargetDate = as.Date(yx$TargetDate, format="%m/%d/%y %H:%M:%S")
 
-head(yx)
-
 # 
 write.xlsx(yx, MLTable)
 
 ###############################################################
 #######################:---- N-03 #################################:----
 ##############################################################
+## TEMP run
+### When google sheet is not available but excel version is availablef from N2 civil
+a = file.choose()
+x = read.xlsx(a, sheet = 5)
+
+x = x[,c(2,24)]
+
+id = which(str_detect(x[[1]],"Location$"))
+x = x[-c(1:12),]
 
 ### N-03: BORED PILES #:----
 #url = "https://docs.google.com/spreadsheets/d/19TBfdEpRuW7edwhiP7YdVSJQgrkot9wN7tDwzSTF76E/edit#gid=0"
 
-# Temporary
 url = "https://docs.google.com/spreadsheets/d/19TBfdEpRuW7edwhiP7YdVSJQgrkot9wN7tDwzSTF76E/edit?usp=sharing"
 
 n03_pile = 1
@@ -470,6 +482,8 @@ if(length(id)>0){
   print("no duplicated observations")
 }
 
+id=which(str_detect(x$ID,"^AC"))
+unique(x$ID)
 
 # Join 
 y = read.xlsx(MLTable)

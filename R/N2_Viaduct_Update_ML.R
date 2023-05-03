@@ -438,7 +438,7 @@ yx = left_join(y,x,by=c("nPierNumber","Type"))
 ## Check if the number of Status1 for each Type is same between x and yx.
 ## Check for piles with completed status
 x_pile = x$nPierNumber[which(x$Status1==4)]
-yx_pile = yx$nPierNumber[which(yx$Status1.y==4 & yx$Type==2 & yx$CP.x=="N-01")]
+yx_pile = yx$nPierNumber[which(yx$Status1.y==4 & yx$Type==2 & yx$CP.y=="N-01")]
 
 missing_in_yx = x_pile[!x_pile %in% yx_pile] # not exist in yx table
 missing_in_x = yx_pile[!yx_pile %in% x_pile] # not exist in x table
@@ -448,14 +448,14 @@ check_Completed()
 # check all statuses
 head(yx)
 x_t = table(x$Status1)
-yx_t = table(yx$Status1.y[which(yx$CP.x=="N-01" & yx$Type==2)])
+yx_t = table(yx$Status1.y[which(yx$CP.y=="N-01" & yx$Type==2)])
 
 check = x_t %in% yx_t
 check_function()
 
 # 8. Update table
 ## 8.1. end_date
-gg = which(yx$CP.x=="N-01" & yx$Type==2)
+gg = which(yx$CP.y=="N-01" & yx$Type==2)
 yx$end_date.x = as.Date(yx$end_date.x, origin = "1899-12-30")
 yx$end_date.x = as.Date(yx$end_date.x, format="%m/%d/%y %H:%M:%S")
 yx$end_date.x[gg] = yx$end_date.y[gg]

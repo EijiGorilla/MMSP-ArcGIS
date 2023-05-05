@@ -312,7 +312,7 @@ check_function = function(){
 check_function()
 
 # 8. Update using new data
-gg = which(yx$CP.y=="N-01" & yx$Type==1)
+gg = which(yx$CP.x=="N-01" & yx$Type==1)
 
 ## 8.1. end_date
 yx$end_date.x = as.Date(yx$end_date.x, origin = "1899-12-30")
@@ -339,7 +339,6 @@ if(length(id) > 0) {
   print("no need to change Status1.")
 }
 
-
 # Check if empty status
 id = nrow(yx[is.na(yx$Status1),])
 if(id > 0) {
@@ -353,6 +352,7 @@ if(id > 0) {
 iid = which(str_detect(colnames(yx),"updated|Updated|UPDATED"))
 yx = yx[,-iid]
 yx$updated = ymd(date_update)
+
 
 # Overwrite MasterList
 write.xlsx(yx, MLTable, overwrite = TRUE)
@@ -455,7 +455,7 @@ check_function()
 
 # 8. Update table
 ## 8.1. end_date
-gg = which(yx$CP.y=="N-01" & yx$Type==2)
+gg = which(yx$CP.x=="N-01" & yx$Type==2)
 yx$end_date.x = as.Date(yx$end_date.x, origin = "1899-12-30")
 yx$end_date.x = as.Date(yx$end_date.x, format="%m/%d/%y %H:%M:%S")
 yx$end_date.x[gg] = yx$end_date.y[gg]
@@ -588,7 +588,7 @@ check_function()
 
 # 8. Update table
 ## 8.1. end_date
-gg = which(yx$CP.y=="N-01" & yx$Type==3)
+gg = which(yx$CP.x=="N-01" & yx$Type==3)
 yx$end_date.x = as.Date(yx$end_date.x, origin = "1899-12-30")
 yx$end_date.x = as.Date(yx$end_date.x, format="%m/%d/%y %H:%M:%S")
 yx$end_date.x[gg] = yx$end_date.y[gg]
@@ -727,7 +727,7 @@ check_function()
 
 # 8. Update table
 ## 8.1. end_date
-gg = which(yx$CP.y=="N-01" & yx$Type==4)
+gg = which(yx$CP.x=="N-01" & yx$Type==4)
 yx$end_date.x = as.Date(yx$end_date.x, origin = "1899-12-30")
 yx$end_date.x = as.Date(yx$end_date.x, format="%m/%d/%y %H:%M:%S")
 yx$end_date.x[gg] = yx$end_date.y[gg]
@@ -891,7 +891,7 @@ yx.precast = yx$nPierNumber[which(yx$Type==5 & yx$CP.y=="N-01")]
 missing_in_yx = x.precast[!x.precast %in% yx.precast] # not exist in yx table
 
 # NA for status = 1 (To be Constructed)
-gg = which(yx$CP.y=="N-01" & yx$Type==5)
+gg = which(yx$CP.x=="N-01" & yx$Type==5)
 yx$end_date.x = as.Date(yx$end_date.x, origin = "1899-12-30")
 yx$end_date.x = as.Date(yx$end_date.x, format="%m/%d/%y %H:%M:%S")
 yx$end_date.x[gg] = yx$end_date.y[gg]
@@ -1053,7 +1053,7 @@ check = x_t %in% yx_t
 check_function()
 
 # 8. Update using new data
-gg = which(yx$CP.y=="N-02" & yx$Type==1)
+gg = which(yx$CP.x=="N-02" & yx$Type==1)
 
 ## 8.1. end_date
 yx$end_date.x = as.Date(yx$end_date.x, origin = "1899-12-30")
@@ -1106,7 +1106,9 @@ write.xlsx(yx, MLTable, overwrite = TRUE)
 v = range_read(url, sheet = pileCap)
 v = data.frame(v)
 
-x=v[,c(1,9)]
+x=v[,c(2,8,9)]
+id = which(x[[1]] == "Mainline")
+x = x[-c(1:id),]
 
 # 2. Check the presence of columns in the format of 'list'
 coln = colnames(x)
@@ -1122,10 +1124,10 @@ for(i in seq(coln)) {
     x[[i]] = unlist(x[[i]], use.names = FALSE)
   }
 }
-colnames(x) = c("nPierNumber","end_date")
+colnames(x) = c("nPierNumber","end_date", "Status1")
 
 # 3. Delete empty 
-id=which(is.na(x$nPierNumber))
+id=which(is.na(x$Status1) | is.na(x$nPierNumber))
 if(length(id) > 0) {
   x=x[-id,]
 } else {
@@ -1138,21 +1140,11 @@ x$end_date = as.POSIXlt(x$end_date, origin="1970-01-01",tZ="UTC")
 x$end_date = as.Date(x$end_date, origin = "1899-12-30")
 x$end_date = as.Date(x$end_date, format="%m/%d/%y %H:%M:%S")
 
-# 4. Delete empty end_date
-id=which(is.na(x$end_date))
-if(length(id) > 0) {
-  x=x[-id,]
-} else {
-  print("No empty Status1")
-}
-
-
 # 4. Add Status1
 x$Status1 = 4
 
 # 5. remove duplicated
 id = which(duplicated(x$nPierNumber))
-x$nPierNumber[id]
 if(length(id)>0){
   x = x[-id,]
 } else {
@@ -1172,7 +1164,6 @@ x$nPierNumber = gsub("RS","-RS",x$nPierNumber)
 # 7. Add field names
 x$CP = "N-02"
 x$Type = 2
-
 
 # 8. Join 
 y = read.xlsx(MLTable)
@@ -1204,7 +1195,8 @@ check = x_t %in% yx_t
 check_function()
 
 # 12. Update table
-gg = which(yx$CP.y=="N-02" & yx$Type==2)
+gg = which(yx$CP.x=="N-02" & yx$Type==2)
+
 yx$end_date.x = as.Date(yx$end_date.x, origin = "1899-12-30")
 yx$end_date.x = as.Date(yx$end_date.x, format="%m/%d/%y %H:%M:%S")
 
@@ -1231,7 +1223,6 @@ yx$updated = ymd(date_update)
 
 yx[is.na(yx$Status1),]
 
-
 # 16. Export table 
 write.xlsx(yx, MLTable)
 
@@ -1242,7 +1233,9 @@ write.xlsx(yx, MLTable)
 v = range_read(url, sheet = PierCol)
 v = data.frame(v)
 
-x=v[,c(1,11)]
+x=v[,c(2,12,13)]
+id = which(x[[1]] == "Mainline")
+x = x[-c(1:id),]
 
 # 2. Check the presence of columns in the format of 'list'
 coln = colnames(x)
@@ -1258,10 +1251,10 @@ for(i in seq(coln)) {
     x[[i]] = unlist(x[[i]], use.names = FALSE)
   }
 }
-colnames(x) = c("nPierNumber","end_date")
+colnames(x) = c("nPierNumber","end_date", "Status1")
 
 # 3. Delete empty 
-id=which(is.na(x$nPierNumber))
+id=which(is.na(x$Status1) | is.na(x$nPierNumber))
 if(length(id) > 0) {
   x=x[-id,]
 } else {
@@ -1273,14 +1266,6 @@ x$end_date = as.numeric(x$end_date)
 x$end_date = as.POSIXlt(x$end_date, origin="1970-01-01",tZ="UTC")
 x$end_date = as.Date(x$end_date, origin = "1899-12-30")
 x$end_date = as.Date(x$end_date, format="%m/%d/%y %H:%M:%S")
-
-# 4. Delete empty end_date
-id=which(is.na(x$end_date))
-if(length(id) > 0) {
-  x=x[-id,]
-} else {
-  print("No empty Status1")
-}
 
 # 4. Add Status1
 x$Status1 = 4
@@ -1307,7 +1292,6 @@ x$nPierNumber = gsub("RS","-RS",x$nPierNumber)
 # 7. Add field names
 x$CP = "N-02"
 x$Type = 3
-
 
 # 8. Join 
 y = read.xlsx(MLTable)
@@ -1339,7 +1323,7 @@ check = x_t %in% yx_t
 check_function()
 
 # 12. Update table
-gg = which(yx$CP.y=="N-02" & yx$Type==3)
+gg = which(yx$CP.x=="N-02" & yx$Type==3)
 yx$end_date.x = as.Date(yx$end_date.x, origin = "1899-12-30")
 yx$end_date.x = as.Date(yx$end_date.x, format="%m/%d/%y %H:%M:%S")
 
@@ -1366,7 +1350,6 @@ yx$updated = ymd(date_update)
 
 yx[is.na(yx$Status1),]
 
-
 # 16. Export table 
 write.xlsx(yx, MLTable)
 
@@ -1378,7 +1361,9 @@ write.xlsx(yx, MLTable)
 v = range_read(url, sheet = PierHead)
 v = data.frame(v)
 
-x=v[,c(1,13)]
+x=v[,c(2,16,17)]
+id = which(x[[1]] == "Mainline")
+x = x[-c(1:id),]
 
 # 2. Check the presence of columns in the format of 'list'
 coln = colnames(x)
@@ -1394,10 +1379,10 @@ for(i in seq(coln)) {
     x[[i]] = unlist(x[[i]], use.names = FALSE)
   }
 }
-colnames(x) = c("nPierNumber","end_date")
+colnames(x) = c("nPierNumber","end_date", "Status1")
 
 # 3. Delete empty 
-id=which(is.na(x$nPierNumber))
+id=which(is.na(x$Status1) | is.na(x$nPierNumber))
 if(length(id) > 0) {
   x=x[-id,]
 } else {
@@ -1409,14 +1394,6 @@ x$end_date = as.numeric(x$end_date)
 x$end_date = as.POSIXlt(x$end_date, origin="1970-01-01",tZ="UTC")
 x$end_date = as.Date(x$end_date, origin = "1899-12-30")
 x$end_date = as.Date(x$end_date, format="%m/%d/%y %H:%M:%S")
-x
-# 4. Delete empty end_date
-id=which(is.na(x$end_date))
-if(length(id) > 0) {
-  x=x[-id,]
-} else {
-  print("No empty Status1")
-}
 
 # 4. Add Status1
 x$Status1 = 4
@@ -1474,7 +1451,7 @@ check = x_t %in% yx_t
 check_function()
 
 # 12. Update table
-gg = which(yx$CP.y=="N-02" & yx$Type==4)
+gg = which(yx$CP.x=="N-02" & yx$Type==4)
 yx$end_date.x = as.Date(yx$end_date.x, origin = "1899-12-30")
 yx$end_date.x = as.Date(yx$end_date.x, format="%m/%d/%y %H:%M:%S")
 
@@ -1619,7 +1596,7 @@ check = x_t %in% yx_t
 check_function()
 
 # NA for status = 1 (To be Constructed)
-gg = which(yx$CP.y=="N-03" & yx$Type==1)
+gg = which(yx$CP.x=="N-03" & yx$Type==1)
 
 yx$end_date.x = as.Date(yx$end_date.x, origin = "1899-12-30")
 yx$end_date.x = as.Date(yx$end_date.x, format="%m/%d/%y %H:%M:%S")
@@ -1702,7 +1679,6 @@ x$end_date = as.POSIXlt(x$end_date, origin="1970-01-01",tZ="UTC")
 x$end_date = as.Date(x$end_date, origin = "1899-12-30")
 x$end_date = as.Date(x$end_date, format="%m/%d/%y %H:%M:%S")
 
-
 # 4. Edit Status1
 id = which(str_detect(x$Status1, "%$"))
 x$Status1[id] = gsub("%","",x$Status1[id])
@@ -1761,7 +1737,7 @@ check = x_t %in% yx_t
 check_function()
 
 # 8. Update table
-gg = which(yx$CP.y=="N-03" & yx$Type==2)
+gg = which(yx$CP.x=="N-03" & yx$Type==2)
 yx$end_date.x = as.Date(yx$end_date.x, origin = "1899-12-30")
 yx$end_date.x = as.Date(yx$end_date.x, format="%m/%d/%y %H:%M:%S")
 yx$Status1.x[gg] = yx$Status1.y[gg]
@@ -1891,7 +1867,7 @@ check = x_t %in% yx_t
 check_function()
 
 # 8. Update table
-gg = which(yx$CP.y=="N-03" & yx$Type==3)
+gg = which(yx$CP.x=="N-03" & yx$Type==3)
 yx$end_date.x = as.Date(yx$end_date.x, origin = "1899-12-30")
 yx$end_date.x = as.Date(yx$end_date.x, format="%m/%d/%y %H:%M:%S")
 yx$Status1.x[gg] = yx$Status1.y[gg]
@@ -2021,7 +1997,7 @@ check = x_t %in% yx_t
 check_function()
 
 # 8. Update table
-gg = which(yx$CP.y=="N-03" & yx$Type==4)
+gg = which(yx$CP.x=="N-03" & yx$Type==4)
 yx$end_date.x = as.Date(yx$end_date.x, origin = "1899-12-30")
 yx$end_date.x = as.Date(yx$end_date.x, format="%m/%d/%y %H:%M:%S")
 yx$Status1.x[gg] = yx$Status1.y[gg]
@@ -2054,8 +2030,8 @@ write.xlsx(yx, MLTable)
 ###############################################################
 ####################### N-04 #################################:----
 ##############################################################
-boredPile = 4
-pCap_pCol_pHead = 5
+boredPile = 5
+pCap_pCol_pHead = 4
 
 #url = "https://docs.google.com/spreadsheets/d/1OWdmM36PWL5MgH0lK9HpigaoVq4L7Q6hm7DSN2FxiAA/edit#gid=0"
 url = "https://docs.google.com/spreadsheets/d/1uVTh_m8Owr4dYypHSSc0nRnGzYCdtceiASCj_oPd6jo/edit?usp=sharing"
@@ -2088,7 +2064,7 @@ for(i in seq(coln)) {
 # 3. first and end
 id = which(x$Status1 == "Status")
 x = x[-c(1:id),]
-x = x[str_detect(x$nPierNumber,"^P|^PLK|^DEP0"),]
+x = x[str_detect(x$nPierNumber,"^P|^PLK|^DEP"),]
 
 # 4. Remove empty Status1
 rid = which(is.na(x$Status1))
@@ -2121,15 +2097,15 @@ x$nPierNumber[id_LS] = gsub("LS-01","-1LS",x$nPierNumber[id_LS])
 x$nPierNumber[id_LS] = gsub("LS-02","-2LS",x$nPierNumber[id_LS])
 x$nPierNumber[id_LS] = gsub("LS-03","-3LS",x$nPierNumber[id_LS])
 
-x$nPierNumber[id_LS] = gsub("01LS","1LS",x$nPierNumber[id_LS])
-x$nPierNumber[id_LS] = gsub("02LS","2LS",x$nPierNumber[id_LS])
+#x$nPierNumber[id_LS] = gsub("01LS","1LS",x$nPierNumber[id_LS])
+#x$nPierNumber[id_LS] = gsub("02LS","2LS",x$nPierNumber[id_LS])
 
 x$nPierNumber[id_RS] = gsub("RS-01","-1RS",x$nPierNumber[id_RS])
 x$nPierNumber[id_RS] = gsub("RS-02","-2RS",x$nPierNumber[id_RS])
 x$nPierNumber[id_RS] = gsub("RS-03","-3RS",x$nPierNumber[id_RS])
 
-x$nPierNumber[id_RS] = gsub("01RS","1RS",x$nPierNumber[id_RS])
-x$nPierNumber[id_RS] = gsub("02RS","2RS",x$nPierNumber[id_RS])
+#x$nPierNumber[id_RS] = gsub("01RS","1RS",x$nPierNumber[id_RS])
+#x$nPierNumber[id_RS] = gsub("02RS","2RS",x$nPierNumber[id_RS])
 
 # 5. Edit Status1
 x$Status1[str_detect(x$Status1,pattern="Casted|casted")] = 4 # Bored Pile completed
@@ -2180,7 +2156,7 @@ check = x_t %in% yx_t
 check_function() 
 
 # 8.
-gg = which(yx$CP.y=="N-04" & yx$Type==1)
+gg = which(yx$CP.x=="N-04" & yx$Type==1)
 
 yx$end_date.x = as.Date(yx$end_date.x, origin = "1899-12-30")
 yx$end_date.x = as.Date(yx$end_date.x, format="%m/%d/%y %H:%M:%S")
@@ -2314,7 +2290,7 @@ check = x_t %in% yx_t
 check_function()
 
 # 12. Update table
-gg = which(yx$CP.y=="N-04" & yx$Type==2)
+gg = which(yx$CP.x=="N-04" & yx$Type==2)
 yx$end_date.x = as.Date(yx$end_date.x, origin = "1899-12-30")
 yx$end_date.x = as.Date(yx$end_date.x, format="%m/%d/%y %H:%M:%S")
 
@@ -2579,7 +2555,7 @@ check = x_t %in% yx_t
 check_function()
 
 # 12. Update table
-gg = which(yx$CP.y=="N-04" & yx$Type==4)
+gg = which(yx$CP.x=="N-04" & yx$Type==4)
 yx$end_date.x = as.Date(yx$end_date.x, origin = "1899-12-30")
 yx$end_date.x = as.Date(yx$end_date.x, format="%m/%d/%y %H:%M:%S")
 

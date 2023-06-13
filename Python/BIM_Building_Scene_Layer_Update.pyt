@@ -10,7 +10,11 @@ This python toolbox is comprised of two parts: Input Revit Files and Update Exis
     1.3. Make building layers
     1.4. Manually 'remove empty layers' from the building layers added to Contents pane
 
-2. Update Existing Building Layers
+2. Make Building Layers
+    * Unfortunately, if you run arcpy.BuildingLayer_management inside Python toolbox, output will not appear in Contents pane.
+    * You need to manually open this geoprocessing tool and run
+
+3. Update Existing Building Layers
  *** Ensure to unlock existing building layers from enterprise geodatabase; otherwise, this fails.
     2.1. Join Field using new layer (tansfer field = 'Status')
     2.2. Update 'Status' for only selected rows
@@ -23,7 +27,7 @@ class Toolbox(object):
     def __init__(self):
         self.label = "UpdateBIMBuildingSceneLayers"
         self.alias = "UpdateBIMBuildingSceneLayers"
-        self.tools = [InputRevitFiles, UpdateExistingBuildingLayers]
+        self.tools = [InputRevitFiles, MakeBuildingLayers, UpdateExistingBuildingLayers]
 
 class InputRevitFiles(object):
     def __init__(self):
@@ -32,7 +36,7 @@ class InputRevitFiles(object):
 
     def getParameterInfo(self):
         ws = arcpy.Parameter(
-            displayName = "Workspace",
+            displayName = "Workspace (file geodatabase)",
             name = "workspace",
             datatype = "DEWorkspace",
             parameterType = "Required",
@@ -48,23 +52,15 @@ class InputRevitFiles(object):
             multiValue = True
         )
 
-        in_buildingLayerName = arcpy.Parameter(
-            displayName = "Add building layer name to be displayed in Contental panel",
-            name = "AddBuildingLayerName",
-            datatype = "GPString",
-            parameterType = "Required",
-            direction = "Input"
-        )
-
         in_featureDatasetName = arcpy.Parameter(
-            displayName = "Add feature dataset name when revit files are added to file geodatabase",
+            displayName = "Name of Feature Dataset in file geodatabase when revit files are added",
             name = "AddFeatureDatasetName",
             datatype = "GPString",
             parameterType = "Required",
             direction = "Input"
         )
 
-        params = [ws, in_revit, in_buildingLayerName, in_featureDatasetName]
+        params = [ws, in_revit, in_featureDatasetName]
         return params
     
     def updateMessage(self, params):
@@ -73,8 +69,7 @@ class InputRevitFiles(object):
     def execute(self, params, messages):
         workspace = params[0].valueAsText
         in_revit = params[1].valueAsText
-        in_buildingLayerName = params[2].valueAsText
-        in_featureDatasetName = params[3].valueAsText
+        in_featureDatasetName = params[2].valueAsText
 
         arcpy.env.overwriteOutput = True
         #arcpy.env.outputCoordinateSystem = arcpy.SpatialReference("WGS 1984 Web Mercator (auxiliary sphere)")
@@ -84,24 +79,50 @@ class InputRevitFiles(object):
         spatial_reference = "PRS_1992_Philippines_Zone_III"
         arcpy.BIMFileToGeodatabase_conversion(in_revit, workspace, in_featureDatasetName, spatial_reference)
 
-        # Make Building Layers
-        out_dataset = os.path.join(workspace, in_featureDatasetName)
-        arcpy.MakeBuildingLayer_management(out_dataset, in_buildingLayerName)
-
-class UpdateExistingBuildingLayers(object):
+class MakeBuildingLayers(object):
     def __init__(self):
-        self.label = "2. Update Existing Building Layers"
-        self.description = "Update existing building layers using the new building layers"
+        self.label = "2.(NOT WORKING: Manually run 'Make Building Layer') Make Building Layers from feature dataset"
+        self.description = "Make building layers from feature dataset created using new revit files"
 
     def getParameterInfo(self):
-        ws = arcpy.Parameter(
-            displayName = "Workspace",
-            name = "workspace",
-            datatype = "DEWorkspace",
+        in_featureDataset = arcpy.Parameter(
+            displayName = "Feature Dataset",
+            name = "NewFeatureDataset",
+            datatype = "DEFeatureDataset",
             parameterType = "Required",
             direction = "Input"
         )
 
+        in_buildingLayerName = arcpy.Parameter(
+            displayName = "Name of building layers to be displayed in Contents pane",
+            name = "AddBuildingLayerName",
+            datatype = "GPString",
+            parameterType = "Required",
+            direction = "Input"
+        )
+
+        params = [in_featureDataset, in_buildingLayerName]
+        return params
+    
+    def updateMessage(self, params):
+        return
+    
+    def execute(self, params, messages):
+        in_featureDataset = params[0].valueAsText
+        in_buildingLayerName = params[1].valueAsText
+
+        # Set overwrite option
+        arcpy.env.overwriteOutput = True
+
+        # 0. Make Building Layers from new building layers
+        arcpy.MakeBuildingLayer_management(in_featureDataset, in_buildingLayerName)
+
+class UpdateExistingBuildingLayers(object):
+    def __init__(self):
+        self.label = "3. Update Existing Building Layers"
+        self.description = "Update existing building layers using the new building layers"
+
+    def getParameterInfo(self):
         in_buildingLayers = arcpy.Parameter(
             displayName = "Input (new) Building Layers",
             name = "InputBuildingLayers",
@@ -127,35 +148,42 @@ class UpdateExistingBuildingLayers(object):
             parameterType = "Required",
             direction = "Input",
         )
+        transfer_field.parameterDependencies = [in_buildingLayers.name]
 
-        params = [ws, in_buildingLayers, target_buildingLayers, transfer_field]
+        params = [in_buildingLayers, target_buildingLayers, transfer_field]
         return params
     
     def updateMessage(self, params):
         return
     
     def execute(self, params, messages):
-        workspace = params[0].valueAsText
-        in_buildingLayers = params[1].valueAsText
-        target_buildingLayers = params[2].valueAsText
-        transfer_field = params[3].valueAsText
+        in_buildingLayers = params[0].valueAsText
+        target_buildingLayers = params[1].valueAsText
+        transfer_field = params[2].valueAsText
 
         arcpy.env.overwriteOutput = True
 
         # 1. Compile basenames of input building layers
+        new_buildingLayers = list(in_buildingLayers.split(";"))
+
         basename_input = []
-        for feature in in_buildingLayers:
+        for feature in new_buildingLayers:
             basename = os.path.basename(feature)
             basename_input.append(basename)
 
+        arcpy.AddMessage(basename_input)
+
         # 2. Join 'Status' to each building layer
+        existing_buildingLayers = list(target_buildingLayers.split(";"))
+        arcpy.AddMessage(existing_buildingLayers)
+
         joinField = 'ObjectId'
 
-        for feature in target_buildingLayers:
+        for feature in existing_buildingLayers:
             # Get input_feature corresponding to target_feature
             basename = os.path.basename(feature)
             index = basename_input.index(basename)
-            joinTable = in_buildingLayers[index]
+            joinTable = new_buildingLayers[index]
             
             # Join
             arcpy.management.JoinField(feature, joinField, joinTable, joinField, transfer_field)
@@ -163,7 +191,7 @@ class UpdateExistingBuildingLayers(object):
         # 3. Update 'Status' using 'Status1'
         tempField = transfer_field + "_1"
 
-        for feature in target_buildingLayers:
+        for feature in existing_buildingLayers:
             with arcpy.da.UpdateCursor(feature, [transfer_field, tempField]) as cursor:
                 for row in cursor:
                     if row[1] is None:
@@ -173,7 +201,7 @@ class UpdateExistingBuildingLayers(object):
                     cursor.updateRow(row)
 
         # 4. Delete tempField
-        for feature in target_buildingLayers:
+        for feature in existing_buildingLayers:
             arcpy.DeleteField_management(feature, tempField)
 
 

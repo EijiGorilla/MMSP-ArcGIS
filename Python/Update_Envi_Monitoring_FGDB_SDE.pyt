@@ -110,6 +110,7 @@ class EnviMonitoringUpdateTool(object):
         # Delete
         deleteL = [tableGDB, xyP, xyP_prj, copyL]
         arcpy.Delete_management(deleteL)
+        #End
 
 
 

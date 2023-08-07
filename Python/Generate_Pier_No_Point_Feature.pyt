@@ -86,11 +86,11 @@ class AssignPierIds(object):
         with arcpy.da.UpdateCursor(in_fc, [tempField, searchField]) as cursor:
             for row in cursor:
                 try:
-                    reg = re.search(r"P-\d+|BUE-P\d+", str(row[1])).group()
+                    reg = re.search(r"P-\d+[ABC]|P-\d+|BUE-P\d+|SCT-P\d+|STR-P\d+[NS]|STR-P\d+", str(row[1])).group()
                     row[0] = reg
                     cursor.updateRow(row)
                 except AttributeError:
-                    reg = re.search(r"P-\d+|BUE-P\d+", str(row[1]))
+                    reg = re.search(r"P-\d+[ABC]|P-\d+|BUE-P\d+|SCT-P\d+|STR-P\d+[NS]|STR-P\d+", str(row[1]))
                     row[0] = reg
                     cursor.updateRow(row)
 

@@ -1,20 +1,24 @@
 import arcpy
 import pandas as pd
 import os
+import re
 
 """
 # INSTRUCTION and DESCRIPTION
 This python toolbox generates pier number point feature layer using viaduct multipatch layer.
 1. Assign patterns to each pier based on the following structural patterns.
-    Pattern 1: onpier per pier head (one pier no point)
-    Pattern 2: two piers per pier head (one pier no point)
-    Pattern 3: three piers per pier head (threes pier no points per pier head)
+    Pattern 1: one pier per pier head (one pier number point)
+    Pattern 2: two piers per pier head (one pier number point)
+    Pattern 3: three piers per pier head (threes pier number points per pier head)
+    pattern 4: three pier heads (one pier number point)
 
     The result is exported as Excel (.xlsx) in your local drive: "C:/temp". 
     If the directory does not exist, it will be automatically created for you.
 
 2. Generate pier point feature layer based on No. 1 using viaduct multipatch layer
     Use the exported excel sheet (.xlsx) to generate the point feature.
+
+    Output: file geodatabase 'merged_pierNo_points'
 """
 
 class Toolbox(object):
@@ -67,13 +71,37 @@ class AssignPierIds(object):
         if len(test) >= 1:
             arcpy.AddMessage("The table already has '{0}'".format(updateField))
             arcpy.DeleteField_management(in_fc, [updateField], "DELETE_FIELDS")
+
+        # 0.5 Convert 'PierNumber' to correct format to create pier point number corresponding to Patterns mentioned above
+        ## E.g., BUE-P8 has two piers with one pier head, but the two piers has different PierNumber (BUE-P8N, BUE-P8S).
+        ## We need to convert these to BUE-P8 so that we can have only one pier number point
+        ### First add 'temp' field, if not present
+        tempField = "temp"
+        validate = [e for e in fields if e in tempField]
+        
+        if len(validate) == 0:
+            arcpy.AddMessage("The table already does not have '{0}'".format(tempField))
+            arcpy.management.AddField(in_fc, tempField, "TEXT", "", tempField, "NULLABLE")
+
+        with arcpy.da.UpdateCursor(in_fc, [tempField, searchField]) as cursor:
+            for row in cursor:
+                try:
+                    reg = re.search(r"P-\d+|BUE-P\d+", str(row[1])).group()
+                    row[0] = reg
+                    cursor.updateRow(row)
+                except AttributeError:
+                    reg = re.search(r"P-\d+|BUE-P\d+", str(row[1]))
+                    row[0] = reg
+                    cursor.updateRow(row)
+
+        arcpy.AddMessage("Checking and editing 'temp' field was successful.")
         
         # 1. Get unique values for PierNumber
         def unique_values(table, field):  ##uses list comprehension
             with arcpy.da.SearchCursor(table, [field]) as cursor:
                 return sorted({row[0] for row in cursor if row[0] is not None})
             
-        piers = unique_values(in_fc, searchField)
+        piers = unique_values(in_fc, tempField)
 
         # 2. Table to Table Conversion
         tempFile = 'pierid_temp.csv'
@@ -96,19 +124,25 @@ class AssignPierIds(object):
         # 3. Update table
         for pier in piers:
             # Get row index
-            row_count = data1.index[(data1[searchField] == pier) & (data1['Type'] == 3)]
+            row_count = data1.index[(data1[tempField] == pier) & (data1['Type'] == 3)]
+            row_count_pierHead = data1.index[(data1[tempField] == pier) & (data1['Type'] == 4)]
 
             # Count row numbers
             count = len(row_count)
+            count_pierHead = len(row_count_pierHead)
             
-            row_num = data1.index[data1[searchField] == pier]
+            row_num = data1.index[data1[tempField] == pier]
             # update row for pier
-            if count == 1:
+            if count_pierHead == 3:
+                data1.loc[row_num, updateField] = 1
+            elif count == 1:
                 data1.loc[row_num, updateField] = 1
             elif count == 2:
                 data1.loc[row_num, updateField] = 2
             elif count == 3:
                 data1.loc[row_num, updateField] = 3
+            else:
+                data1.loc[row_num, updateField] = 0
 
         ## Keep only uniqueID and pier_id
         data1 = data1[['uniqueID', updateField]]
@@ -119,8 +153,8 @@ class AssignPierIds(object):
 
 class CreatePierPointFeature(object):
     def __init__(self):
-        self.label = "2. Generate Pier No Point Feature using Viaduct"
-        self.description = "Create pier number point feature layer using pre-assigned pierIds of viadcut"
+        self.label = "2. Generate Pier No Point Feature using Viaduct (output point feature = 'merged_pierNo_points')"
+        self.description = "Create pier number point feature layer using pre-assigned pierIds of viadcut (output point feature = 'merged_pierNo_points')"
 
     def getParameterInfo(self):
         ws = arcpy.Parameter(
@@ -134,6 +168,14 @@ class CreatePierPointFeature(object):
         in_fc = arcpy.Parameter(
             displayName = "Input Viaduct Multipatch Layer",
             name = "Input Viaduct Multipatch Layer",
+            datatype = "GPFeatureLayer",
+            parameterType = "Required",
+            direction = "Input"
+        )
+
+        in_pier_fc = arcpy.Parameter(
+            displayName = "Existing Pier No. Point Feature",
+            name = "Existing Pier No. Point Feature",
             datatype = "GPFeatureLayer",
             parameterType = "Required",
             direction = "Input"
@@ -165,7 +207,7 @@ class CreatePierPointFeature(object):
         )
         addField.parameterDependencies = [ml.name]
 
-        params = [ws, in_fc, ml, jField, addField]
+        params = [ws, in_fc, in_pier_fc, ml, jField, addField]
         return params
     
     def updateMessage(self, params):
@@ -174,20 +216,32 @@ class CreatePierPointFeature(object):
     def execute(self, params, messages):
         workspace = params[0].valueAsText
         in_fc = params[1].valueAsText
-        ml = params[2].valueAsText
-        joinField = params[3].valueAsText
-        addField = params[4].valueAsText
+        in_pier_fc = params[2].valueAsText
+        ml = params[3].valueAsText
+        joinField = params[4].valueAsText
+        addField = params[5].valueAsText
 
         arcpy.env.overwriteOutput = True
+
+        # Delete 'pier_id' if exists
+        ## this is needed when this code is run twice in a row
+        updateField = 'pier_id'
+        fields = [f.name for f in arcpy.ListFields(in_fc)]
+        test = [e for e in fields if e in updateField]
+
+        if len(test) >= 1:
+            arcpy.AddMessage("The table already has '{0}'".format(updateField))
+            arcpy.DeleteField_management(in_fc, [updateField], "DELETE_FIELDS")
 
         # 0. join field
         ## addField = "pier_id"
         arcpy.JoinField_management(in_data=in_fc, in_field=joinField, join_table=ml, join_field=joinField, fields=addField)
 
         # 1. Define output features for each pier id (1, 2, and 3)
-        ## pier_id = 1: onpier per pier head (one pier no point)
+        ## pier_id = 1: one pier per pier head (one pier no point)
         ## pier_id = 2: two piers per pier head (one pier no point)
         ## pier_id = 3: three piers per pier head (threes pier no points per pier head)
+
         output1 = "pierId1"
         output2 = "pierId2"
         output3 = "pierId3"
@@ -239,15 +293,15 @@ class CreatePierPointFeature(object):
         
         # 8. Add new fields
         ## 'AccessDate', 'Notes'
-        fieldName1 = "AccessDate"
         fieldName2 = "Notes"
-
-        arcpy.management.AddField(mergedPierPoints, fieldName1, "DATE", "",
-                                  field_alias = fieldName1, field_is_nullable = "NULLABLE")
-        
         arcpy.management.AddField(mergedPierPoints, fieldName2, "TEXT", "",
                                   field_alias = fieldName2, field_is_nullable = "NULLABLE")
+        
+        # 9. Join 'AccessDate' from existing pier no point feature
+        addFieldDate = "AccessDate"
+        joinFieldPier = "PIER"
+        arcpy.JoinField_management(in_data=mergedPierPoints, in_field=joinFieldPier, join_table=in_pier_fc, join_field=joinFieldPier, fields=addFieldDate)
 
-        # 9. Delete
+        # 10. Delete
         deleteOutputs = [outFeature1, outFeature2, outFeature3]
         arcpy.management.Delete(deleteOutputs)

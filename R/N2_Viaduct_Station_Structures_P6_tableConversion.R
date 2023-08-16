@@ -285,3 +285,241 @@ id = which(str_detect(colnames(cp01_VIA),"duration|start"))
 cp01_VIA = cp01_VIA[,-id]
 
 
+##########################################################################
+# N-02:----
+piles_word = ".*EXECUTION PILES PIER.*"
+pileCap_word = ".*EXECUTION PILE CAP.*"
+pier_word = ".*EXECUTION PIER COLUMN.*"
+pierHead_word = ".*EXECUTION PIER HEAD*"
+precast_word = ".*PC SEGMENT ERECTION*"
+
+## 1. Bored Piles:----
+## Filter 
+y = read.xlsx(MLTable, sheet=2)
+colnames(y) = c("ID", "PierNumber", "duration", "start", "finish")
+
+y1 = y
+y1$PierNumber = toupper(y1$PierNumber)
+id=which(str_detect(y1$PierNumber,piles_word))
+y1 = y1[id,]
+
+## Keep only pier numbers
+y1$PierNumber = gsub(".*EXECUTION PILES PIER","",y1$PierNumber)
+
+### make sure that first letter starts with 'P' or 'MT'
+y1$PierNumber = str_trim(y1$PierNumber, side="both")
+y1$PierNumber = gsub("[[:space:]]","",y1$PierNumber)
+y1$PierNumber = gsub("CENTER","",y1$PierNumber)
+
+id=which(str_detect(y1$PierNumber, "[()]"))
+y1$PierNumber[id] = gsub("\\([^)]*\\)","",y1$PierNumber[id])
+
+id = which(str_detect(y1$PierNumber, "^P|^MT|^DEP"))
+y1 = y1[id,]
+y1$PierNumber = gsub("MT02-","MT02-0",y1$PierNumber)
+y1$PierNumber = gsub("ABUT","-ABUT",y1$PierNumber)
+
+## Add CP and Type
+y1$CP = "N-02"
+y1$Type = 1
+n02_piles = y1
+head(n02_piles)
+
+## 2. Pile Cap:----
+## Filter 
+y = read.xlsx(MLTable, sheet=2)
+colnames(y) = c("ID", "PierNumber", "duration", "start", "finish")
+
+y1 = y
+y1$PierNumber = toupper(y1$PierNumber)
+id=which(str_detect(y1$PierNumber,pileCap_word))
+y1 = y1[id,]
+
+## Keep only pier numbers
+y1$PierNumber = gsub(".*EXECUTION PILE CAP","",y1$PierNumber)
+
+### make sure that first letter starts with 'P' or 'MT'
+y1$PierNumber = str_trim(y1$PierNumber, side="both")
+y1$PierNumber = gsub("[[:space:]]","",y1$PierNumber)
+y1$PierNumber = gsub("CENTER","",y1$PierNumber)
+
+id=which(str_detect(y1$PierNumber,".*]$"))
+if (length(id) > 0) {
+  y1 = y1[-id,]
+}
+
+id=which(str_detect(y1$PierNumber, "[()]"))
+y1$PierNumber[id] = gsub("\\([^)]*\\)","",y1$PierNumber[id])
+
+id = which(str_detect(y1$PierNumber, "^P|^MT|^DEP"))
+y1 = y1[id,]
+y1$PierNumber = gsub("MT02-","MT02-0",y1$PierNumber)
+y1$PierNumber = gsub("0ABUT","ABUT",y1$PierNumber)
+
+## Add CP and Type
+y1$CP = "N-02"
+y1$Type = 2
+n02_pileCap = y1
+
+
+## 3. Pier:----
+## Filter 
+y = read.xlsx(MLTable, sheet=2)
+colnames(y) = c("ID", "PierNumber", "duration", "start", "finish")
+
+y1 = y
+y1$PierNumber = toupper(y1$PierNumber)
+id=which(str_detect(y1$PierNumber,pier_word))
+y1 = y1[id,]
+
+## Keep only pier numbers
+y1$PierNumber = gsub(".*EXECUTION PIER COLUMN","",y1$PierNumber)
+
+### make sure that first letter starts with 'P' or 'MT'
+y1$PierNumber = str_trim(y1$PierNumber, side="both")
+y1$PierNumber = gsub("[[:space:]]","",y1$PierNumber)
+y1$PierNumber = gsub("CENTER","",y1$PierNumber)
+
+id=which(str_detect(y1$PierNumber,".*]$"))
+if (length(id) > 0) {
+  y1 = y1[-id,]
+}
+
+
+id=which(str_detect(y1$PierNumber, "[()]"))
+y1$PierNumber[id] = gsub("\\([^)]*\\)","",y1$PierNumber[id])
+
+id = which(str_detect(y1$PierNumber, "^P|^MT|^DEP"))
+y1 = y1[id,]
+y1$PierNumber = gsub("MT02-","MT02-0",y1$PierNumber)
+y1$PierNumber = gsub("0ABUT","ABUT",y1$PierNumber)
+
+## Add CP and Type
+y1$CP = "N-02"
+y1$Type = 3
+n02_pier = y1
+
+## 4. Pier Head:----
+## Filter 
+y = read.xlsx(MLTable, sheet=2)
+colnames(y) = c("ID", "PierNumber", "duration", "start", "finish")
+
+y1 = y
+y1$PierNumber = toupper(y1$PierNumber)
+id=which(str_detect(y1$PierNumber,pierHead_word))
+y1 = y1[id,]
+
+## Keep only pier numbers
+y1$PierNumber = gsub(".*EXECUTION PIER HEAD","",y1$PierNumber)
+
+### make sure that first letter starts with 'P' or 'MT'
+y1$PierNumber = str_trim(y1$PierNumber, side="both")
+y1$PierNumber = gsub("[[:space:]]","",y1$PierNumber)
+y1$PierNumber = gsub("CENTER","",y1$PierNumber)
+
+id=which(str_detect(y1$PierNumber,".*]$"))
+if (length(id) > 0) {
+  y1 = y1[-id,]
+}
+
+
+id=which(str_detect(y1$PierNumber, "[()]"))
+y1$PierNumber[id] = gsub("\\([^)]*\\)","",y1$PierNumber[id])
+
+id = which(str_detect(y1$PierNumber, "^P|^MT|^DEP"))
+y1 = y1[id,]
+y1$PierNumber = gsub("MT02-","MT02-0",y1$PierNumber)
+y1$PierNumber = gsub("0ABUT","ABUT",y1$PierNumber)
+
+## Add CP and Type
+y1$CP = "N-02"
+y1$Type = 4
+n02_pierHead = y1
+
+## 5. Precast:----
+## Filter 
+y = read.xlsx(MLTable, sheet=2)
+colnames(y) = c("ID", "PierNumber", "duration", "start", "finish")
+
+y1 = y
+y1$PierNumber = toupper(y1$PierNumber)
+id=which(str_detect(y1$PierNumber,precast_word))
+y1 = y1[id,]
+
+## Keep only pier numbers
+y1$PierNumber = gsub(".*PC SEGMENT ERECTION LG\\d+:","",y1$PierNumber)
+
+### make sure that first letter starts with 'P' or 'MT'
+y1$PierNumber = str_trim(y1$PierNumber, side="both")
+y1$PierNumber = gsub("[[:space:]]","",y1$PierNumber)
+y1$PierNumber = gsub("CENTER","",y1$PierNumber)
+
+id=which(str_detect(y1$PierNumber, "[()]"))
+y1$PierNumber[id] = gsub("\\([^)]*\\)","",y1$PierNumber[id])
+
+id = which(str_detect(y1$PierNumber, "^P|^MT|^DEP"))
+y1 = y1[id,]
+
+y1$PierNumber = gsub("LEARNINGCURVE","",y1$PierNumber)
+y1$PierNumber = gsub("MT02-","MT02-0",y1$PierNumber)
+y1$PierNumber = gsub("0ABUT","ABUT",y1$PierNumber)
+
+## pattern: 'P-529 - P-528' => 'P-528'
+##          'P-771 - P-772' => 'P-771'
+y1$temp1 = str_extract(y1$PierNumber,"^P-\\d+") # frist pier number
+y1$temp1 = gsub("P-","",y1$temp1)
+y1$temp1 = as.numeric(y1$temp1)
+
+y1$temp2 = str_extract(y1$PierNumber,"P-\\d+$|P-\\d+?SB$|P-\\d+?NB$") # last pier 
+y1$temp2 = gsub("SB|NB","",y1$temp2)
+y1$temp2 = gsub("P-","",y1$temp2)
+y1$temp2 = as.numeric(y1$temp2)
+
+y1$temp3 = str_extract(y1$PierNumber,"SB$|NB$")
+
+y1$temp4 = ""
+for(i in 1:nrow(y1)){
+  if(y1$temp1[i] > y1$temp2[i]){
+    y1$temp4[i] = y1$temp2[i]
+    
+  } else if(y1$temp1[i] < y1$temp2[i]) {
+    y1$temp4[i] = y1$temp1[i]
+  }
+}
+
+# Now fix PierNumber based on this
+y1$PierNumber = paste("P-",y1$temp4,sep="")
+id=which(!is.na(y1$temp3))
+y1$PierNumber[id] = paste("P-",y1$temp4[id],y1$temp3[id],sep="")
+
+# Delete temp fields
+id=which(str_detect(colnames(y1),"^temp"))
+y1 = y1[,-id]
+
+## Add CP and Type
+y1$CP = "N-02"
+y1$Type = 5
+n02_precast = y1
+
+## 4. Compile All Components:----
+cp02_VIA = rbind(n02_piles, n02_pileCap, n02_pier, n02_pierHead, n02_precast)
+
+## Fix finish 
+### Row for '27-Sep-22' format
+id=which(str_detect(cp02_VIA$finish,"^\\d+-\\w+-\\d+"))
+dates = str_extract(cp02_VIA$finish[id],"^\\d+-\\w+-\\d+")
+dates = as.Date(cp02_VIA$finish[id], format= "%d-%b-%y" )
+
+### Row for number date
+cp02_VIA$finish = as.numeric(cp02_VIA$finish)
+cp02_VIA$finish = as.Date(cp02_VIA$finish, origin = "1899-12-30")
+cp02_VIA$finish = as.Date(cp02_VIA$finish, format="%m/%d/%y %H:%M:%S")
+
+## Add back dates
+cp02_VIA$finish[id] = dates
+
+## Remove redundant fields
+id = which(str_detect(colnames(cp02_VIA),"duration|start"))
+cp02_VIA = cp02_VIA[,-id]
+
+

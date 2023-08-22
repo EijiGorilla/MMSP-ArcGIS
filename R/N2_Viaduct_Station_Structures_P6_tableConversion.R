@@ -388,7 +388,7 @@ y1$PierNumber[id] = gsub("\\([^)]*\\)","",y1$PierNumber[id])
 id = which(str_detect(y1$PierNumber, "^P|^MT|^DEP"))
 y1 = y1[id,]
 y1$PierNumber = gsub("MT02-","MT02-0",y1$PierNumber)
-y1$PierNumber = gsub("ABUT","-ABUT",y1$PierNumber)
+y1$PierNumber = gsub("0ABUT","ABUT",y1$PierNumber)
 
 ## Add CP and Type
 y1$CP = "N-02"
@@ -557,6 +557,66 @@ for(i in 1:nrow(y1)){
     y1$temp4[i] = y1$temp1[i]
   }
 }
+
+## P-661N, P-661S, P-662N, P-662S (Cantilever): Ignore these
+## the following pierNumbers will be missed so manually create 
+## Use 'temp2'
+# 457, 458, 459 => 456 (temp2)
+# 467, 468, 469 => 466 (temp2)
+# 595, 596 => 594 (temp2)
+# 609, 610 => 608 (temp2)
+# 631, 632, 633 => 630 (temp2)
+# 660, 661, 662 => 659 (temp2)
+# 695, 696, 697 => 694 (temp2)
+
+mPiers = c(456,466,594,608,630,659,694,695)
+
+temp = data.frame()
+for(i in mPiers){
+  if(i == 456){
+    d = y1[which(y1$temp2==i),]
+    d1 = data.frame(ID=d$ID,PierNumber="",duration="",start="",finish=d$finish,temp1="",temp2="",temp3="",temp4=457:459)
+    temp = rbind(temp, d1)
+    
+  } else if(i == 466){
+    d = y1[which(y1$temp2==i),]
+    d1 = data.frame(ID=d$ID,PierNumber="",duration="",start="",finish=d$finish,temp1="",temp2="",temp3="",temp4=467:469)
+    temp = rbind(temp, d1)
+  
+  } else if(i == 594){
+    d = y1[which(y1$temp2==i),]
+    d1 = data.frame(ID=d$ID,PierNumber="",duration="",start="",finish=d$finish,temp1="",temp2="",temp3="",temp4=595:596)
+    temp = rbind(temp, d1)
+  
+  } else if(i == 608){
+    d = y1[which(y1$temp2==i & is.na(y1$temp3)),]
+    d1 = data.frame(ID=d$ID,PierNumber="",duration="",start="",finish=d$finish,temp1="",temp2="",temp3="",temp4=609:610)
+    temp = rbind(temp, d1)
+  
+  } else if(i == 630){
+    d = y1[which(y1$temp2==i),]
+    d1 = data.frame(ID=d$ID,PierNumber="",duration="",start="",finish=d$finish,temp1="",temp2="",temp3="",temp4=631:633)
+    temp = rbind(temp, d1)
+    
+  } else if(i == 659){
+    d = y1[which(y1$temp2==i),]
+    d1 = data.frame(ID=d$ID,PierNumber="",duration="",start="",finish=d$finish,temp1="",temp2="",temp3="",temp4=660:662)
+    temp = rbind(temp, d1)
+    
+  } else if(i == 694){
+    d = y1[which(y1$temp2==i),]
+    d1 = data.frame(ID=d$ID,PierNumber="",duration="",start="",finish=d$finish,temp1="",temp2="",temp3="",temp4=695:697)
+    temp = rbind(temp, d1)
+  
+  } else if(i == 695){ # use temp1 and temp3
+    d = y1[which(y1$temp1==i),]
+    d1 = data.frame(ID=d$ID,PierNumber="P-695A",duration="",start="",finish=d$finish,temp1="",temp2="",temp3="A",temp4=695)
+    temp = rbind(temp, d1)
+}
+}
+
+# rbind
+y1 = rbind(y1, temp)
 
 # Now fix PierNumber based on this
 y1$PierNumber = paste("P-",y1$temp4,sep="")
@@ -773,6 +833,11 @@ n03_pierHead = y1
 
 
 ## 5. Precast:----
+
+#***********
+# MT03-01, MT03-02, MT03-ABUT do not exist in P6
+#***********
+
 ## Filter 
 y = read.xlsx(MLTable, sheet=3)
 colnames(y) = c("ID", "PierNumber", "duration", "start", "finish")
@@ -822,19 +887,116 @@ id=which(y1$temp5 <= -2)
 temp = data.frame()
 for(i in seq(nrow(y1[id,]))){
   d = y1[id,][i,]
-  d1 = data.frame(ID=d$ID,PierNumber=d$PierNumber,duration=d$duration,start=d$start,finish=d$finish,temp3=d$temp3,temp5=d$temp1:(d$temp2-1))
+  d1 = data.frame(ID=d$ID,PierNumber=d$PierNumber,duration=d$duration,start=d$start,finish=d$finish,
+                  temp1=0,temp2=0,temp3=d$temp3,temp5=as.numeric(d$temp1:(d$temp2-1)))
   d1$PierNumber=paste("P-",d1$temp5,sep = "")
   temp=rbind(temp,d1)
 }
-temp=temp[,-nrow(temp)]
+str(temp)
 
 ## Delete the processed rows before rbinding the 'temp', compiled dataframe
-y1 = y1[-id,-which(str_detect(colnames(y1),"temp1|temp2"))] # delete temp1 and temp2 for binding with temp
+y1 = y1[-id,] # delete temp1 and temp2 for binding with temp
 
 # Rbind temp to original
 y1 = rbind(y1,temp)
 
+
+##################
+## P-661N, P-661S, P-662N, P-662S (Cantilever): Ignore these
+## the following pierNumbers will be missed so manually create 
+## Use 'temp2'
+# 1021 => 1021 (temp2)
+# 1048, 1049 => 1048 (temp2)
+# 1050 => 1052 (temp2)
+# 1091, 1092, 1093 => 1091 (temp2)
+# 1106, 1107 => 1106 (temp2)
+# 1120, 1121 => 1120 (temp2)
+# 1130 => 1130 (temp2)
+# 1142 => 1142 (temp2)
+# 888, 889, 890 => 888 (temp2)
+# 968 => 966 (temp2)
+# 974, 975, 976 => 974 (temp2)
+# 989, 990, 992 => 989 (temp2)
+
+
+mPiers = c(1021,1048,1052,1091,1106,1120,1130,1142,888,966,974,989)
+
+temp = data.frame()
+for(i in mPiers){
+  if(i == 1021){
+    d = y1[which(y1$temp2==i),]
+    addPier = 1021
+    d1 = data.frame(ID=d$ID,PierNumber=paste("P-",addPier,sep=""),duration=0,start="",finish=d$finish)
+    temp = rbind(temp, d1)
+    
+  } else if(i == 1048){
+    d = y1[which(y1$temp2==i),]
+    addPier = 1048:1049
+    d1 = data.frame(ID=d$ID,PierNumber=paste("P-",addPier,sep=""),duration=0,start="",finish=d$finish)
+    temp = rbind(temp, d1)
+    
+  } else if(i == 1052){
+    d = y1[which(y1$temp2==i),]
+    addPier = 1050
+    d1 = data.frame(ID=d$ID,PierNumber=paste("P-",addPier,sep=""),duration=0,start="",finish=d$finish)
+    temp = rbind(temp, d1)
+    
+  } else if(i == 1091){
+    d = y1[which(y1$temp2==i & is.na(y1$temp3)),]
+    addPier = 1091:1093
+    d1 = data.frame(ID=d$ID,PierNumber=paste("P-",addPier,sep=""),duration=0,start="",finish=d$finish)
+    temp = rbind(temp, d1)
+    
+  } else if(i == 1106){
+    d = y1[which(y1$temp2==i & is.na(y1$temp3)),]
+    addPier = 1106:1107
+    d1 = data.frame(ID=d$ID,PierNumber=paste("P-",addPier,sep=""),duration=0,start="",finish=d$finish)
+    
+  } else if(i == 1120){
+    d = y1[which(y1$temp2==i & is.na(y1$temp3)),]
+    addPier = 1120
+    d1 = data.frame(ID=d$ID,PierNumber=paste("P-",addPier,sep=""),duration=0,start="",finish=d$finish)
+    temp = rbind(temp, d1)
+    
+  } else if(i == 1130){
+    d = y1[which(y1$temp2==i & is.na(y1$temp3)),]
+    addPier = 1130
+    d1 = data.frame(ID=d$ID,PierNumber=paste("P-",addPier,sep=""),duration=0,start="",finish=d$finish)
+    temp = rbind(temp, d1)
+    
+  } else if(i == 1142){
+    d = y1[which(y1$temp2==i & is.na(y1$temp3)),]
+    addPier = 1142
+    d1 = data.frame(ID=d$ID,PierNumber=paste("P-",addPier,sep=""),duration=0,start="",finish=d$finish)
+    temp = rbind(temp, d1)
+    
+  } else if(i == 888){
+    d = y1[which(y1$temp2==i & is.na(y1$temp3)),]
+    addPier = 888:890
+    d1 = data.frame(ID=d$ID,PierNumber=paste("P-",addPier,sep=""),duration=0,start="",finish=d$finish)
+    temp = rbind(temp, d1)
+    
+  } else if(i == 966){
+    d = y1[which(y1$temp2==i & is.na(y1$temp3)),]
+    addPier = 968
+    d1 = data.frame(ID=d$ID,PierNumber=paste("P-",addPier,sep=""),duration=0,start="",finish=d$finish)
+    temp = rbind(temp, d1)
+    
+  } else if(i == 974){
+    d = y1[which(y1$temp2==i & is.na(y1$temp3)),]
+    addPier = 974:976
+    d1 = data.frame(ID=d$ID,PierNumber=paste("P-",addPier,sep=""),duration=0,start="",finish=d$finish)
+    temp = rbind(temp, d1)
+    
+  } else if(i == 989){
+    d = y1[which(y1$temp2==i & is.na(y1$temp3)),]
+    addPier = c(989,990,992)
+    d1 = data.frame(ID=d$ID,PierNumber=paste("P-",addPier,sep=""),duration=0,start="",finish=d$finish)
+    temp = rbind(temp, d1)
+}
+}
 y1=y1[,-which(str_detect(colnames(y1),"^temp"))]
+y1 = rbind(y1, temp)
 
 ## Add CP and Type
 y1$CP = "N-03"
@@ -1213,11 +1375,11 @@ xx = left_join(ml,x,by=c("CP","Type","PierNumber"))
 ## Identify mismatched pierNumber (i.e., not exist in x)
 id=which(is.na(xx$finish))
 xx1 = xx[id,]
-xx1[which(xx1$PierNumber=="P-457"),]
-xx[which(xx$PierNumber=="P-457"),]
 
+checkPier = "P-992";xx[which(xx$PierNumber==checkPier),]
+
+xx1[which(xx1$CP=="N-03"),]
 unique(xx1$PierNumber)
-
 
 ## 
 x[which(x$PierNumber=="MT01-04"),]

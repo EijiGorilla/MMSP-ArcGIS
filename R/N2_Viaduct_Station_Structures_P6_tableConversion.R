@@ -276,7 +276,9 @@ y2 = rbind(y2,temp)
 y2 = y2[-id,]
 
 ## 3. P158-P159-P160-P161 -> P158, P159, P160, P161
-id=which(!str_detect(y2$PierNumber,"SB$|NB$") & y2$temp=="PPPP")
+### P206-P207-P208-P209, P214-P215-P216-P217, P260-P261-P262-P263
+### IGNORE P404-P405-P406-P407 (406 and 407 will be duplicated)
+id=which(!str_detect(y2$PierNumber,"SB$|NB$") & y2$temp=="PPPP" & y2$PierNumber != "P404-P405-P406-P407")
 y2$PierNumber[id]
 
 temp = data.frame()
@@ -291,6 +293,21 @@ for(i in seq(y2$PierNumber[id])){
 y2 = rbind(y2,temp)
 
 ## Delete originla rows
+y2 = y2[-id,]
+
+
+## 3.1. P-404 and P-405 are missing in P6 => copy using P-406
+id=which(y2$PierNumber=="P406-P407")
+
+temp = data.frame()
+for(i in c("P-404","P-405")){
+  d = data.frame(ID=y2$ID[id],PierNumber=i,duration="",start="",finish=y2$finish[id],temp="")
+  temp = rbind(temp, d)
+}
+y2 = rbind(y2, temp)
+
+### delete P404-P405-P406-P407
+id=which(y2$PierNumber=="P404-P405-P406-P407")
 y2 = y2[-id,]
 
 # 4. Fix MT01 precast
@@ -310,9 +327,13 @@ if(length(id)>0){
 ## 
 y2$PierNumber = gsub("^P","P-",y2$PierNumber)
 
-# P-10NB is wrong => P-10
-id=which(str_detect(y2$PierNumber,"P-10SB|P-10NB"))
-y2$PierNumber[id] = "P-10"
+# P-10 has only one precast but P6 has P-10NB and P-10SB => P-10
+## choose P-10NB and convert to P-10
+id=which(str_detect(y2$PierNumber,"P-10SB"))
+y2= y2[-id,]
+
+id=which(str_detect(y2$PierNumber,"P-10NB"))
+y2$PierNumber[id] = gsub("P-10NB","P-10",y2$PierNumber[id])
 
 ## Add CP and Type
 y2$CP = "N-01"
@@ -517,7 +538,7 @@ y1$PierNumber = toupper(y1$PierNumber)
 id=which(str_detect(y1$PierNumber,precast_word))
 y1 = y1[id,]
 
-
+#(P-597SB) do not remove this.
 ## Keep only pier numbers
 y1$PierNumber = gsub(".*PC SEGMENT ERECTION LG\\d+:","",y1$PierNumber)
 
@@ -620,7 +641,8 @@ y1 = rbind(y1, temp)
 
 # Now fix PierNumber based on this
 y1$PierNumber = paste("P-",y1$temp4,sep="")
-id=which(!is.na(y1$temp3))
+id=which(str_detect(y1$temp3,"SB|NB|A"))
+
 y1$PierNumber[id] = paste("P-",y1$temp4[id],y1$temp3[id],sep="")
 
 # Delete temp fields
@@ -642,6 +664,7 @@ for(i in seq(piers)){
 }
 
 y1 = rbind(y1, temp)
+
 
 ## Add CP and Type
 y1$CP = "N-02"
@@ -679,8 +702,8 @@ cp02_VIA = cp02_VIA[,-id]
 # N-03:----
 piles_word = ".*BORED PILING.*"
 pileCap_word = ".*CONSTRUCT FOOTINGS.*"
-pier_word = ".*CONSTRUCT LOWER COLUMN.*"
-pierHead_word = ".*CONSTRUCT UPPER COLUMN*"
+pier_word = ".*CONSTRUCT LOWER COLUMN.*|.*CONSTRUCT COLUMN.*"
+pierHead_word = ".*CONSTRUCT UPPER COLUMN*|.*CONSTRUCT PIER HEAD.*"
 precast_word = ".*PRE-CASTING OF SPAN*"
 
 ## 1. Bored Piles:----
@@ -715,7 +738,7 @@ y1$PierNumber = gsub("0ABUT","ABUT",y1$PierNumber)
 ## S = SB, N = NB, M = delete
 y1$PierNumber = gsub("S$", "SB", y1$PierNumber)
 y1$PierNumber = gsub("N$", "NB", y1$PierNumber)
-y1$PierNumber = gsub("M$", "NB", y1$PierNumber)
+y1$PierNumber = gsub("M$", "", y1$PierNumber)
 
 ## Add CP and Type
 y1$CP = "N-03"
@@ -751,7 +774,7 @@ y1$PierNumber = gsub("0ABUT","ABUT",y1$PierNumber)
 ## S = SB, N = NB, M = delete
 y1$PierNumber = gsub("S$", "SB", y1$PierNumber)
 y1$PierNumber = gsub("N$", "NB", y1$PierNumber)
-y1$PierNumber = gsub("M$", "NB", y1$PierNumber)
+y1$PierNumber = gsub("M$", "", y1$PierNumber)
 
 ## Add CP and Type
 y1$CP = "N-03"
@@ -769,7 +792,7 @@ id=which(str_detect(y1$PierNumber,pier_word))
 y1 = y1[id,]
 
 ## Keep only pier numbers
-y1$PierNumber = gsub("CONSTRUCT LOWER COLUMN.*","",y1$PierNumber)
+y1$PierNumber = gsub("CONSTRUCT LOWER COLUMN.*|BALANCED CANTILEVER.*","",y1$PierNumber)
 
 ### make sure that first letter starts with 'P' or 'MT'
 y1$PierNumber = str_trim(y1$PierNumber, side="both")
@@ -787,7 +810,13 @@ y1$PierNumber = gsub("0ABUT","ABUT",y1$PierNumber)
 ## S = SB, N = NB, M = delete
 y1$PierNumber = gsub("S$", "SB", y1$PierNumber)
 y1$PierNumber = gsub("N$", "NB", y1$PierNumber)
-y1$PierNumber = gsub("M$", "NB", y1$PierNumber)
+y1$PierNumber = gsub("M$", "", y1$PierNumber)
+
+y1[which(str_detect(y1$PierNumber,"^P-983")),]
+
+## N03-VIA-YN-1810 (P-983N in P6 but I think P-983S is correct one)
+id=which(str_detect(y1$ID,"N03-VIA-YN-1810"))
+y1$PierNumber[id] = "P-983SB"
 
 ## Add CP and Type
 y1$CP = "N-03"
@@ -806,7 +835,7 @@ id=which(str_detect(y1$PierNumber,pierHead_word))
 y1 = y1[id,]
 
 ## Keep only pier numbers
-y1$PierNumber = gsub("CONSTRUCT UPPER COLUMN.*","",y1$PierNumber)
+y1$PierNumber = gsub("CONSTRUCT UPPER COLUMN.*|BALANCED CANTILEVER.*","",y1$PierNumber)
 
 ### make sure that first letter starts with 'P' or 'MT'
 y1$PierNumber = str_trim(y1$PierNumber, side="both")
@@ -824,13 +853,31 @@ y1$PierNumber = gsub("0ABUT","ABUT",y1$PierNumber)
 ## S = SB, N = NB, M = delete
 y1$PierNumber = gsub("S$", "SB", y1$PierNumber)
 y1$PierNumber = gsub("N$", "NB", y1$PierNumber)
-y1$PierNumber = gsub("M$", "NB", y1$PierNumber)
+y1$PierNumber = gsub("M$", "", y1$PierNumber)
+
+
+# checking
+y1[which(str_detect(y1$PierNumber,"^P-1108")),]
+
+
+## The following piers have two pier heads in P6 but GIS has only one pier head
+# Choose one with later date
+id=which(str_detect(y1$PierNumber,"^P-976|^P-977|^P-989|^P-1101|^P-1102|^P-1103|^P-1108|^P-1120|^P-1121"))
+y1$PierNumber[id] = gsub("R$|L$","",y1$PierNumber[id])
+
+cPiers = unique(y1$PierNumber[id])
+for(i in seq(cPiers)){
+  id1 = which(y1$PierNumber==cPiers[i])
+  
+  # select later date (here identify earlider date and delete this)
+  id2 = id1[which.min(y1$finish[id1])]
+  y1 = y1[-id2,]
+}
 
 ## Add CP and Type
 y1$CP = "N-03"
 y1$Type = 4
 n03_pierHead = y1
-
 
 ## 5. Precast:----
 
@@ -900,8 +947,6 @@ y1 = y1[-id,] # delete temp1 and temp2 for binding with temp
 # Rbind temp to original
 y1 = rbind(y1,temp)
 
-
-##################
 ## P-661N, P-661S, P-662N, P-662S (Cantilever): Ignore these
 ## the following pierNumbers will be missed so manually create 
 ## Use 'temp2'
@@ -914,11 +959,11 @@ y1 = rbind(y1,temp)
 # 1130 => 1130 (temp2)
 # 1142 => 1142 (temp2)
 # 888, 889, 890 => 888 (temp2)
-# 968 => 966 (temp2)
+# 966, 967, 967A, 968 => 966 (temp2)
 # 974, 975, 976 => 974 (temp2)
 # 989, 990, 992 => 989 (temp2)
 
-
+y1[which(str_detect(y1$temp1,"P-977N")),]
 mPiers = c(1021,1048,1052,1091,1106,1120,1130,1142,888,966,974,989)
 
 temp = data.frame()
@@ -951,10 +996,11 @@ for(i in mPiers){
     d = y1[which(y1$temp2==i & is.na(y1$temp3)),]
     addPier = 1106:1107
     d1 = data.frame(ID=d$ID,PierNumber=paste("P-",addPier,sep=""),duration=0,start="",finish=d$finish)
+    temp = rbind(temp, d1)
     
   } else if(i == 1120){
     d = y1[which(y1$temp2==i & is.na(y1$temp3)),]
-    addPier = 1120
+    addPier = 1120:1121
     d1 = data.frame(ID=d$ID,PierNumber=paste("P-",addPier,sep=""),duration=0,start="",finish=d$finish)
     temp = rbind(temp, d1)
     
@@ -978,7 +1024,7 @@ for(i in mPiers){
     
   } else if(i == 966){
     d = y1[which(y1$temp2==i & is.na(y1$temp3)),]
-    addPier = 968
+    addPier = c(966:968, "967A")
     d1 = data.frame(ID=d$ID,PierNumber=paste("P-",addPier,sep=""),duration=0,start="",finish=d$finish)
     temp = rbind(temp, d1)
     
@@ -997,6 +1043,17 @@ for(i in mPiers){
 }
 y1=y1[,-which(str_detect(colnames(y1),"^temp"))]
 y1 = rbind(y1, temp)
+
+# Fix the following
+## 'N03-CNW-MF-5140' => P-977NB
+## 'N03-CNW-MF-5260' => P-977SB
+y1$ID = gsub("[[:space:]]","",y1$ID)
+id=which(y1$ID=="N03-CNW-MF-5140")
+y1$PierNumber[id] = "P-977NB"
+
+id=which(y1$ID=="N03-CNW-MF-5260")
+y1$PierNumber[id] = "P-977SB"
+
 
 ## Add CP and Type
 y1$CP = "N-03"
@@ -1034,7 +1091,7 @@ cp03_VIA = cp03_VIA[,-id]
 b = "C:/Users/eiji.LAPTOP-KSD9P6CP/Dropbox/01-Railway/02-NSCR-Ex/01-N2/03-During-Construction/02-Civil/03-Viaduct/01-Masterlist/02-Compiled"
 gis = read.xlsx(file.path(b,"Viaduct_MasterList.xlsx"))
 
-piles_word = ".*EXECUTION PILES PIER.*"
+piles_word = ".*EXECUTION PILES PIER.*|PILES PIER.*"
 pileCap_word = ".*EXECUTION PILE CAP.*"
 pier_word = ".*EXECUTION PIER COLUMN.*"
 pierHead_word = ".*EXECUTION PAD AND BEARING*"
@@ -1049,23 +1106,65 @@ y1 = y
 y1$PierNumber = toupper(y1$PierNumber)
 id=which(str_detect(y1$PierNumber,piles_word))
 y1 = y1[id,]
-
+y1[id,]
 ## Keep only pier numbers
-y1$PierNumber = gsub(".*EXECUTION PILES PIER","",y1$PierNumber)
+y1$PierNumber = gsub(".*EXECUTION PILES PIER|.*PILES PIER","",y1$PierNumber)
 
 ### make sure that first letter starts with 'P' or 'MT'
 y1$PierNumber = str_trim(y1$PierNumber, side="both")
 y1$PierNumber = gsub("[[:space:]]","",y1$PierNumber)
 y1$PierNumber = gsub("CENTER","",y1$PierNumber)
-
-id=which(str_detect(y1$PierNumber, "[()]"))
-y1$PierNumber[id] = gsub("\\([^)]*\\)","",y1$PierNumber[id])
+y1$PierNumber = gsub("]$","",y1$PierNumber)
 
 id = which(str_detect(y1$PierNumber, "^P|^MT|^DEP"))
 y1 = y1[id,]
 y1$PierNumber = gsub("@.*","",y1$PierNumber)
 y1$PierNumber = gsub("N$","NB",y1$PierNumber)
 y1$PierNumber = gsub("S$","SB",y1$PierNumber)
+
+## Reformat the follwoing PierNumber
+temp = data.frame()
+
+## 1. PLK01 - PLK24 (P6) => P2143-P2154
+id0=which(y1$PierNumber=="PLK01-PLK24")
+d = y1[id0,]
+d1 = data.frame(ID=d$ID,
+                PierNumber=paste("P-",c(2143:2150,2151,"2151A",2152,"2152A",2153,2154,1143:1191, "1191A"),sep=""),
+                duration=0, start=0, finish=d$finish)
+temp = rbind(temp, d1)
+
+## 2. P1192 - PLK25 (P6) => P-2192 - P-2206
+id1=which(y1$PierNumber=="P1192-LK25")
+d = y1[id1,]
+d1 = data.frame(ID=d$ID,PierNumber=paste("P-",c(2192:2204,"2205","2205A","2206","2206A"),sep=""),duration=0, start=0, finish=d$finish)
+temp = rbind(temp, d1)
+
+## 3. P1182 - P1191A (P6) => P1183-P1186, P1189,P1190
+id2=which(y1$PierNumber=="P1182-P1191A")
+d = y1[id2,]
+d1 = data.frame(ID=d$ID,PierNumber=paste("P-",c(1183:1186,1189,1190),sep=""),duration=0, start=0, finish=d$finish)
+temp = rbind(temp, d1)
+
+# rbind
+y1 = rbind(y1,temp)
+
+# Remove ids & PLK
+y1 = y1[-c(id0,id1,id2),]
+
+id=which(str_detect(y1$PierNumber,"PLK"))
+y1 = y1[-id,]
+
+# Remove
+id=which(str_detect(y1$PierNumber, "ABUTNB$|ABUTSB$"))
+y1 = y1[-id,]
+
+id=str_extract_all(y1$PierNumber,"P")
+temp=data.frame()
+for(i in seq(length(id))){
+  temp = rbind(temp,count = length(id[[i]]))    
+}
+id=which(temp[[1]]==2)
+y1 = y1[-id,]
 
 ## Add CP and Type
 y1$CP = "N-04"
@@ -1089,20 +1188,58 @@ y1$PierNumber = gsub(".*EXECUTION PILE CAP","",y1$PierNumber)
 y1$PierNumber = str_trim(y1$PierNumber, side="both")
 y1$PierNumber = gsub("[[:space:]]","",y1$PierNumber)
 y1$PierNumber = gsub("CENTER","",y1$PierNumber)
-
-id=which(str_detect(y1$PierNumber,".*]$"))
-if (length(id) > 0) {
-  y1 = y1[-id,]
-}
-
-id=which(str_detect(y1$PierNumber, "[()]"))
-y1$PierNumber[id] = gsub("\\([^)]*\\)","",y1$PierNumber[id])
+y1$PierNumber = gsub("]$","",y1$PierNumber)
 
 id = which(str_detect(y1$PierNumber, "^P|^MT|^DEP"))
 y1 = y1[id,]
 y1$PierNumber = gsub("@.*","",y1$PierNumber)
 y1$PierNumber = gsub("N$","NB",y1$PierNumber)
 y1$PierNumber = gsub("S$","SB",y1$PierNumber)
+
+## Reformat the follwoing PierNumber
+temp = data.frame()
+
+## 1. PLK01 - PLK24 (P6) => P2143-P2154
+id0=which(y1$PierNumber=="PLK01-PLK24")
+d = y1[id0,]
+d1 = data.frame(ID=d$ID,
+                PierNumber=paste("P-",c(2143:2150,2151,"2151A",2152,"2152A",2153,2154,1143:1191, "1191A"),sep=""),
+                duration=0, start=0, finish=d$finish)
+temp = rbind(temp, d1)
+
+## 2. P1192 - PLK25 (P6) => P-2192 - P-2206
+id1=which(y1$PierNumber=="P1192-LK25")
+d = y1[id1,]
+d1 = data.frame(ID=d$ID,PierNumber=paste("P-",c(2192:2204,"2205","2205A","2206","2206A"),sep=""),duration=0, start=0, finish=d$finish)
+temp = rbind(temp, d1)
+
+## 3. P1182 - P1191A (P6) => P1183-P1186, P1189,P1190
+id2=which(y1$PierNumber=="P1182-P1191A")
+d = y1[id2,]
+d1 = data.frame(ID=d$ID,PierNumber=paste("P-",c(1183:1186,1189,1190),sep=""),duration=0, start=0, finish=d$finish)
+temp = rbind(temp, d1)
+
+# rbind
+y1 = rbind(y1,temp)
+
+# Remove ids & PLK
+y1 = y1[-c(id0,id1,id2),]
+
+id=which(str_detect(y1$PierNumber,"PLK"))
+y1 = y1[-id,]
+
+# Remove
+id=which(str_detect(y1$PierNumber, "ABUTNB$|ABUTSB$"))
+y1 = y1[-id,]
+
+id=str_extract_all(y1$PierNumber,"P")
+temp=data.frame()
+for(i in seq(length(id))){
+  temp = rbind(temp,count = length(id[[i]]))    
+}
+id=which(temp[[1]]==2)
+y1 = y1[-id,]
+
 
 ## Add CP and Type
 y1$CP = "N-04"
@@ -1127,21 +1264,57 @@ y1$PierNumber = gsub(".*EXECUTION PIER COLUMN","",y1$PierNumber)
 y1$PierNumber = str_trim(y1$PierNumber, side="both")
 y1$PierNumber = gsub("[[:space:]]","",y1$PierNumber)
 y1$PierNumber = gsub("CENTER","",y1$PierNumber)
-
-id=which(str_detect(y1$PierNumber,".*]$"))
-if (length(id) > 0) {
-  y1 = y1[-id,]
-}
-
-
-id=which(str_detect(y1$PierNumber, "[()]"))
-y1$PierNumber[id] = gsub("\\([^)]*\\)","",y1$PierNumber[id])
+y1$PierNumber = gsub("]$","",y1$PierNumber)
 
 id = which(str_detect(y1$PierNumber, "^P|^MT|^DEP"))
 y1 = y1[id,]
 y1$PierNumber = gsub("@.*","",y1$PierNumber)
 y1$PierNumber = gsub("N$","NB",y1$PierNumber)
 y1$PierNumber = gsub("S$","SB",y1$PierNumber)
+
+## Reformat the follwoing PierNumber
+temp = data.frame()
+
+## 1. PLK01 - PLK24 (P6) => P2143-P2154
+id0=which(y1$PierNumber=="PLK01-PLK24")
+d = y1[id0,]
+d1 = data.frame(ID=d$ID,
+                PierNumber=paste("P-",c(2143:2150,2151,"2151A",2152,"2152A",2153,2154,1143:1191, "1191A"),sep=""),
+                duration=0, start=0, finish=d$finish)
+temp = rbind(temp, d1)
+
+## 2. P1192 - PLK25 (P6) => P-2192 - P-2206
+id1=which(y1$PierNumber=="P1192-LK25")
+d = y1[id1,]
+d1 = data.frame(ID=d$ID,PierNumber=paste("P-",c(2192:2204,"2205","2205A","2206","2206A"),sep=""),duration=0, start=0, finish=d$finish)
+temp = rbind(temp, d1)
+
+## 3. P1182 - P1191A (P6) => P1183-P1186, P1189,P1190
+id2=which(y1$PierNumber=="P1182-P1191A")
+d = y1[id2,]
+d1 = data.frame(ID=d$ID,PierNumber=paste("P-",c(1183:1186,1189,1190),sep=""),duration=0, start=0, finish=d$finish)
+temp = rbind(temp, d1)
+
+# rbind
+y1 = rbind(y1,temp)
+
+# Remove ids & PLK
+y1 = y1[-c(id0,id1,id2),]
+
+id=which(str_detect(y1$PierNumber,"PLK"))
+y1 = y1[-id,]
+
+# Remove
+id=which(str_detect(y1$PierNumber, "ABUTNB$|ABUTSB$"))
+y1 = y1[-id,]
+
+id=str_extract_all(y1$PierNumber,"P")
+temp=data.frame()
+for(i in seq(length(id))){
+  temp = rbind(temp,count = length(id[[i]]))    
+}
+id=which(temp[[1]]==2)
+y1 = y1[-id,]
 
 ## Add CP and Type
 y1$CP = "N-04"
@@ -1165,21 +1338,58 @@ y1$PierNumber = gsub("EXECUTION PAD AND BEARING","",y1$PierNumber)
 y1$PierNumber = str_trim(y1$PierNumber, side="both")
 y1$PierNumber = gsub("[[:space:]]","",y1$PierNumber)
 y1$PierNumber = gsub("CENTER","",y1$PierNumber)
-
-id=which(str_detect(y1$PierNumber,".*]$"))
-if (length(id) > 0) {
-  y1 = y1[-id,]
-}
-
-id=which(str_detect(y1$PierNumber, "[()]"))
-y1$PierNumber[id] = gsub("\\([^)]*\\)","",y1$PierNumber[id])
+y1$PierNumber = gsub("]$","",y1$PierNumber)
+y1$PierNumber = gsub("[[]","",y1$PierNumber)
 
 id = which(str_detect(y1$PierNumber, "^P|^MT|^DEP"))
 y1 = y1[id,]
-
 y1$PierNumber = gsub("@.*","",y1$PierNumber)
 y1$PierNumber = gsub("N$","NB",y1$PierNumber)
 y1$PierNumber = gsub("S$","SB",y1$PierNumber)
+
+## Reformat the follwoing PierNumber
+temp = data.frame()
+
+## 1. PLK01 - PLK24 (P6) => P2143-P2154
+id0=which(y1$PierNumber=="PLK01-PLK24")
+d = y1[id0,]
+d1 = data.frame(ID=d$ID,
+                PierNumber=paste("P-",c(2143:2150,2151,"2151A",2152,"2152A",2153,2154,1143:1191, "1191A"),sep=""),
+                duration=0, start=0, finish=d$finish)
+temp = rbind(temp, d1)
+
+## 2. P1192 - PLK25 (P6) => P-2192 - P-2206
+id1=which(y1$PierNumber=="P1192-LK25")
+d = y1[id1,]
+d1 = data.frame(ID=d$ID,PierNumber=paste("P-",c(2192:2204,"2205","2205A","2206","2206A"),sep=""),duration=0, start=0, finish=d$finish)
+temp = rbind(temp, d1)
+
+## 3. P1182 - P1191A (P6) => P1183-P1186, P1189,P1190
+id2=which(y1$PierNumber=="P1182-P1191A")
+d = y1[id2,]
+d1 = data.frame(ID=d$ID,PierNumber=paste("P-",c(1183:1186,1189,1190),sep=""),duration=0, start=0, finish=d$finish)
+temp = rbind(temp, d1)
+
+# rbind
+y1 = rbind(y1,temp)
+
+# Remove ids & PLK
+y1 = y1[-c(id0,id1,id2),]
+
+id=which(str_detect(y1$PierNumber,"PLK"))
+y1 = y1[-id,]
+
+# Remove
+id=which(str_detect(y1$PierNumber, "ABUTNB$|ABUTSB$"))
+y1 = y1[-id,]
+
+id=str_extract_all(y1$PierNumber,"P")
+temp=data.frame()
+for(i in seq(length(id))){
+  temp = rbind(temp,count = length(id[[i]]))    
+}
+id=which(temp[[1]]==2)
+y1 = y1[-id,]
 
 ## Add CP and Type
 y1$CP = "N-04"
@@ -1213,113 +1423,49 @@ y1$PierNumber = gsub("N$","-NB",y1$PierNumber)
 y1$PierNumber = gsub("S$","-SB",y1$PierNumber)
 y1$ID = gsub("[[:space:]]","",y1$ID)
 
-###### Re-format precast PierNumber to our format
-x = gis[which(gis$CP=="N-04" & gis$Type==5),]
-x$finish = as.numeric(NA)
+### As P6 uses old notation for Pier numbers
+### After investingating P6 DB, I decided to group the following pier numbers in P6 for their current  respective piers
+### 1. PLK01 - PLK24 (P6) => P-2143-P-2154, P-1143-P-1191A
+### 2. P-1192A - PLK25 (P6) => P-2192 - P-2206
+### 3. P-1192 - P-1206 (P6) => P-1192 - P-1205
+### 4. P-1192N - DEP01-ABUT (P6) => P-1192NB - DEP01-ABUT
+### 5. P-1192S - DEP01-ABUT (P6) => P-1192NB - DEP02-ABUT
+temp = data.frame()
 
-# P-1192NB - DEP01-ABUT => P-1192NB - P-1205NB for GIS
-PierNumber = paste("P-",1192:1205,"NB",sep="")
+### 1. PLK01 - PLK24 (P6) => P-2143-P2150, P-2151, P-2151A, P-2152, P-2152A, P-2153 P-2154, P-1143-P-1191,P-1191A
+id=which(y1$PierNumber=="PLK01-PLK24")
+d = y1[id,]
+d1 = data.frame(ID=d$ID,
+                PierNumber=paste("P-",c(2143:2150,2151,"2151A",2152,"2152A",2153,2154,1143:1191, "1191A"),sep=""),
+                duration=0, start=0, finish=d$finish)
+temp = rbind(temp, d1)
 
-## Find ID
-id = which(str_detect(y1$PierNumber,"ABUT-NB$"))
-ID = y1$ID[id]
-finish = y1$finish[id]
+## 2. P-1192A - PLK25 (P6) => P-2192 - P-2204, P-2205, P-2205A, P-2206, P-2206A
+id=which(y1$PierNumber=="P1192A-PLK25")
+d = y1[id,]
+d1 = data.frame(ID=d$ID,PierNumber=paste("P-",c(2192:2204,"2205","2205A","2206","2206A"),sep=""),duration=0, start=0, finish=d$finish)
+temp = rbind(temp, d1)
 
-## Join ID to corresponding PierNumber in x
-id = which(str_detect(x$PierNumber,paste0(PierNumber,collapse="|")))
-x$ID[id] = ID
-x$finish[id] = finish
+## 3. P-1192 - P-1206 (P6) => P-1192 - P-1205
+id=which(y1$PierNumber=="P1192-P1206")
+d = y1[id,]
+d1 = data.frame(ID=d$ID,PierNumber=paste("P-",c(1192:1205),sep=""),duration=0, start=0, finish=d$finish)
+temp = rbind(temp, d1)
 
+## 4. P-1192N - DEP01-ABUT (P6) => P-1192NB - DEP01-ABUT
+id=which(y1$PierNumber=="P1192N-DEP01-ABUT-NB")
+d = y1[id,]
+d1 = data.frame(ID=d$ID,PierNumber=paste("P-",c(1192:1205),"NB",sep=""),duration=0, start=0, finish=d$finish)
+d2 = data.frame(ID=d$ID,PierNumber="DEP01-ABUT",duration=0, start=0, finish=d$finish)
+temp = rbind(temp, d1, d2)
 
-# P-1192SB - DEP01-ABUT => P-1192SB - P-1205SB for GIS
-PierNumber = paste("P-",1192:1205,"SB",sep="")
-
-## Find ID
-id = which(str_detect(y1$PierNumber,"ABUT-SB$"))
-finish = y1$finish[id]
-
-## Join ID to corresponding PierNumber in x
-id = which(str_detect(x$PierNumber,paste0(PierNumber,collapse="|")))
-x$ID[id] = ID
-x$finish[id] = finish
-
-# P-1192 - P-1206 => P-1192 - P-1205 for GIS
-PierNumber = paste("^","P-",1192:1205,"$",sep="") # get exact word without NB/SB
-
-## Find ID
-id = which(str_detect(y1$PierNumber,".*-P1206$"))
-finish = y1$finish[id]
-
-## Join ID to corresponding PierNumber in x
-id = which(str_detect(x$PierNumber,paste0(PierNumber,collapse="|")))
-x$ID[id] = ID
-x$finish[id] = finish
-
-
-# P1192A - PLK25 => P-1182 - P2206 for GIS
-## We need to split the pier numbers
-### P-1181 - P-1191
-PierNumber = paste("^","P-",1181:1191,"$",sep="")
-
-## P-1191A
-PierNumber = c(PierNumber, "^P-1191A$")
-
-## P-2192 - P-2206
-PierNumber = c(PierNumber, paste("^","P-",2192:2206,"$",sep="")) # get exact word without NB/SB
-
-## Find ID
-id = which(str_detect(y1$PierNumber,".*PLK25$"))
-ID = y1$ID[id]
-finish = y1$finish[id]
-
-## Join ID to corresponding PierNumber in x
-id = which(str_detect(x$PierNumber,paste0(PierNumber,collapse="|")))
-x$ID[id] = ID
-x$finish[id] = finish
-
-
-# P1182-P1172 => P-1170 P-1181 for GIS
-PierNumber = paste("^","P-",1170:1181,"$",sep="") # get exact word without NB/SB
-
-## Find ID
-id = which(str_detect(y1$PierNumber,".*-P1172$"))
-finish = y1$finish[id]
-
-## Join ID to corresponding PierNumber in x
-id = which(str_detect(x$PierNumber,paste0(PierNumber,collapse="|")))
-x$ID[id] = ID
-x$finish[id] = finish
-
-
-# P-1169 - P-1143 => P-1143 - P-1169 for GIS
-PierNumber = paste("^","P-",1143:1169,"$",sep="") # get exact word without NB/SB
-
-## Find ID
-id = which(str_detect(y1$PierNumber,".*-P1143$"))
-finish = y1$finish[id]
-
-## Join ID to corresponding PierNumber in x
-id = which(str_detect(x$PierNumber,paste0(PierNumber,collapse="|")))
-x$ID[id] = ID
-x$finish[id] = finish
-
-
-# PLK01-PLK24 (old) => P2143 - P2154
-PierNumber = paste("^","P-",2143:2154,"$",sep="") # get exact word without NB/SB
-
-## Find ID
-id = which(str_detect(y1$PierNumber,".*-PLK24$"))
-finish = y1$finish[id]
-
-## Join ID to corresponding PierNumber in x
-id = which(str_detect(x$PierNumber,paste0(PierNumber,collapse="|")))
-x$ID[id] = ID
-x$finish[id] = finish
-
-
-# For compilation purpose with other CPs, re-create data.frame
-d = x[which((!is.na(x$ID))),]
-y1 = data.frame(ID=d$ID,PierNumber=d$PierNumber,duration="",start=as.numeric(NA),finish=d$finish)
+## 4. P-1192S - DEP02-ABUT (P6) => P-1192SB - DEP02-ABUT
+id=which(y1$PierNumber=="P1192S-DEP02-ABUT-SB")
+d = y1[id,]
+d1 = data.frame(ID=d$ID,PierNumber=paste("P-",c(1192:1205),"SB",sep=""),duration=0, start=0, finish=d$finish)
+d2 = data.frame(ID=d$ID,PierNumber="DEP02-ABUT",duration=0, start=0, finish=d$finish)
+temp = rbind(temp, d1, d2)
+y1 = temp
 
 ## Add CP and Type
 y1$CP = "N-04"
@@ -1362,23 +1508,30 @@ x = rbind(cp01_VIA,cp02_VIA,cp03_VIA,cp04_VIA)
 ## Final correction, 'P211' => 'P-211'
 id = which(str_detect(x$PierNumber,"^P\\d+"))
 x$PierNumber[id] = gsub("P","P-",x$PierNumber[id])
-
 write.xlsx(x,file.path(b,"N2_Viaduct_P6DB.xlsx"))
 
 # Add to viaduct masterlist
 ml = read.xlsx(file.path(b, "Viaduct_MasterList.xlsx"))
-head(x)
-head(ml)
+id=which(colnames(ml)=="ID")
+if(length(id)>0){
+  ml = ml[,-id]
+}
 
+ml$temp = 1:nrow(ml)
 xx = left_join(ml,x,by=c("CP","Type","PierNumber"))
+
+## CHeck duplicated results = two or more PierNumber share different finish dates
+dup = xx$temp[duplicated(xx$temp)]
+xx[which(str_detect(xx$temp,paste0("^",dup,"$",collapse="|"))),]
+
+write.xlsx(xx,file.path(b,"Joined_MasterList_P6.xlsx"))
 
 ## Identify mismatched pierNumber (i.e., not exist in x)
 id=which(is.na(xx$finish))
 xx1 = xx[id,]
 
-checkPier = "P-992";xx[which(xx$PierNumber==checkPier),]
-
-xx1[which(xx1$CP=="N-03"),]
+xx1[which(xx1$CP=="N-04"),]
+xx1[which(xx1$CP=="N-04" & xx1$Type==4),]
 unique(xx1$PierNumber)
 
 ## 

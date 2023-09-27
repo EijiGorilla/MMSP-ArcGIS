@@ -73,7 +73,7 @@
 # DEFINE PARAMETERS
 #******************************************************************#
 ## Enter Date of Update ##
-date_update = "2023-04-24"
+date_update = "2023-09-20"
 
 
 strucType = c("Substructure", "Superstructure")
@@ -116,6 +116,7 @@ library(googledrive)
 library(stringr)
 library(reshape2)
 library(fs)
+library(lubridate)
 
 #google_app <- httr::oauth_app(
 #  "Desktop client 1",
@@ -318,52 +319,71 @@ write.xlsx(yx, MLTable)
 #url = "https://docs.google.com/spreadsheets/d/1du9qnThdve1yXBv-W_lLzSa3RMd6wX6_NlNCz8PqFdg/edit?userstoinvite=junsanjose@gmail.com&actionButton=1#gid=0"
 url = "https://docs.google.com/spreadsheets/d/1du9qnThdve1yXBv-W_lLzSa3RMd6wX6_NlNCz8PqFdg/edit?usp=sharing"
 
-n02_pile = 2
+n02_pile = 3
 CP = "N-02"
 
 # Read and write as CSV and xlsx
 v = range_read(url, sheet = n02_pile)
 v = data.frame(v)
 
-
 # Restruecture table
 ## Remove empty rows and unneeded rows
-x = v[,c(2,ncol(v))]
-colnames(x)[1:2] = c("ID", "Status")
-x$Status = as.character(x$Status)
+id=which(str_detect(colnames(v),"^Date.*Casted$"))
+
+x = v[,c(2,id)]
+
+coln = colnames(x)
+for(i in seq(coln)) {
+  type = class(x[[i]])
+  
+  # if type is 'list', unlist
+  if(type == "list") {
+    ## Convert NULL to NA
+    x[[i]] = rrapply(x[[i]], f = function(x) replace(x, is.null(x), NA))
+    
+    ## then unlist
+    x[[i]] = unlist(x[[i]], use.names = FALSE)
+  }
+}
+
+colnames(x)[1:2] = c("ID", "TargetDate")
 
 ## Find pier numbers starting with only "P" and "MT"
-keep_row = which(str_detect(x$ID, "^SF-|^SFP-"))
-str(keep_row)
+keep_row = which(str_detect(x$ID, "^SF|^SFP"))
 x = x[keep_row,]
+
+# TargetDate = end_date (casted date)
+x$TargetDate = as.numeric(x$TargetDate)
+id=which(!is.na(x$TargetDate))
+if(length(id)>0){
+  x = x[id,]
+}
+
+#Status
+x$Status = 4
+
+# ID
+x$ID = toupper(x$ID)
+x$ID = gsub("P-","P",x$ID)
+x$ID = gsub("SF","SF-",x$ID)
+x$ID = gsub("[[:space:]]","",x$ID)
 
 ## note that if 'SFP-' is found, this is error. We need to convert 'SFP-' to 'SF-Pxx'
 id = which(str_detect(x$ID,"^SFP-"))
-x$ID[id] = gsub("SFP-","SF-P",x$ID[id])
-
-
-# Recode Status1
-st = unique(x$Status1)
-
-completed_row = which(str_detect(x$Status,"Completed|completed|Complete|complete"))
-inprogress_row = which(str_detect(x$Status,"In-progress|in-progress|In-Progress|Inprogress"))
-
-x$Status[completed_row] = 4
-x$Status[inprogress_row] = 2
-
-x$Status = as.numeric(x$Status)
-x$CP = CP
-
-x$ID = as.character(x$ID)
+if(length(id)>0){
+  x$ID[id] = gsub("SFP-","SF-P",x$ID[id])
+}
 
 # Check duplicated pier numbers
-id = which(duplicated(x$nPierNumber))
+id = which(duplicated(x$ID))
 
 if(length(id)>0){
   x = x[-id,]
 } else {
   print("no duplicated observations")
 }
+
+x$CP = "N-01"
 
 
 # Join 
@@ -383,18 +403,19 @@ yx.pile = yx$ID[which(yx$CP.x=="N-02" & yx$SubType==1)]
 
 x.pile[!x.pile %in% yx.pile]
 
-
 # NA for status = 1 (To be Constructed)
 gg = which(yx$Status.y>0)
-yx[gg,]
 
 yx$Status.x[gg] = yx$Status.y[gg]
-delField = which(colnames(yx)=="Status.y" | colnames(yx)=="CP.y")
+yx$TargetDate.x[gg] = yx$TargetDate.y[gg]
+
+delField = which(colnames(yx)=="Status.y" | colnames(yx)=="CP.y" | colnames(yx)=="TargetDate.y")
 yx = yx[,-delField]
 
 # Change Status name
 colnames(yx)[str_detect(colnames(yx),pattern="Status")] = "Status"
 colnames(yx)[str_detect(colnames(yx),pattern="CP")] = "CP"
+colnames(yx)[str_detect(colnames(yx),pattern="TargetDate")] = "TargetDate"
 
 
 # Add date of updating table
@@ -402,19 +423,16 @@ colnames(yx)[str_detect(colnames(yx),pattern="CP")] = "CP"
 iid = which(colnames(yx) %in% colnames(yx)[str_detect(colnames(yx),"updated|Updated|UPDATED")])
 yx = yx[,-iid]
 
-## Add new dates
-library(lubridate)
+unique(yx$TargetDate)
+str(yx)
+yx$TargetDate = as.POSIXlt(yx$TargetDate, origin="1970-01-01",tZ="UTC")
+yx$TargetDate = as.Date(yx$TargetDate, origin = "1899-12-30")
+yx$TargetDate = as.Date(yx$TargetDate, format="%m/%d/%y %H:%M:%S")
 
 yx$updated = ymd(date_update)
 
-yx$updated = as.Date(yx$updated, origin = "1899-12-30")
-yx$updated = as.Date(yx$updated, format="%m/%d/%y %H:%M:%S")
-
-yx$StartDate = as.Date(yx$StartDate, origin = "1899-12-30")
-yx$StartDate = as.Date(yx$StartDate, format="%m/%d/%y %H:%M:%S")
-
-yx$TargetDate = as.Date(yx$TargetDate, origin = "1899-12-30")
-yx$TargetDate = as.Date(yx$TargetDate, format="%m/%d/%y %H:%M:%S")
+# Make sure to have no empty Status
+yx[is.na(yx$Status),]
 
 # 
 write.xlsx(yx, MLTable)
@@ -422,16 +440,6 @@ write.xlsx(yx, MLTable)
 ###############################################################
 #######################:---- N-03 #################################:----
 ##############################################################
-## TEMP run
-### When google sheet is not available but excel version is availablef from N2 civil
-a = file.choose()
-x = read.xlsx(a, sheet = 5)
-
-x = x[,c(2,24)]
-
-id = which(str_detect(x[[1]],"Location$"))
-x = x[-c(1:12),]
-
 ### N-03: BORED PILES #:----
 #url = "https://docs.google.com/spreadsheets/d/19TBfdEpRuW7edwhiP7YdVSJQgrkot9wN7tDwzSTF76E/edit#gid=0"
 
@@ -521,10 +529,9 @@ iid = which(colnames(yx) %in% colnames(yx)[str_detect(colnames(yx),"updated|Upda
 yx = yx[,-iid]
 
 ## Add new dates
-library(lubridate)
-
 yx$updated = ymd(date_update)
 
+str(yx)
 yx$updated = as.Date(yx$updated, origin = "1899-12-30")
 yx$updated = as.Date(yx$updated, format="%m/%d/%y %H:%M:%S")
 

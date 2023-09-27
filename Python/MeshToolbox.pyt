@@ -31,7 +31,7 @@ class MeshTool(object):
             name='mesh',
             displayName='mesh',
             direction='Output',
-            datatype='Feature Layer',
+            datatype='GPFeatureLayer',
             parameterType='Derived')
         output_fl.symbology = os.path.join(os.path.dirname(__file__), "Mesh.lyr")
 
@@ -39,14 +39,14 @@ class MeshTool(object):
             name="input_fc",
             displayName="Input Feature Class",
             direction="Input",
-            datatype="Table View",
+            datatype="GPTableView",
             parameterType="Required")
 
         num_cells = arcpy.Parameter(
             name="num_cells",
             displayName="Num Cells",
             direction="Input",
-            datatype="Long",
+            datatype="GPLong",
             parameterType="Required")
         num_cells.value = 10
 
@@ -54,7 +54,7 @@ class MeshTool(object):
             name="min_count",
             displayName="Min Count Per Cell",
             direction="Input",
-            datatype="Long",
+            datatype="GPLong",
             parameterType="Required")
         min_count.value = 1
 
@@ -62,7 +62,7 @@ class MeshTool(object):
             name="interval",
             displayName="Time Interval",
             direction="Input",
-            datatype="String",
+            datatype="GPString", # default: "String"
             parameterType="Required")
         interval.value = "30m"
 
@@ -70,7 +70,7 @@ class MeshTool(object):
             name="path",
             displayName="JS Output File",
             direction="Input",
-            datatype="String",
+            datatype="GPString", # default: "String"
             parameterType="Required")
         path.value = os.path.join(os.path.dirname(__file__), "heat.js")
 
@@ -78,7 +78,7 @@ class MeshTool(object):
             name="date_field",
             displayName="Date Field",
             direction="Input",
-            datatype="String",
+            datatype="GPString", # default: "String"
             parameterType="Required")
         date_field.filter.type = "ValueList"
         date_field.filter.list = []
@@ -87,7 +87,7 @@ class MeshTool(object):
             name="case_field",
             displayName="Case Field",
             direction="Input",
-            datatype="String",
+            datatype="GPString", # Default: "String"
             parameterType="Required")
         case_field.filter.type = "ValueList"
         case_field.filter.list = []
@@ -247,9 +247,9 @@ class MeshTool(object):
                     row, col = rc_tup
                     p = case_value  # plot the max value
                     
-                    # points.append({"r": row, "c": col, "p": p, "w": 1.0}) 
+                    points.append({"r": row, "c": col, "p": p, "w": 1.0}) 
                     # When you want to move mesh downward, you need to use negative weight values
-                    points.append({"r": row, "c": col, "p": p, "w": -1.0})
+                    #points.append({"r": row, "c": col, "p": p, "w": -1.0})
                     p_n += 1
                     delta = p - p_mu
                     p_mu += delta / p_n
@@ -269,14 +269,14 @@ class MeshTool(object):
             for point in elem["points"]:
                 p = point["p"]
                 if p < p_min:
-                    # w = 0.2
-                    w = -0.2
+                    w = 0.2
+                    # w = -0.2
                 elif p > p_max:
-                    # w = 1.0
-                    w = -1.0
+                    w = 1.0
+                    # w = -1.0
                 else:
-                    # w = 0.2 + 0.8 * (p - p_min) / p_del
-                    w = (0.2 + 0.8 * (p - p_min) / p_del) * -1
+                    w = 0.2 + 0.8 * (p - p_min) / p_del
+                    # w = (0.2 + 0.8 * (p - p_min) / p_del) * -1
                 point["w"] = w
         return {"data": data, "min": p_min, "max": p_max, "mean": p_mu, "stddev": sd}
 

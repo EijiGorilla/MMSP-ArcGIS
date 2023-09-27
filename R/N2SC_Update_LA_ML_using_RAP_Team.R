@@ -10,25 +10,26 @@ tool_exec=function(in_params,out_params){
 # 3. Read and import source masterl list from RAP Team's OneDrive in this R interface.
 # 4. Check and edit the source excel master list tables if necessary
 # 5. Update GIS excel master list tables using the downloaded source excel master list tables
+  
+### VERY IMPORTANT ##################
+# StatusLA field name is the core information, meaning that when you check HandedOver
+# We need to use StatusLA as core information, not HandedOver.
+# For example, if StautsLA is 0, HandedOver = 1. (not the other way around, HandedOver = 1, StatusLA = 0. This is WRONG assumption)
 
 library(openxlsx)
 library(dplyr)
 library(stringr)
 library(fs)
 library(lubridate)
+library(qpcR)
 
-#
-  
-#rapFolder = in_params[[1]] # Directory where you saved master list excel tables from the RAP Team 
-#previous_date = in_params[[2]] # just string. 2022-01-26
-#result = out_params[[1]]
-previous_date = "2022-12-01"
-new_date = "2023-01-05"
+
+previous_date = "2023-08-17"
+new_date = "2023-09-25"
 
 
 # 1. Make sure that all the excel files are downloaded from the RAP Team's OneDrive in the following working directory;----
 path = path_home()
-
 
 # Parameter setting
 wd_rap = file.path(path,"Dropbox/01-Railway/02-NSCR-Ex/99-MasterList_RAP_Team")
@@ -49,7 +50,6 @@ n2_isf = file.path(wd_gis_n2,gis_n2_files[which(str_detect(gis_n2_files,"ISF.*xl
 n2_pier = file.path(wd_gis_n2,gis_n2_files[which(str_detect(gis_n2_files,"Pier.*_Land.xlsx$"))])
 
 print("Good up to this point")
-
 n2_lot_gis = read.xlsx(n2_lot)
 n2_struc_gis = read.xlsx(n2_struc)
 n2_isf_gis = read.xlsx(n2_isf)
@@ -83,22 +83,63 @@ n2_struc_rap = read.xlsx(n2_struc1)
 n2_isf_rap = read.xlsx(n2_isf1)
 n2_pier_rap = read.xlsx(n2_pier1)
 
-# HandOver = 1 to StatusLA
-n2_lot_rap$HandOver = as.numeric(n2_lot_rap$HandOver)
-id = which(n2_lot_rap$HandOver == 1)
-n2_lot_rap$StatusLA[id] = 0
+## Convert types to correct ones
+str(n2_lot_rap)
+n2_lot_rap$TotalArea = as.numeric(n2_lot_rap$TotalArea)
+n2_lot_rap$AffectedArea = as.numeric(n2_lot_rap$AffectedArea)
+n2_lot_rap$RemainingArea = as.numeric(n2_lot_rap$RemainingArea)
+n2_lot_rap$HandedOverArea = as.numeric(n2_lot_rap$HandedOverArea)
+n2_lot_rap$HandedOver = as.numeric(n2_lot_rap$HandedOver)
 
+n2_lot_rap$Priority = as.numeric(n2_lot_rap$Priority)
+n2_lot_rap$StatusLA = as.numeric(n2_lot_rap$StatusLA)
+n2_lot_rap$MoA = as.numeric(n2_lot_rap$MoA)
+n2_lot_rap$PTE = as.numeric(n2_lot_rap$PTE)
+
+n2_lot_rap$HandOverDate = as.numeric(n2_lot_rap$HandOverDate)
+n2_lot_rap$HandOverDate = as.Date(n2_lot_rap$HandOverDate, origin = "1899-12-30")
+n2_lot_rap$HandOverDate = as.Date(n2_lot_rap$HandOverDate, format="%m/%d/%y %H:%M:%S")
+
+n2_lot_rap$HandedOverDate = as.numeric(n2_lot_rap$HandedOverDate)
+n2_lot_rap$HandedOverDate = as.Date(n2_lot_rap$HandedOverDate, origin = "1899-12-30")
+n2_lot_rap$HandedOverDate = as.Date(n2_lot_rap$HandedOverDate, format="%m/%d/%y %H:%M:%S")
+
+n2_lot_rap$Endorsed = as.numeric(n2_lot_rap$Endorsed)
 
 ## 3.2. SC:----
 ### 3.2.1. SC:----
 sc_lot1 = file.path(wd_rap,rap_files[which(str_detect(rap_files,"^SC_.*Parcellary.*.xlsx"))])
-sc_struc1 = file.path(wd_rap,rap_files[which(str_detect(rap_files,"^SC_.*Structure.*.xlsx"))])
-# sc_isf1 = file.path(wd_rap, "SC_Structure_Relocation_compiled.xlsx")
+sc_struc1 = file.path(wd_rap,rap_files[which(str_detect(rap_files,"^SC_Structure.*masterlist.*xlsx"))])
+sc_isf1 = file.path(wd_rap,rap_files[which(str_detect(rap_files,"^SC.*Relocation.*.xlsx"))])
 sc_pier1 = file.path(wd_rap,rap_files[which(str_detect(rap_files,"^SC.*Pier.*.xlsx"))])
 
 sc_lot_rap = read.xlsx(sc_lot1)
 sc_struc_rap = read.xlsx(sc_struc1)
+sc_isf_rap = read.xlsx(sc_isf1)
 sc_pier_rap = read.xlsx(sc_pier1)
+
+## Convert types to correct ones
+str(sc_lot_rap)
+sc_lot_rap$TotalArea = as.numeric(sc_lot_rap$TotalArea)
+sc_lot_rap$AffectedArea = as.numeric(sc_lot_rap$AffectedArea)
+sc_lot_rap$RemainingArea = as.numeric(sc_lot_rap$RemainingArea)
+sc_lot_rap$HandedOverArea = as.numeric(sc_lot_rap$HandedOverArea)
+sc_lot_rap$HandedOver = as.numeric(sc_lot_rap$HandedOver)
+
+sc_lot_rap$Priority = as.numeric(sc_lot_rap$Priority)
+sc_lot_rap$Priority = as.numeric(sc_lot_rap$Priority1)
+sc_lot_rap$StatusLA = as.numeric(sc_lot_rap$StatusLA)
+sc_lot_rap$MoA = as.numeric(sc_lot_rap$MoA)
+sc_lot_rap$PTE = as.numeric(sc_lot_rap$PTE)
+sc_lot_rap$PTE = as.numeric(sc_lot_rap$Reqs)
+
+sc_lot_rap$HandOverDate = as.numeric(sc_lot_rap$HandOverDate)
+sc_lot_rap$HandOverDate = as.Date(sc_lot_rap$HandOverDate, origin = "1899-12-30")
+sc_lot_rap$HandOverDate = as.Date(sc_lot_rap$HandOverDate, format="%m/%d/%y %H:%M:%S")
+
+sc_lot_rap$HandedOverDate = as.numeric(sc_lot_rap$HandedOverDate)
+sc_lot_rap$HandedOverDate = as.Date(sc_lot_rap$HandedOverDate, origin = "1899-12-30")
+sc_lot_rap$HandedOverDate = as.Date(sc_lot_rap$HandedOverDate, format="%m/%d/%y %H:%M:%S")
 
 ### 3.2.2. SC1 (Contractors' Submission):----
 sc1_lot = file.path(wd_rap,rap_files[which(str_detect(rap_files,"^SC1_.*Parcellary.*.xlsx"))])
@@ -108,17 +149,6 @@ sc1_barang = file.path(wd_rap,rap_files[which(str_detect(rap_files,"^SC1_.*Brgy.
 sc1_lot_rap = read.xlsx(sc1_lot)
 sc1_struc_rap = read.xlsx(sc1_struc)
 sc1_barang_rap = read.xlsx(sc1_barang)
-
-# HandOver = 1 to StatusLA
-sc_lot_rap$HandOver = as.numeric(sc_lot_rap$HandOver)
-
-id = which(sc_lot_rap$HandOver == 1)
-if(length(id) == 0){
-  print("")
-} else {
-  sc_lot_rap$StatusLA[id] = 0
-}
-
 
 #
 sc1_lot_rap$ContSubm = 1 # we need to define this to filter by lot based on Contractors submission
@@ -146,6 +176,10 @@ colnames(sc_lot_rap)[id] = "Municipality"
 colNames = colnames(sc_struc_rap)
 id = which(str_detect(colNames,"^City|^city|Municipality$"))
 colnames(sc_struc_rap)[id] = "Municipality"
+
+colNames = colnames(sc_isf_rap)
+id = which(str_detect(colNames,"^City|^city|Municipality$"))
+colnames(sc_isf_rap)[id] = "Municipality"
 
 ## LandUse for LOT
 ### 1: Agricultural
@@ -185,6 +219,7 @@ n2_lot_rap$LandUse[id10] = 10
 
 n2_lot_rap$LandUse = as.numeric(n2_lot_rap$LandUse)
 unique(n2_lot_rap$LandUse)
+
 ## StrucUse for Structure
 ### 1: Agricultural
 ### 2: Agricultural & Commercial
@@ -259,6 +294,7 @@ n2_isf_rap$StrucID[] = gsub("[[:space:]]","",n2_isf_rap$StrucID)
 
 sc_lot_rap$LotID[] = gsub("[[:space:]]","",sc_lot_rap$LotID)
 sc_struc_rap$StrucID[] = gsub("[[:space:]]","",sc_struc_rap$StrucID)
+sc_isf_rap$StrucID[] = gsub("[[:space:]]","",sc_isf_rap$StrucID)
 
 sc1_lot_rap$LotID[] = gsub("[[:space:]]","",sc1_lot_rap$LotID)
 sc1_struc_rap$StrucID[] = gsub("[[:space:]]","",sc1_struc_rap$StrucID)
@@ -373,7 +409,7 @@ tryCatch(backupF(),
          error = function(e)
            print("You could not create backup files for one or more files. PLEASE CHECK"))
 
-## 5.2. Add "SCale" from old master list to the new master list from the RAP Team
+## 5.2. Add "SCale" from old master list to the new master list from the RAP Team:----
 ## N2 Lot
 n2_lot_rap = n2_lot_rap[,-which(colnames(n2_lot_rap)=="Scale")]
 y = n2_lot_gis[,c("LotID","Scale")]
@@ -384,25 +420,11 @@ sc_lot_rap = sc_lot_rap[,-which(colnames(sc_lot_rap)=="Scale")]
 y = sc_lot_gis[,c("LotID","Scale")]
 sc_lot_rap = left_join(sc_lot_rap,y,by="LotID")
 
-## 5.3. Fix totalArea, AffectedArea and RemainingArea, Priority, and Status
-## n2_lot_rap
-## Remove empty space
-id=which(str_detect("^TotalArea|^AffectedArea|^RemainingArea",colnames(n2_lot_rap)))
-for(i in id) {
-  n2_lot_rap[[i]] = gsub("-","",n2_lot_rap[[i]])
-  n2_lot_rap[[i]] = gsub("[[:space:]]","",n2_lot_rap[[i]])
-  n2_lot_rap[[i]] = as.numeric(n2_lot_rap[[i]])
-}
+## 5.3. Check Barangay
+n2_lot_rap$Barangay = gsub("-","",n2_lot_rap$Barangay)
+sc_lot_rap$Barangay = gsub("-","",sc_lot_rap$Barangay)
 
-## sc_lot_rap
-id=which(str_detect("^TotalArea|^AffectedArea|^RemainingArea",colnames(sc_lot_rap)))
-for(i in id) {
-  sc_lot_rap[[i]] = gsub("-","",sc_lot_rap[[i]])
-  sc_lot_rap[[i]] = gsub("[[:space:]]","",sc_lot_rap[[i]])
-  sc_lot_rap[[i]] = as.numeric(sc_lot_rap[[i]])
-}
-
-## 5.4. Check and Change CP format
+## 5.4. Check and Change CP format:----
 ### N2 Land
 id = which(str_detect(n2_lot_rap$CP,"^N\\d+|^n\\d+"))
 if (length(id)>0){
@@ -465,175 +487,234 @@ if(is.null(sc_isf_rap$CP)) {
   }
 }
 
-#sc_lot_rap$CP = gsub(",.*","",sc_lot_rap$CP)
+## 5.5. ISF: count the number of families per structure:-----
+## N2
+## Check if all strucID in n2_isf_rap are also present in the n2_struc_rap
+strucid_isf = unique(n2_isf_rap$StrucID)
+strucid_struc = unique(n2_struc_rap$StrucID)
 
-## 5.5. Fix HandOverArea and percentHandedOver:-----
-## when affectedArea is missing, percentHandedOver = 0
+strucid_isf[!strucid_isf %in% strucid_struc] # missing in n2_struc_rap
+strucid_struc[!strucid_struc %in% strucid_isf]
 
+## make sure that structureIDs are all capital letters
+## if there need to be changes, MAKE SURE that GIS TABLES are also UPDATED!!!
+id = grep("[:a-z:]",n2_struc_rap$StrucID)
+if (length(id) > 0) {
+  n2_struc_rap$StrucID[id] = toupper(n2_struc_rap$StrucID[id])
+} else {
+  print("GOOD! there are no lower case")
+}
+
+id = grep("[:a-z:]",n2_isf_rap$StrucID)
+if (length(id) > 0) {
+  n2_isf_rap$StrucID[id] = toupper(n2_isf_rap$StrucID[id])
+} else {
+  print("GOOD! there are no lower case")
+}
+
+## process
+strucid = unique(n2_isf_rap$StrucID)
+temp = data.frame()
+for(i in strucid) {
+  id = which(n2_isf_rap$StrucID == i)
+  n = length(id)
+  x = data.frame(StrucID = i,FamilyNumber = n)
+  temp = rbind(x,temp)
+}
+ ### join the count results to the structure table
+xx = n2_struc_rap
+xx = left_join(xx, temp, by="StrucID")
+
+## check the number of observations
+if (nrow(xx) == nrow(n2_struc_rap)) {
+  print("Two tables were successfully joined.")
+  n2_struc_rap = left_join(n2_struc_rap,temp,by="StrucID")
+} else {
+  print("Please check again. The table join failed.")
+}
+
+## SC
+## Check if all strucID in sc_isf_rap are also present in the sc_struc_rap
+strucid_isf = unique(sc_isf_rap$StrucID)
+strucid_struc = unique(sc_struc_rap$StrucID)
+
+miss_in_sc_struc = strucid_isf[!strucid_isf %in% strucid_struc] # missing in sc_struc_rap
+miss_in_sc_isf = strucid_struc[!strucid_struc %in% strucid_isf]
+
+temp123 = qpcR:::cbind.na(miss_in_sc_struc, miss_in_sc_isf)
+write.xlsx(temp123, file.path(wd_gis_sc, "Error_table" ,"SC_ISF_Errors.xlsx"), overwrite=TRUE)
+
+## get common structureID between sc_struc and sc_struc_isf
+##tt = strucid_isf[strucid_isf %in% strucid_struc]
+##tt = data.frame(commonID = tt)
+##write.xlsx(tt,file.path(wd_gis_sc, "common_strucIDs_for_ISF.xlsx"))
+
+
+## make sure that structureIDs are all capital letters
+## if there need to be changes, MAKE SURE that GIS TABLES are also UPDATED!!!
+id = grep("[:a-z:]",sc_struc_rap$StrucID)
+if (length(id) > 0) {
+  sc_struc_rap$StrucID[id] = toupper(sc_struc_rap$StrucID[id])
+} else {
+  print("GOOD! there are no lower case")
+}
+
+id = grep("[:a-z:]",sc_isf_rap$StrucID)
+if (length(id) > 0) {
+  sc_isf_rap$StrucID[id] = toupper(sc_isf_rap$StrucID[id])
+} else {
+  print("GOOD! there are no lower case")
+}
+
+## Join FamilyNumber to sc_struc_rap
+head(sc_isf_rap)
+strucid = unique(sc_isf_rap$StrucID)
+temp = data.frame()
+for(i in strucid) {
+  id = which(sc_isf_rap$StrucID == i)
+  n = length(id)
+  x = data.frame(StrucID = i,FamilyNumber = n)
+  temp = rbind(x,temp)
+}
+
+### join the count results to the structure table
+xx = sc_struc_rap
+xx = left_join(xx, temp, by="StrucID")
+
+## check the number of observations
+if (nrow(xx) == nrow(sc_struc_rap)) {
+  print("Two tables were successfully joined.")
+  sc_struc_rap = left_join(sc_struc_rap,temp,by="StrucID")
+} else {
+  print("Please check again. The table join failed.")
+}
+
+
+
+## 5.6. Fix StatusStruc when MoA is 'No Need to Acquire'
+## When MoA is 'No Need to Acquire', StatusStuc needs to be null.
+### n2_struc_rap
+id = which(n2_struc_rap$MoA == 4 & n2_struc_rap$StatusStruc >= 1)
+if (length(id) > 0) {
+  n2_struc_rap$StatusStruc[id] = NA
+} else {
+  print("OK. good")
+}
+
+### sc_struc_rap
+id = which(sc_struc_rap$MoA == 4 & sc_struc_rap$StatusStruc >= 1)
+
+if (length(id) > 0) {
+  sc_struc_rap$StatusStruc[id] = NA
+} else {
+  print("OK. good")
+}
+
+## 5.7. Fix HandedOverArea and percentHandedOver:-----
 ### n2_lot_rap:-----
-id=which(is.na(n2_lot_rap$HandOverArea))
-n2_lot_rap$HandOverArea[id] = 0
+# 1. StatusLA = 0, then HandedOver = 1,
+## But do not assume that PercentHandedOver = 100 (X), and HandedOverArea = AffectedArea (X)
+id = which(n2_lot_rap$StatusLA == 0)
+n2_lot_rap$percentHandedOver = 0
 
-# 1. Percentage handed over area
-id = which(n2_lot_rap$HandOverArea>=0)
-n2_lot_rap$percentHandedOver[id] = round(n2_lot_rap$HandOverArea[id]/n2_lot_rap$AffectedArea[id]*100,0)
-
-# 2. When percentHandedOver = 100, HandOver = 1 and StatusLA = 0
-id = which(n2_lot_rap$percentHandedOver == 100)
-n2_lot_rap$HandOver[id] = 1
-n2_lot_rap$StatusLA[id] = 0
-
-n2_lot_rap[which(is.na(n2_lot_rap$StatusLA) & n2_lot_rap$HandOver == 1),]
-
-## 3. When HandOverArea = 0, HandOver = 0 & percentHandedOver = 0
-id = which(n2_lot_rap$HandOverArea == 0)
-n2_lot_rap$HandOver[id] = 0
-n2_lot_rap$percentHandedOver[id] = 0
-
-## 4. when HandedOver = 1, percentHandedOver = 100
-id = which(n2_lot_rap$HandOver == 1)
-n2_lot_rap$percentHandedOver[id] = 100
-
-## 5.
-n2_lot_rap$HandOverDate = as.Date(n2_lot_rap$HandOverDate, origin = "1899-12-30")
-n2_lot_rap$HandOverDate = as.Date(n2_lot_rap$HandOverDate, format="%m/%d/%y %H:%M:%S")
-
-##id = which(n2_lot_rap$HandOverDate <= new_date)
-##n2_lot_rap$HandOver[id] = 1
-##n2_lot_rap$percentHandedOver[id] = 100
-#n2_lot_rap$HandOverArea[id] = n2_lot_rap$AffectedArea
-##n2_lot_rap$HandOverArea[id] = n2_lot_rap$AffectedArea[id]
-
-### sc_lot_rap:----
-id=which(is.na(sc_lot_rap$HandOverArea))
-sc_lot_rap$HandOverArea[id] = 0
-
-# 1. Percentage handed over area
-id = which(sc_lot_rap$HandOverArea>=0)
-sc_lot_rap$percentHandedOver[id] = round(sc_lot_rap$HandOverArea[id]/sc_lot_rap$AffectedArea[id]*100,0)
-
-# 2. When percentHandedOver = 100, HandOver = 1
-id = which(sc_lot_rap$percentHandedOver == 100)
-sc_lot_rap$HandOver[id] = 1
-sc_lot_rap$StatusLA[id] = 0
-
-## 3. When HandOverArea = 0, HandOver = 0 & percentHandedOver = 0
-id = which(sc_lot_rap$HandOverArea == 0)
-sc_lot_rap$HandOver[id] = 0
-sc_lot_rap$percentHandedOver[id] = 0
-
-## 4. when HandedOver = 1, percentHandedOver = 100
-id = which(sc_lot_rap$HandOver == 1)
-sc_lot_rap$percentHandedOver[id] = 100
-
-## 5.
-sc_lot_rap$HandOverDate = as.Date(sc_lot_rap$HandOverDate, origin = "1899-12-30")
-sc_lot_rap$HandOverDate = as.Date(sc_lot_rap$HandOverDate, format="%m/%d/%y %H:%M:%S")
-
-
-##id = which(sc_lot_rap$HandOverDate <= new_date)
-##sc_lot_rap$HandOver[id] = 1
-##sc_lot_rap$percentHandedOver[id] = 100
-##sc_lot_rap$HandOverArea[id] = sc_lot_rap$AffectedArea[id]
-
-
-####################################################################
-## 5.6. Convert dates used in the dropdown list in smart maps:----
-### 5.6.1. N2 lot:----
-unique(n2_lot_rap$HandOverDate)
-n2_lot_rap$HandOverDate = as.Date(n2_lot_rap$HandOverDate, origin = "1899-12-30")
-n2_lot_rap$HandOverDate = as.Date(n2_lot_rap$HandOverDate, format="%m/%d/%y %H:%M:%S")
-
-# 5.6.1.1. We monitor monthly basis for visualization, so convert:----
-years = unique(year(n2_lot_rap$HandOverDate)); years = years[!is.na(years)]
-months = unique(month(n2_lot_rap$HandOverDate)); months = months[!is.na(months)]
-
-# 5.6.1.2. Add temporary column names for year and month:----
-n2_lot_rap$YEARS = year(n2_lot_rap$HandOverDate)
-n2_lot_rap$MONTH = month(n2_lot_rap$HandOverDate)
-
-# 5.6.1.3. Choose only filled rows:----
-id = which(!is.na(n2_lot_rap$HandOverDate))
-
-n2_lot_rap$HandOverDate1 = as.character(NA)
-
-month_list = c("January","February","March","April","May","June","July","August","September","October","November","December")
-for(i in 1:12){
-  id = which(n2_lot_rap$MONTH==i)
-  n2_lot_rap$HandOverDate1[id] = paste(month_list[i],n2_lot_rap$YEARS[id],sep=" ")
+if (length(id)>0){
+  n2_lot_rap$HandedOver[id] = 1
+  #n2_lot_rap$percentHandedOver[id] = 100
+  #n2_lot_rap$HandedOverArea[id] = n2_lot_rap$AffectedArea[id] 
 }
 
-### 5.6.1.4. When 'HandedOver' = 1, null 'HandedOverDate1'
-#### Handed-over dates should not be included in the hand-over dropdown list
-id = which(n2_lot_rap$HandOver == 1)
-n2_lot_rap$HandOverDate1[id] = NA
-
-# 5.6.1.5. Delete temporary YEARS and MONTH:----
-id = which(str_detect(colnames(n2_lot_rap),"YEARS|MONTH"))
-n2_lot_rap = n2_lot_rap[,-id]
-
-
-### 5.6.2. SC Lot:----
-unique(sc_lot_rap$HandOverDate)
-sc_lot_rap$HandOverDate = as.Date(sc_lot_rap$HandOverDate, origin = "1899-12-30")
-sc_lot_rap$HandOverDate = as.Date(sc_lot_rap$HandOverDate, format="%m/%d/%y %H:%M:%S")
-
-# 5.6.2.1. We monitor monthly basis for visualization, so convert:----
-years = unique(year(sc_lot_rap$HandOverDate)); years = years[!is.na(years)]
-months = unique(month(sc_lot_rap$HandOverDate)); months = months[!is.na(months)]
-
-# 5.6.2.2. Add temporary column names for year and month:----
-sc_lot_rap$YEARS = year(sc_lot_rap$HandOverDate)
-sc_lot_rap$MONTH = month(sc_lot_rap$HandOverDate)
-
-# 5.6.2.3. Choose only filled rows:----
-id = which(!is.na(sc_lot_rap$HandOverDate))
-
-sc_lot_rap$HandOverDate1 = as.character(NA)
-
-month_list = c("January","February","March","April","May","June","July","August","September","October","November","December")
-for(i in 1:12){
-  id = which(sc_lot_rap$MONTH==i)
-  sc_lot_rap$HandOverDate1[id] = paste(month_list[i],sc_lot_rap$YEARS[id],sep=" ")
+# 2. !is.na(HandedOverDate), then HandedOver = 1,StatusLA = 0
+## But do not assume that PercentHandedOver = 100 (X), and HandedOverArea = AffectedArea (X), 
+id = which(!is.na(n2_lot_rap$HandedOverDate))
+if(length(id)>0){
+  n2_lot_rap$HandedOver[id] = 1
+  #n2_lot_rap$percentHandedOver[id] = 100
+  #n2_lot_rap$HandedOverArea[id] = n2_lot_rap$AffectedArea[id]
+  n2_lot_rap$StatusLA[id] = 0
 }
 
-### 5.6.2.4. When 'HandedOver' = 1, null 'HandedOverDate1'
-#### Handed-over dates should not be included in the hand-over dropdown list
-id = which(sc_lot_rap$HandOver == 1)
-sc_lot_rap$HandOverDate1[id] = NA
+# 3. is.na(HandedOverArea), then HandedOverArea = 0
+id=which(is.na(n2_lot_rap$HandedOverArea))
+if (length(id) > 0) {
+  n2_lot_rap$HandedOverArea[id] = 0
+} else {
+  print("OK")
+}
+  
+# 4. Percentage handed over area
+n2_lot_rap$percentHandedOver = round(n2_lot_rap$HandedOverArea/n2_lot_rap$AffectedArea*100,0)
 
-# 5.6.2.5. Delete temporary YEARS and MONTH:----
-id = which(str_detect(colnames(sc_lot_rap),"YEARS|MONTH"))
-sc_lot_rap = sc_lot_rap[,-id]
+# 5. StatusLA = 0 & !is.na(HandOverDate), then HandedOverDate = HandOverDate
+id = which(n2_lot_rap$StatusLA == 0 & !is.na(n2_lot_rap$HandOverDate))
+if(length(id)>0){
+  n2_lot_rap$HandedOverDate[id] = n2_lot_rap$HandOverDate[id]
+  n2_lot_rap$HandOverDate[id] = NA
+}
+
+
+### sc_lot_rap:-----
+# 1. StatusLA = 0, then HandedOver = 1,
+## But do not assume that PercentHandedOver = 100 (X), and HandedOverArea = AffectedArea (X)
+id = which(sc_lot_rap$StatusLA == 0)
+sc_lot_rap$percentHandedOver = 0
+
+if (length(id)>0){
+  sc_lot_rap$HandedOver[id] = 1
+  #sc_lot_rap$percentHandedOver[id] = 100
+  #sc_lot_rap$HandedOverArea[id] = sc_lot_rap$AffectedArea[id] 
+}
+
+# 2. !is.na(HandedOverDate), then HandedOver = 1, PercentHandedOver = 100, and HandedOverArea = AffectedArea, StatusLA = 0
+id = which(!is.na(sc_lot_rap$HandedOverDate))
+if(length(id)>0){
+  sc_lot_rap$HandedOver[id] = 1
+  #sc_lot_rap$percentHandedOver[id] = 100
+  #sc_lot_rap$HandedOverArea[id] = sc_lot_rap$AffectedArea[id]
+  sc_lot_rap$StatusLA[id] = 0
+}
+
+# 3. is.na(HandedOverArea), then HandedOverArea = 0
+id=which(is.na(sc_lot_rap$HandedOverArea))
+if (length(id) > 0) {
+  sc_lot_rap$HandedOverArea[id] = 0
+} else {
+  print("OK")
+}
+
+# 4. Percentage handed over area
+sc_lot_rap$percentHandedOver = round(sc_lot_rap$HandedOverArea/sc_lot_rap$AffectedArea*100,0)
+
+# 5. StatusLA = 0 & !is.na(HandOverDate), then HandedOverDate = HandOverDate
+id = which(sc_lot_rap$StatusLA == 0 & !is.na(sc_lot_rap$HandOverDate))
+if(length(id)>0){
+  sc_lot_rap$HandedOverDate[id] = sc_lot_rap$HandOverDate[id]
+  sc_lot_rap$HandOverDate[id] = NA
+}
 
 #####################################################################:----
 ######### Perform QA/QC of master list to check errors ##############:----
 #####################################################################:----
 # 0.Add percent handed over
 ### if AffectedArea of PNR LANDS are not entered but HandedOverArea is,
-### this will be filled with HandedOverArea ONLY IF HandOverArea>=0
+### this will be filled with HandedOverArea ONLY IF HandedOverArea>=0
 
 ## 0.1. N2 Lot
-id = which(str_detect(n2_lot_rap$CN,"^PNR|RP") & is.na(n2_lot_rap$AffectedArea) & n2_lot_rap$HandOverArea>0)
+
+id = which(str_detect(n2_lot_rap$CN,"^PNR|RP") & is.na(n2_lot_rap$AffectedArea) & n2_lot_rap$HandedOverArea>0)
 
 if(length(id)==0){
   print("GOOD! No missing AffectedArea for PNR LANDS to calculate percent handedover")
-} else {
-  n2_lot_rap$AffectedArea[id] = n2_lot_rap$HandOverArea[id]
 }
-
 
 ## 0.2. SC Lot
 # Add percent handed over
 ### if AffectedArea of PNR LANDS are not entered but HandedOverArea is entered with greater than 0,
-### this will be filled with HandedOverArea ONLY IF HandOverArea>=0
+### this will be filled with HandedOverArea ONLY IF HandedOverArea>=0
 
-id = which(str_detect(sc_lot_rap$CN,"^PNR|RP") & is.na(sc_lot_rap$AffectedArea) & sc_lot_rap$HandOverArea>0)
+id = which(str_detect(sc_lot_rap$CN,"^PNR|RP") & is.na(sc_lot_rap$AffectedArea) & sc_lot_rap$HandedOverArea>0)
 
 if(length(id)==0){
   print("GOOD! No missing AffectedArea for PNR LANDS to calculate percent handedover")
-} else {
-  sc_lot_rap$AffectedArea[id] = sc_lot_rap$HandOverArea[id]
 }
 
 # check percentage with N-01 and calculate percentage
@@ -652,9 +733,9 @@ id = which(n2_lot_rap$AffectedArea==0 | is.na(n2_lot_rap$AffectedArea))
 if(length(id)>0){
   print("ERROR! There are ZERO or EMPTY affected area in one or more lots.")
   print(paste(n2_lot_rap$LotID[id],sep=","))
-  error1_n2 = data.frame(zero_affectedArea = n2_lot_rap$LotID[id])
+  error1_n2 = data.frame(zero_no_affectedArea = n2_lot_rap$LotID[id])
 } else {
-  error1_n2=data.frame(zero_affectedArea=NA)
+  error1_n2=data.frame(zero_no_affectedArea=NA)
   print("GOOD!")
 }
 
@@ -664,18 +745,18 @@ id = which(sc_lot_rap$AffectedArea==0 | is.na(sc_lot_rap$AffectedArea))
 if(length(id)>0){
   print("ERROR! There are ZERO or EMPTY affected area in one or more lots.")
   print(paste(sc_lot_rap$LotID[id],sep=","))
-  error1_sc = data.frame(zero_affectedArea = sc_lot_rap$LotID[id])
+  error1_sc = data.frame(zero_no_affectedArea = sc_lot_rap$LotID[id])
 } else {
-  error1_sc=data.frame(zero_affectedArea=NA)
+  error1_sc=data.frame(zero_no_affectedArea=NA)
   print("GOOD!")
 }
 
-# 2. If HandOverArea = 0 or empty:----
+# 2. If HandedOverArea = 0 or empty:----
 ## 2.1. N2_lot:----
-id = which(is.na(n2_lot_rap$HandOverArea))
+id = which(is.na(n2_lot_rap$HandedOverArea))
 
 if(length(id)>0){
-  print("ERROR! There are EMPTY HandOverArea in one or more lots.")
+  print("ERROR! There are EMPTY HandedOverArea in one or more lots.")
   print(paste(n2_lot_rap$LotID[id],sep=","))
   error2_n2 = data.frame(missing_handOverArea = n2_lot_rap$LotID[id])
 } else {
@@ -684,10 +765,10 @@ if(length(id)>0){
 }
 
 ## 2.2. SC lot:----
-id = which(is.na(sc_lot_rap$HandOverArea))
+id = which(is.na(sc_lot_rap$HandedOverArea))
 
 if(length(id)>0){
-  print("ERROR! There are EMPTY HandOverArea in one or more lots.")
+  print("ERROR! There are EMPTY HandedOverArea in one or more lots.")
   print(paste(sc_lot_rap$LotID[id],sep=","))
   error2_sc = data.frame(missing_handOverArea = sc_lot_rap$LotID[id])
 } else {
@@ -695,7 +776,7 @@ if(length(id)>0){
   print("GOOD!")
 }
 
-# 3. HandOverArea > AffectedArea (THis is Error) Use percenHandedOver to detect this:----
+# 3. HandedOverArea > AffectedArea (THis is Error) Use percenHandedOver to detect this:----
 ## 3.1. N2 lot:----
 id = which(n2_lot_rap$percentHandedOver > 100)
 
@@ -724,9 +805,9 @@ if(length(id)>0){
 }
 
 
-# 4. HandOver is 1 but with future HandOverDate:----
+# 4. HandedOver is 1 but with future HandOverDate:----
 ## 4.1. N2 lot:----
-id = which(n2_lot_rap$HandOver==1 & n2_lot_rap$HandOverDate>new_date)
+id = which(n2_lot_rap$HandedOver==1 & n2_lot_rap$HandOverDate>new_date)
 if(length(id)>0){
   print("ERROR! There are Lots which were already handed over but the handOverDate is future date.")
   print(paste(n2_lot_rap$LotID[id],sep=","))
@@ -737,7 +818,7 @@ if(length(id)>0){
 }
 
 ## 4.2. SC Lot:----
-id = which(sc_lot_rap$HandOver==1 & sc_lot_rap$HandOverDate>new_date)
+id = which(sc_lot_rap$HandedOver==1 & sc_lot_rap$HandOverDate>new_date)
 if(length(id)>0){
   print("ERROR! There are Lots which were already handed over but the handOverDate is future date.")
   print(paste(sc_lot_rap$LotID[id],sep=","))
@@ -748,10 +829,10 @@ if(length(id)>0){
 }
 
 
-# 5. When HandOver = 1, no affectedArea and HandOverArea should be zero nor empty.:----
+# 5. When HandedOver = 1, no affectedArea and HandedOverArea should be zero nor empty.:----
 ## 5.1. N2 lot:----
-id = which(n2_lot_rap$HandOver==1 & (is.na(n2_lot_rap$HandOverArea) | n2_lot_rap$HandOverArea==0))
-id1 = which(n2_lot_rap$HandOver==1 & (is.na(n2_lot_rap$AffectedArea) | n2_lot_rap$AffectedArea==0))
+id = which(n2_lot_rap$HandedOver==1 & (is.na(n2_lot_rap$HandedOverArea) | n2_lot_rap$HandedOverArea==0))
+id1 = which(n2_lot_rap$HandedOver==1 & (is.na(n2_lot_rap$AffectedArea) | n2_lot_rap$AffectedArea==0))
 ID = c(id, id1)
 
 if(length(ID)>0){
@@ -764,8 +845,8 @@ if(length(ID)>0){
 }
 
 ## 5.2. SC Lot:----
-id = which(sc_lot_rap$HandOver==1 & (is.na(sc_lot_rap$HandOverArea) | sc_lot_rap$HandOverArea==0))
-id1 = which(sc_lot_rap$HandOver==1 & (is.na(sc_lot_rap$AffectedArea) | sc_lot_rap$AffectedArea==0))
+id = which(sc_lot_rap$HandedOver==1 & (is.na(sc_lot_rap$HandedOverArea) | sc_lot_rap$HandedOverArea==0))
+id1 = which(sc_lot_rap$HandedOver==1 & (is.na(sc_lot_rap$AffectedArea) | sc_lot_rap$AffectedArea==0))
 ID = c(id, id1)
 
 if(length(ID)>0){
@@ -778,9 +859,9 @@ if(length(ID)>0){
 }
 
 
-# 6. HandOverDate is missing when HandOver = 0 (HandOverDate needs to be entered when lots are not handd over yet):----
+# 6. HandOverDate is missing when HandedOver = 0 (HandOverDate needs to be entered when lots are not handd over yet):----
 ## 6.1. N2 Lot:----
-id = which(is.na(n2_lot_rap$HandOverDate) & n2_lot_rap$HandOver==0)
+id = which(is.na(n2_lot_rap$HandOverDate) & n2_lot_rap$HandedOver==0)
 if(length(id)>0){
   print("ERROR! There are Lots which will be handed Over but missing expected hand-over date.")
   print(paste(n2_lot_rap$LotID[id],sep=","))
@@ -792,7 +873,7 @@ if(length(id)>0){
 
 
 ## 6.2. SC Lot:----
-id = which(is.na(sc_lot_rap$HandOverDate) & sc_lot_rap$HandOver==0)
+id = which(is.na(sc_lot_rap$HandOverDate) & sc_lot_rap$HandedOver==0)
 if(length(id)>0){
   print("ERROR! There are Lots which will be handed Over but missing expected hand-over date.")
   print(paste(sc_lot_rap$LotID[id],sep=","))
@@ -861,18 +942,33 @@ if(length(id)>0){
   error9_sc = data.frame(missing_Barangay = NA)
 }
 
+## Missing StatusLA
+id = which(is.na(n2_lot_rap$StatusLA))
+if(length(id)>0){
+  print("ERROR: There are lots with no StatusLA.")
+  error10_n2 = data.frame(missing_StatusLA = n2_lot_rap$LotID[id])
+} else {
+  print("GOOD")
+  error10_n2 = data.frame(missing_StatusLA = NA)
+}
 
+id = which(is.na(sc_lot_rap$StatusLA))
+if(length(id)>0){
+  print("ERROR: There are lots with no StatusLA.")
+  error10_sc = data.frame(missing_StatusLA = sc_lot_rap$LotID[id])
+} else {
+  print("GOOD")
+  error10_sc = data.frame(missing_StatusLA = NA)
+}
 
-# 7. Compile all errors:----
-library(qpcR)
 
 ## 7.1. N2 Lot:----
 c_n2 = qpcR:::cbind.na(error1_n2,error2_n2,error3_n2,error4_n2,error5_n2,error6_n2,error7_n2,error8_n2,error9_n2)
-write.xlsx(c_n2, file.path(wd_gis_n2,"Error_table_N2.xlsx"))
+write.xlsx(c_n2, file.path(wd_gis_n2, "Error_table", "Error_table_N2.xlsx"))
 
 ## 7.2. SC Lot:----
 c_sc = qpcR:::cbind.na(error1_sc,error2_sc,error3_sc,error4_sc,error5_sc,error6_sc,error7_sc,error8_sc,error9_sc)
-write.xlsx(c_sc, file.path(wd_gis_n2,"Error_table_SC.xlsx"))
+write.xlsx(c_sc, file.path(wd_gis_sc, "Error_table", "Error_table_SC.xlsx"))
 
 
 ################################################################################################
@@ -888,8 +984,8 @@ n2_pier_rap$CP = gsub(",.*","",n2_pier_rap$CP)
 
 ## 8.1.2. We need to delete this Pier numbers, as they do not often agree with ones in the GIS attribute tables
 # If we use their format, the N2 Pier point feature may have wrong pier numbers.
-id = which(colnames(n2_pier_rap)=="CP")
-n2_pier_rap = n2_pier_rap[,-id]
+##id = which(colnames(n2_pier_rap)=="CP")
+##n2_pier_rap = n2_pier_rap[,-id]
 
 #** Check pier No between GIS table and RAP Team's list
 #aa = file.choose()
@@ -996,12 +1092,11 @@ write.xlsx(n2_struc_rap,file.path(wd_gis_n2,basename(n2_struc)),overwrite=TRUE)
 write.xlsx(n2_isf_rap,file.path(wd_gis_n2,basename(n2_isf)),overwrite=TRUE)
 write.xlsx(n2_pier_rap,file.path(wd_gis_n2,basename(n2_pier)),overwrite=TRUE)
 
-
 ### SC
 write.xlsx(sc_lot_rap,file.path(wd_gis_sc,basename(sc_lot)),overwrite=TRUE)
 write.xlsx(sc_struc_rap,file.path(wd_gis_sc,basename(sc_struc)),overwrite=TRUE)
 write.xlsx(sc_pier_rap,file.path(wd_gis_sc,basename(sc_pier)),overwrite=TRUE)
-#write.xlsx(sc_isf_rap,file.path(wd_gis_sc,basename(sc_isf)))
+write.xlsx(sc_isf_rap,file.path(wd_gis_sc,basename(sc_isf)), overwrite=TRUE)
 write.xlsx(sc1_barang_rap,file.path(wd_gis_sc,SC1_Barangay_fileName),overwrite=TRUE)
 
 # Output
@@ -1010,4 +1105,3 @@ write.xlsx(sc1_barang_rap,file.path(wd_gis_sc,SC1_Barangay_fileName),overwrite=T
 
 
 }
-

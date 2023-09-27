@@ -22,15 +22,6 @@ class EnviMonitoringUpdateTool(object):
             direction = "Input"
         )
 
-        # second parameter: Source Feature Layer (FGDB)
-        source_fc = arcpy.Parameter(
-            displayName = "Source Feature Layer (FGDB)",
-            name = "Source_Feature_Layer",
-            datatype = "GPFeatureLayer",
-            parameterType = "Required",
-            direction = "Input"
-        )
-
         # third parameter: target feature layer (SDE)
         target_fc = arcpy.Parameter(
             displayName = "Target Feature Layer (SDE)",
@@ -52,7 +43,7 @@ class EnviMonitoringUpdateTool(object):
         # set the filter to accept onl local (persoinputLayerOriginnal or file) geodatabase
         ws.filter.list = ["Local Database"]
 
-        params = [ws, source_fc, target_fc, in_table]
+        params = [ws, target_fc, in_table]
 
         return params
 
@@ -61,9 +52,8 @@ class EnviMonitoringUpdateTool(object):
 
     def execute(self, params, messages):
         workspace = params[0].valueAsText
-        sourceFeature = params[1].valueAsText
-        targetFeature = params[2].valueAsText
-        inTable = params[3].valueAsText
+        targetFeature = params[1].valueAsText
+        inTable = params[2].valueAsText
 
         # 1. Import the Envi monitoring master list table
         out_name = "monitor_table"
@@ -87,28 +77,40 @@ class EnviMonitoringUpdateTool(object):
         output_feature_class = "env_monitor_point_prj3857"
         xyP_prj = arcpy.Project_management(xyP, output_feature_class, out_coordinate_system)
 
+        # 3. Copy the original feature layer
+        ## Note SDE (original) is PRS92, so when copied, it has to be converted to WGS84
+        arcpy.env.outputCoordinateSystem = out_coordinate_system # WGS84 Auxiliary
+        arcpy.env.geographicTransformations = "PRS_1992_To_WGS_1984_1"
+        copied = "copied_layer"
+        arcpy.CopyFeatures_management(targetFeature, copied)
 
-        # 3. Truncate the main feature layer
-        arcpy.TruncateTable_management(sourceFeature)
+        spf1 = arcpy.Describe(copied).spatialReference.name
+        arcpy.AddMessage(spf1) # must be WGS84 
 
-        # 4. Append the point FL to the main FL
-        arcpy.Append_management(xyP_prj, sourceFeature, schema_type = 'NO_TEST')
+        # 4. Truncate the copied feature layer
+        arcpy.TruncateTable_management(copied)
 
-        # 5. Copy the main FL in PRS92
+        # 5. Append the point FL to the copied FL
+        arcpy.Append_management(xyP_prj, copied, schema_type = 'NO_TEST')
+
+        # 5.1. Convert the copied back to PRS92
         arcpy.env.outputCoordinateSystem = arcpy.SpatialReference("PRS 1992 Philippines Zone III")
         arcpy.env.geographicTransformations = "PRS_1992_To_WGS_1984_1"
+        
+        copied2 = "copied_layer2"
+        arcpy.CopyFeatures_management(copied, copied2)
 
-        copied = "copied_layer"
-        copyL = arcpy.CopyFeatures_management(sourceFeature, copied)
+        spf2 = arcpy.Describe(copied2).spatialReference.name
+        arcpy.AddMessage(spf2) # must be PRS92
 
-        # 6. truncates the SDE
+        # 6. Truncate the original SDE
         arcpy.TruncateTable_management(targetFeature)
 
-        # 7, Append the copied FGDB to the SDE
-        arcpy.Append_management(copyL, targetFeature, schema_type = 'NO_TEST')
+        # 7. Appen the copied SDE to the original SDE
+        arcpy.Append_management(copied2, targetFeature, schema_type = 'NO_TEST')
 
         # Delete
-        deleteL = [tableGDB, xyP, xyP_prj, copyL]
+        deleteL = [tableGDB, xyP, xyP_prj, copied, copied2]
         arcpy.Delete_management(deleteL)
         #End
 

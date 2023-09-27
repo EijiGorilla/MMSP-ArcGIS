@@ -1,12 +1,7 @@
-
-
-
-
 #############################
 old_date = "2022-03-13"
 new_date = "2022-04-12"
 ###############################
-
 
 # Read google sheet and generate output in xlsx format
 
@@ -18,21 +13,6 @@ library(stringr)
 library(reshape2)
 library(lubridate)
 library(fs)
-
-# This R script reads a Google Sheet and reshape the data table 
-# to import into ArcGIS Pro
-
-# Autheticate Google Sheets Access
-## Step 1
-# method 1: direct provision client ID and secret
-#google_app <- httr::oauth_app(
- # "Desktop client 1",
-#  key = "603155182488-fqkuqgl6jgn3qp3lstdj6liqlvirhag4.apps.googleusercontent.com",
-#  secret = "bH1svdfg-ofOg3WR8S5WDzPu"
-#)
-#drive_auth_configure(app = google_app)
-#drive_auth_configure(api_key = "AIzaSyCqbwFnO6csUya-zKcXKXh_-unE_knZdd0")
-#drive_auth(path = "G:/My Drive/01-Google Clould Platform/service-account-token.json")
 
 
 ## Authorize (Choose 'matsuzakieiji0@gmail.com'. OCG gmail may not work)
@@ -105,5 +85,9 @@ colnames(x1)=c("CP","Barangay","District","Municipality","TreeNo",
               "Conservation","StemQuality","Planted","LotNo","PNR_ROW","Status")
 
 xx = rbind(x,x1)
+
+## Fix CP
+xx$CP = gsub("CP","",xx$CP)
+xx$CP = gsub("[[:space:]]","",xx$CP)
 
 write.xlsx(xx, "SC_Tree_merged.xlsx")

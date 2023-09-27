@@ -300,7 +300,7 @@ y2 = y2[-id,]
 id=which(y2$PierNumber=="P406-P407")
 
 temp = data.frame()
-for(i in c("P-404","P-405")){
+for(i in c("P404","P405")){
   d = data.frame(ID=y2$ID[id],PierNumber=i,duration="",start="",finish=y2$finish[id],temp="")
   temp = rbind(temp, d)
 }
@@ -588,8 +588,7 @@ for(i in 1:nrow(y1)){
 # 609, 610 => 608 (temp2)
 # 631, 632, 633 => 630 (temp2)
 # 660, 661, 662 => 659 (temp2)
-# 695, 696, 697 => 694 (temp2)
-
+# 695, 696, 697 => 694 
 mPiers = c(456,466,594,608,630,659,694,695)
 
 temp = data.frame()
@@ -665,6 +664,15 @@ for(i in seq(piers)){
 
 y1 = rbind(y1, temp)
 
+# Fix P-597, 597NB and P-598, 598NB
+# Note that P-597SB and P-598SB are missing so left blank
+## N02-CON-YN-4239 (P6) => P-597NB
+id=which(str_detect(y1$ID,"N02-CON-YN-4239"))
+y1$PierNumber[id] = "P-597NB"
+
+## N02-CON-YN-L2038 (P6) => P-598SB
+id=which(str_detect(y1$ID,"N02-CON-YN-L2038"))
+y1$PierNumber[id] = "P-598SB"
 
 ## Add CP and Type
 y1$CP = "N-02"
@@ -1054,6 +1062,18 @@ y1$PierNumber[id] = "P-977NB"
 id=which(y1$ID=="N03-CNW-MF-5260")
 y1$PierNumber[id] = "P-977SB"
 
+## N03-CNW-MF-5760 (P6) => P-1108
+## N03-CNW-MF-6070 (P6) => P-1108NB
+## N03-CNW-MF-6190 (P6) => P-1108SB
+y1[which(str_detect(y1$PierNumber,"P-1108")),]
+id=which(str_detect(y1$ID,"N03-CNW-MF-5760"))
+y1$PierNumber[id] = "P-1108"
+
+id=which(str_detect(y1$ID,"N03-CNW-MF-6070"))
+y1$PierNumber[id] = "P-1108NB"
+
+id=which(str_detect(y1$ID,"N03-CNW-MF-6190"))
+y1$PierNumber[id] = "P-1108SB"
 
 ## Add CP and Type
 y1$CP = "N-03"
@@ -1129,7 +1149,7 @@ temp = data.frame()
 id0=which(y1$PierNumber=="PLK01-PLK24")
 d = y1[id0,]
 d1 = data.frame(ID=d$ID,
-                PierNumber=paste("P-",c(2143:2150,2151,"2151A",2152,"2152A",2153,2154,1143:1191, "1191A"),sep=""),
+                PierNumber=paste("P-",c(2143:2150,2151,"2151A",2152,"2152A",2153,2154),sep=""),
                 duration=0, start=0, finish=d$finish)
 temp = rbind(temp, d1)
 
@@ -1139,10 +1159,10 @@ d = y1[id1,]
 d1 = data.frame(ID=d$ID,PierNumber=paste("P-",c(2192:2204,"2205","2205A","2206","2206A"),sep=""),duration=0, start=0, finish=d$finish)
 temp = rbind(temp, d1)
 
-## 3. P1182 - P1191A (P6) => P1183-P1186, P1189,P1190
+## 3. P1182 - P1191A (P6) => P1183-P1186
 id2=which(y1$PierNumber=="P1182-P1191A")
 d = y1[id2,]
-d1 = data.frame(ID=d$ID,PierNumber=paste("P-",c(1183:1186,1189,1190),sep=""),duration=0, start=0, finish=d$finish)
+d1 = data.frame(ID=d$ID,PierNumber=paste("P-",c(1183:1186),sep=""),duration=0, start=0, finish=d$finish)
 temp = rbind(temp, d1)
 
 # rbind
@@ -1170,6 +1190,8 @@ y1 = y1[-id,]
 y1$CP = "N-04"
 y1$Type = 1
 n04_piles = y1
+
+y1[which(str_detect(y1$PierNumber,"P-1191A")),]
 
 ## 2. Pile Cap:----
 ## Filter 
@@ -1203,7 +1225,7 @@ temp = data.frame()
 id0=which(y1$PierNumber=="PLK01-PLK24")
 d = y1[id0,]
 d1 = data.frame(ID=d$ID,
-                PierNumber=paste("P-",c(2143:2150,2151,"2151A",2152,"2152A",2153,2154,1143:1191, "1191A"),sep=""),
+                PierNumber=paste("P-",c(2143:2150,2151,"2151A",2152,"2152A",2153,2154),sep=""),
                 duration=0, start=0, finish=d$finish)
 temp = rbind(temp, d1)
 
@@ -1213,11 +1235,11 @@ d = y1[id1,]
 d1 = data.frame(ID=d$ID,PierNumber=paste("P-",c(2192:2204,"2205","2205A","2206","2206A"),sep=""),duration=0, start=0, finish=d$finish)
 temp = rbind(temp, d1)
 
-## 3. P1182 - P1191A (P6) => P1183-P1186, P1189,P1190
-id2=which(y1$PierNumber=="P1182-P1191A")
-d = y1[id2,]
-d1 = data.frame(ID=d$ID,PierNumber=paste("P-",c(1183:1186,1189,1190),sep=""),duration=0, start=0, finish=d$finish)
-temp = rbind(temp, d1)
+## 3. P1182 - P1191A (P6) => P1183-P1186
+#id2=which(y1$PierNumber=="P1182-P1191A")
+#d = y1[id2,]
+#d1 = data.frame(ID=d$ID,PierNumber=paste("P-",c(1183:1186),sep=""),duration=0, start=0, finish=d$finish)
+#temp = rbind(temp, d1)
 
 # rbind
 y1 = rbind(y1,temp)
@@ -1239,7 +1261,6 @@ for(i in seq(length(id))){
 }
 id=which(temp[[1]]==2)
 y1 = y1[-id,]
-
 
 ## Add CP and Type
 y1$CP = "N-04"
@@ -1279,7 +1300,7 @@ temp = data.frame()
 id0=which(y1$PierNumber=="PLK01-PLK24")
 d = y1[id0,]
 d1 = data.frame(ID=d$ID,
-                PierNumber=paste("P-",c(2143:2150,2151,"2151A",2152,"2152A",2153,2154,1143:1191, "1191A"),sep=""),
+                PierNumber=paste("P-",c(2143:2150,2151,"2151A",2152,"2152A",2153,2154,1189,1190),sep=""),
                 duration=0, start=0, finish=d$finish)
 temp = rbind(temp, d1)
 
@@ -1289,10 +1310,10 @@ d = y1[id1,]
 d1 = data.frame(ID=d$ID,PierNumber=paste("P-",c(2192:2204,"2205","2205A","2206","2206A"),sep=""),duration=0, start=0, finish=d$finish)
 temp = rbind(temp, d1)
 
-## 3. P1182 - P1191A (P6) => P1183-P1186, P1189,P1190
+## 3. P1182 - P1191A (P6) => P1183-P1186
 id2=which(y1$PierNumber=="P1182-P1191A")
 d = y1[id2,]
-d1 = data.frame(ID=d$ID,PierNumber=paste("P-",c(1183:1186,1189,1190),sep=""),duration=0, start=0, finish=d$finish)
+d1 = data.frame(ID=d$ID,PierNumber=paste("P-",c(1183:1186),sep=""),duration=0, start=0, finish=d$finish)
 temp = rbind(temp, d1)
 
 # rbind
@@ -1315,6 +1336,7 @@ for(i in seq(length(id))){
 }
 id=which(temp[[1]]==2)
 y1 = y1[-id,]
+
 
 ## Add CP and Type
 y1$CP = "N-04"
@@ -1354,7 +1376,7 @@ temp = data.frame()
 id0=which(y1$PierNumber=="PLK01-PLK24")
 d = y1[id0,]
 d1 = data.frame(ID=d$ID,
-                PierNumber=paste("P-",c(2143:2150,2151,"2151A",2152,"2152A",2153,2154,1143:1191, "1191A"),sep=""),
+                PierNumber=paste("P-",c(2143:2150,2151,"2151A",2152,"2152A",2153,2154),sep=""),
                 duration=0, start=0, finish=d$finish)
 temp = rbind(temp, d1)
 
@@ -1364,11 +1386,11 @@ d = y1[id1,]
 d1 = data.frame(ID=d$ID,PierNumber=paste("P-",c(2192:2204,"2205","2205A","2206","2206A"),sep=""),duration=0, start=0, finish=d$finish)
 temp = rbind(temp, d1)
 
-## 3. P1182 - P1191A (P6) => P1183-P1186, P1189,P1190
-id2=which(y1$PierNumber=="P1182-P1191A")
-d = y1[id2,]
-d1 = data.frame(ID=d$ID,PierNumber=paste("P-",c(1183:1186,1189,1190),sep=""),duration=0, start=0, finish=d$finish)
-temp = rbind(temp, d1)
+## 3. P1182 - P1191A (P6) => P1183-P1186
+#id2=which(y1$PierNumber=="P1182-P1191A")
+#d = y1[id2,]
+#d1 = data.frame(ID=d$ID,PierNumber=paste("P-",c(1183:1186),sep=""),duration=0, start=0, finish=d$finish)
+#temp = rbind(temp, d1)
 
 # rbind
 y1 = rbind(y1,temp)
@@ -1520,20 +1542,126 @@ if(length(id)>0){
 ml$temp = 1:nrow(ml)
 xx = left_join(ml,x,by=c("CP","Type","PierNumber"))
 
-## CHeck duplicated results = two or more PierNumber share different finish dates
-dup = xx$temp[duplicated(xx$temp)]
-xx[which(str_detect(xx$temp,paste0("^",dup,"$",collapse="|"))),]
+### Check for each CP
+for (i in c('N-01','N-02','N-03','N-04')){
+  x_ml = ml[which(ml$CP==i),]
+  x = xx[which(xx$CP==i),]
+  
+  if(nrow(x_ml)==nrow(x)){
+    print(paste(i," is matched."))
+  } else {
+    print(paste("For ", i, "Validation is required.",sep = ""))
+  }
+}
 
+
+#### If something wrong, identify by type
+type=5
+x2 = x[which(x$Type==type),]
+x_ml2 = x_ml[which(x_ml$Type==type),]
+
+if(nrow(x_ml2)==nrow(x2)){
+  print(paste(cp, " Type: ", type, " is matched.",sep = ""))
+} else {
+  print("Validation is required.")
+}
+
+#### Identify duplicated pier numbers
+dup_pier = x2$PierNumber[duplicated(x2$uniqueID)]
+dup_x2 = x2[which(str_detect(x2$PierNumber,paste0(dup_pier,collapse="|"))),]
+dup_x2
+unique(dup_x2$PierNumber)
+
+### when everything is ok, export
 write.xlsx(xx,file.path(b,"Joined_MasterList_P6.xlsx"))
 
-## Identify mismatched pierNumber (i.e., not exist in x)
-id=which(is.na(xx$finish))
-xx1 = xx[id,]
 
-xx1[which(xx1$CP=="N-04"),]
-xx1[which(xx1$CP=="N-04" & xx1$Type==4),]
-unique(xx1$PierNumber)
 
-## 
-x[which(x$PierNumber=="MT01-04"),]
-ml[which(ml$PierNumber=="MT01-04"),]
+
+
+
+##########################################
+# ********* Station Structures:---- ******
+##########################################
+## The main workflow for updating construction progress on N2 station structures:
+## 1. GIS Team manually added P6ID to the Building Layers based on P6 database (this is done only once) 
+## 2. Create excel ML tables exported from the existing Building Layers with manually added P6 IDs (this will be the basis of ML and done only once)
+## 3. Run R code below to process updated P6 database with P6ID and generate an updated table
+## 4. Join the generated table (No.3) to the original excel ML (No.2)
+
+newDate = "2023-09-21"
+
+
+# 3. Generate an updated Excel from P6:---
+## 3.1. Data Preparation
+temp = data.frame()
+for(i in seq(4)) {
+  y1 = read.xlsx(MLTable, sheet = i)
+  id=which(str_detect(colnames(y1),"ID$|Finish"))
+  y1 = y1[, id]
+  colnames(y1) = c("P6ID", "finish")
+  temp = rbind(temp, y1)
+}
+
+## 3.2. Filter only with P6ID
+x = temp
+x$P6ID = gsub("[[:space:]]", "", x$P6ID)
+id = which(str_detect(x$P6ID,"^N0[1-9]-.*"))
+x = x[id,]
+
+### to uppercase
+x$P6ID = toupper(x$P6ID)
+
+### Remove VIA (we cannot remove all...)
+id = which(str_detect(x$P6ID,"[VIA].*"))
+x = x[-id,]
+
+## Fix date format
+### Row for number date
+id=which(str_detect(x$finish,"^\\d+-\\w+-\\d+"))
+dates = str_extract(x$finish[id],"^\\d+-\\w+-\\d+")
+dates = as.Date(x$finish[id], format= "%d-%b-%y" )
+
+### Row for number date
+x$finish = as.numeric(x$finish)
+x$finish = as.Date(x$finish, origin = "1899-12-30")
+x$finish = as.Date(x$finish, format="%m/%d/%y %H:%M:%S")
+
+## Add back dates
+x$finish[id] = dates
+
+
+## 4. Join the updated table to the original ML
+## 4.1. Import original ML:---
+wd = file.path(path, "Dropbox/01-Railway/02-NSCR-Ex/01-N2/03-During-Construction/02-Civil/02-Station Structure/01-Masterlist/01-Compiled")
+setwd(wd)
+
+c = file.choose()
+xx = read.xlsx(c)
+
+## Delete these two if any,
+id = which(str_detect(colnames(xx),"OBJECTID|start_date"))
+if (length(id) > 0) {
+  xx = xx[, -id]
+}
+
+## Make sure 'ObjectId' is numeric
+xx$ObjectId = as.numeric(xx$ObjectId)
+
+## Clean P6ID
+xx$P6ID = gsub("[[:space:]]","",xx$P6ID)
+xx$P6ID = toupper(xx$P6ID)
+
+## 4.2.Join
+yy = left_join(xx, x, by=c("P6ID"))
+
+## 4.3. end_date (target_date) = finish
+yy$end_date = yy$finish
+
+id=which(str_detect(colnames(yy),"finish"))
+yy = yy[, -id]
+
+## Export
+write.xlsx(yy,"N2_Station_Structure_P6ID.xlsx")
+
+

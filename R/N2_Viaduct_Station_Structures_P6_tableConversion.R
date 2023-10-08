@@ -1108,14 +1108,44 @@ cp03_VIA = cp03_VIA[,-id]
 
 ############################################################################
 # N-04:----
+## IMPORTANT
+## N-04 has changed pier numbers such that they do not match between P6 and current viaduct.
+## After checking pier numbers between the two for all the viaduct components,
+## use the summary instead of individual components
+
+## A. Bored Pile/Pile Cap/Pier/Pier Head
+## Use '[EXECUTION PILE CAP P...]' (this is summary notation)
+### PLK01-PLK24 (P6) -> P2143-P2154 (GIS)
+### P1168-P1143 (P6) => P1143-P1168 (GIS)
+### P1172-P1169 (P6) -> P1169-P1172 (GIS)
+### P1181-P1173 (P6) -> P1173-P1181 (GIS)
+### P1182-P1191A (P6) -> P1182-P1191A (GIS
+### P1192-LK25 (P6) -> P2192-P2206 (GIS)
+### P1192-P1206 (P6) -> P1192-P1206 (GIS)
+### P1192N-DEP01-ABUT (P6) -> P1192N-DEP01-ABUT (GIS)
+### P1192S-DEP02-ABUT (P6) -> P1192S-DEP02-ABUT (GIS)
+
+## B. Pre-cast
+### Use 'I-GIRDERS ERECTION..' (confirmed with N2 Civil Team) use also 'PLANK ERECTION..?'
+### PLK01-PLK24 (P6) -> P2143-P2154 (GIS)
+### P1169-P1143 (P6) -> P1169-P1143 (GIS)
+### P1170-P1171 (missing) -> P1170-P1171 (GIS)
+### P1182-P1172 (P6) -> P1172-P1182 (GIS)
+### P1192A-PLK25 (P6) -> P2192-P2206 (GIS)
+### P1192-P1206 (P6) -> P1192-P1206 (GIS)
+### P1192N-DEP01-ABUT (P6) -> P1192N-DEP01-ABUT (GIS)
+### P1192S-DEP02-ABUT (P6) -> P1192S-DEP02-ABUT (GIS)
+
+
 b = "C:/Users/eiji.LAPTOP-KSD9P6CP/Dropbox/01-Railway/02-NSCR-Ex/01-N2/03-During-Construction/02-Civil/03-Viaduct/01-Masterlist/02-Compiled"
 gis = read.xlsx(file.path(b,"Viaduct_MasterList.xlsx"))
 
-piles_word = ".*EXECUTION PILES PIER.*|PILES PIER.*"
-pileCap_word = ".*EXECUTION PILE CAP.*"
-pier_word = ".*EXECUTION PIER COLUMN.*"
-pierHead_word = ".*EXECUTION PAD AND BEARING*"
-precast_word = "CASTING DIAPHRAGM AND SLAB*"
+piles_word = "(\\[PILES PIER.*\\])"
+pileCap_word = "[EXECUTION PILE CAP.*]$"
+pier_word = "[EXECUTION PIER COLUMN.*]$"
+pierHead_word = "[EXECUTION PAD AND BEARING.*]"
+precast_word = "I-GIRDERS.*|PLANK ERECTION.*"
+## In N-04, 'I-Girder' refers to precast erection (span)
 
 ## 1. Bored Piles:----
 ## Filter 
@@ -1126,10 +1156,14 @@ y1 = y
 y1$PierNumber = toupper(y1$PierNumber)
 id=which(str_detect(y1$PierNumber,piles_word))
 y1 = y1[id,]
-y1[id,]
+
+
+test="[PILES PIER p1192]"
+str_detect(test, "(\\[PILES PIER.*\\])")
+
 ## Keep only pier numbers
 y1$PierNumber = gsub(".*EXECUTION PILES PIER|.*PILES PIER","",y1$PierNumber)
-
+head(y1)
 ### make sure that first letter starts with 'P' or 'MT'
 y1$PierNumber = str_trim(y1$PierNumber, side="both")
 y1$PierNumber = gsub("[[:space:]]","",y1$PierNumber)

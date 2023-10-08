@@ -13,6 +13,7 @@ manually add planned construction dates from P6 DB.
 
 ## A. Update target dates from P6 Database
 ## This R code update construction target dates from P6 database
+## file name: 'N2_Viaduct_Station_Structure_P6_tableConversion.R'
 1. Update the excel ML using R code (This must be done separately from python)
 
 
@@ -27,10 +28,12 @@ manually add planned construction dates from P6 DB.
 ## C. Update construction progress manually based on Civil Team's information
 1. Manually update in SDE
 
-## D. Export updated building layers to excel ML
+## D. Export updated building layers to excel ML (only when you manually edited building layers)
 ### note that we are manually updating constructin progress in SDE, so we need to replace old excel ML with the updated one
 1. Table to Excel for each building layer
 2. Compile all the excel sheets into a single sheet
+
+## E. Delete 'created_user', 'created"date', 'last_edited_user', and 'last_edited_date' from the exported excel ML
 
 """
 
@@ -119,6 +122,21 @@ class UpdateBuildingLayer(object):
                         transferFieldsRev.append(field)
             arcpy.management.JoinField(output_name, keepField, in_ml, keepField, transferFieldsRev)
             arcpy.AddMessage(in_ml + " was successfully joined to " + output_name)
+
+          #  ## 3.2. If Status = 1 and target_date < current_date, Status = 3 (delayed) [This will be done by R]
+          #  codeblock = """
+          #  import re
+          #  def reclass(id, target, status):
+          #      
+          #      try:
+          #          reg = re.search('\\d+',pier).group()
+          #          return reg
+          #      except AttributeError:
+          #          reg = re.search('\\d+',pier)
+          #          return reg
+          #  """
+            expression = "reclass(!{}!)".format("uniqueID", "target_date", "Status")
+            #arcpy.CalculateField_management(inputFeature, field_temp, expression, "PYTHON3", codeblock)
 
             # 4. Truncate the existing building layer
             arcpy.TruncateTable_management(layer)

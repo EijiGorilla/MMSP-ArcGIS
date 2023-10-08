@@ -15,6 +15,10 @@ This code partially solves this problem by partially automating manual operation
 
 Please make sure to read these descriptons before you run.
 
+Before you run:
+    MAKE SURE to merge all the component layers into one multipatch layer = replacing layer
+    Also try to delete empty rows
+
 First Batch
     0. Add uniqueID (sequential numbers) to new multipatch layer (i.e., replacing layer)
     1. Open the original attribute table
@@ -106,6 +110,7 @@ class CreateNewPartialViaduct(object):
 
         arcpy.management.AddField(in_replacing_fc, field_newID, "SHORT", "",
                                     field_alias = field_newID, field_is_nullable = "NULLABLE")
+        arcpy.AddMessage("Adding 'newID' to replacing layer was successful.")
 
         # delete 'temp' and 'Type' fields if present
         delFields = ['temp', 'Type']
@@ -127,9 +132,13 @@ class CreateNewPartialViaduct(object):
                     row[0] = rec
                 cursor.updateRow(row)
 
+        arcpy.AddMessage("Genrating sequential numbers in 'newID' field was successful.")
+
         # 3. Generate footprints from the selected multipatch layer
         replaced_layer = "replaced_multipatch"
         arcpy.ddd.MultiPatchFootprint(in_replaced_fc, replaced_layer)
+
+        arcpy.AddMessage("3. Genrating footprints from replaced layer was was successful.")
 
         # 4. MakeFeatureLayer for each of Bored Pile, Pile Cap, Pier, Pier Head, and Precast
         output1_replaced = "pile_replaced"
@@ -154,6 +163,7 @@ class CreateNewPartialViaduct(object):
         tempLayer5 = arcpy.SelectLayerByAttribute_management(replaced_layer, "NEW_SELECTION", "Type = 5")
         arcpy.management.CopyFeatures(tempLayer5, output5_replaced)
 
+        arcpy.AddMessage("4. Generating temporary layers was successful.")
 
         # 5. Repeat 1 to 3 using the new multipatch layer (i.e., replacing layer)
         ## Add 'Type' field
@@ -175,6 +185,8 @@ class CreateNewPartialViaduct(object):
                     reg = re.search(r"COLUMN|column|Column|PILECAP\b|Pilecap\b|pilecap\b|PILE\b|pile\b|Pile\b|PIER_Head|PIER_HEAD|Pier_Head|pier_head|PRECAST|precast", row[0])
                     row[1] = reg
                     cursor.updateRow(row)
+
+        arcpy.AddMessage("5. updating 'temp' field was successful.")
                 
         ## Now add 'Type' field
         with arcpy.da.UpdateCursor(in_replacing_fc, [fieldTemp, fieldType]) as cursor:
@@ -417,15 +429,43 @@ class TruncateAppendPortal(object):
         target_fc = params[2].valueAsText
 
         # To allow overwriting the outputs change the overwrite option to true.
+        ## Note that target feature must have PRS92.
         arcpy.env.overwriteOutput = True
-        arcpy.env.outputCoordinateSystem = arcpy.SpatialReference("PRS 1992 Philippines Zone III")
-        arcpy.env.geographicTransformations = "PRS_1992_To_WGS_1984_1"
+        
+        #arcpy.env.geographicTransformations = "PRS_1992_To_WGS_1984_1"
 
 
         copied = "copied_layer"
+
+        input_sf = arcpy.Describe(in_fc).spatialReference.Name
+        target_sf = arcpy.Describe(target_fc).spatialReference.Name
+
+        try:
+            target_sf_temp = re.search(r'WGS_1984|PRS_1992',target_sf).group()
+        except AttributeError:
+            target_sf_temp = re.search(r'WGS_1984|PRS_1992',target_sf)
+
         copyL = arcpy.CopyFeatures_management(in_fc, copied)
-        arcpy.TruncateTable_management(target_fc)
-        arcpy.Append_management(copyL, target_fc, schema_type = 'NO_TEST')
+
+        if (input_sf == target_sf) and target_sf_temp == 'PRS_1992':
+            arcpy.TruncateTable_management(target_fc)
+            arcpy.Append_management(copyL, target_fc, schema_type = 'NO_TEST')
+
+        elif (input_sf is not target_sf) and target_sf_temp == 'PRS_1992': # when input feature is WGS84
+            arcpy.env.outputCoordinateSystem = arcpy.SpatialReference("PRS 1992 Philippines Zone III")
+            arcpy.env.geographicTransformations = "PRS_1992_To_WGS_1984_1"
+            arcpy.TruncateTable_management(target_fc)
+            arcpy.Append_management(copyL, target_fc, schema_type = 'NO_TEST')
+
+        elif (input_sf == target_sf) and target_sf_temp == 'WGS_1984': # when both features are WGS_1984
+            arcpy.TruncateTable_management(target_fc)
+            arcpy.Append_management(copyL, target_fc, schema_type = 'NO_TEST')
+
+        elif (input_sf is not target_sf) and target_sf_temp == 'WGS_1984': # when input feature is PRS92
+            arcpy.env.outputCoordinateSystem = arcpy.SpatialReference("WGS_1984_Web_Mercator_Auxiliary_Sphere")
+            arcpy.env.geographicTransformations = "PRS_1992_To_WGS_1984_1"
+            arcpy.TruncateTable_management(target_fc)
+            arcpy.Append_management(copyL, target_fc, schema_type = 'NO_TEST')
 
         # Delete
         arcpy.Delete_management(copyL)

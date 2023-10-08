@@ -124,7 +124,7 @@ write.xlsx(x,MLTable)
 
 #******************************************************************#
 ## Enter Date of Update ##
-date_update = "2023-09-20"
+date_update = "2023-10-04"
 
 #******************************************************************#
 
@@ -141,7 +141,6 @@ MLTable = file.choose()
 
 # Read the masterlist:----
 y = read.xlsx(MLTable)
-
 
 ############# BACKUP #################
 ## Skip if necessary
@@ -2286,6 +2285,7 @@ x$Type = 2
 
 
 # 8. Join 
+head(y)
 y = read.xlsx(MLTable)
 yx = left_join(y,x,by=c("nPierNumber","Type"))
 
@@ -2671,9 +2671,11 @@ today = Sys.Date()
 id = which(yx$planned_date < today & yx$Status1 != 4)
 
 yx$Status1[id] = 3 # delayed status
+
+yx$end_date = as.Date(yx$end_date, origin = "1899-12-30")
+yx$end_date = as.Date(yx$end_date, format="%m/%d/%y %H:%M:%S")
+
 write.xlsx(yx, MLTable)
-
-
 ################################################################
 ###
 # summary table to check
@@ -2697,7 +2699,4 @@ y = read.xlsx(a)
 y1 = y[which(y$Status1 == 4),]
 agg_df <- aggregate(y1$Status1, by=list(y1$CP, y1$Type, y1$Status1), FUN=length)
 agg_df
-
-
-
 

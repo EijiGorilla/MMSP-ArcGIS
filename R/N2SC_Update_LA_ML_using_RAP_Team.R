@@ -24,8 +24,8 @@ library(lubridate)
 library(qpcR)
 
 
-previous_date = "2023-08-17"
-new_date = "2023-09-25"
+previous_date = "2023-10-04"
+new_date = "2023-10-05"
 
 
 # 1. Make sure that all the excel files are downloaded from the RAP Team's OneDrive in the following working directory;----
@@ -131,7 +131,6 @@ sc_lot_rap$Priority = as.numeric(sc_lot_rap$Priority1)
 sc_lot_rap$StatusLA = as.numeric(sc_lot_rap$StatusLA)
 sc_lot_rap$MoA = as.numeric(sc_lot_rap$MoA)
 sc_lot_rap$PTE = as.numeric(sc_lot_rap$PTE)
-sc_lot_rap$PTE = as.numeric(sc_lot_rap$Reqs)
 
 sc_lot_rap$HandOverDate = as.numeric(sc_lot_rap$HandOverDate)
 sc_lot_rap$HandOverDate = as.Date(sc_lot_rap$HandOverDate, origin = "1899-12-30")
@@ -684,12 +683,17 @@ if (length(id) > 0) {
 # 4. Percentage handed over area
 sc_lot_rap$percentHandedOver = round(sc_lot_rap$HandedOverArea/sc_lot_rap$AffectedArea*100,0)
 
+## 4.1. NaN and NA in percentHandedOver = 0
+id=which(is.na(sc_lot_rap$percentHandedOver))
+sc_lot_rap$percentHandedOver[id] = 0
+
 # 5. StatusLA = 0 & !is.na(HandOverDate), then HandedOverDate = HandOverDate
 id = which(sc_lot_rap$StatusLA == 0 & !is.na(sc_lot_rap$HandOverDate))
 if(length(id)>0){
   sc_lot_rap$HandedOverDate[id] = sc_lot_rap$HandOverDate[id]
   sc_lot_rap$HandOverDate[id] = NA
 }
+
 
 #####################################################################:----
 ######### Perform QA/QC of master list to check errors ##############:----

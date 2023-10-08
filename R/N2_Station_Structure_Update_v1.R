@@ -73,7 +73,7 @@
 # DEFINE PARAMETERS
 #******************************************************************#
 ## Enter Date of Update ##
-date_update = "2023-09-20"
+date_update = "2023-09-27"
 
 
 strucType = c("Substructure", "Superstructure")
@@ -140,7 +140,7 @@ setwd(wd)
 # Read our master list table
 # C:\Users\oc3512\Dropbox\01-Railway\02-NSCR-Ex\01-N2\03-During-Construction\02-Civil\03-Viaduct\01-Masterlist\02-Compiled\N2_Viaduct_MasterList.xlsx"
 
-MLTable = file.path(wd,"N2_station_structure.xlsx")
+MLTable = file.path(wd,"N2_station_structure_P6ID.xlsx")
   
 #MLTable = file.choose(a_ML)
 # Read the masterlist:----
@@ -151,6 +151,10 @@ y = read.xlsx(MLTable)
 head(y)
 y$updated = as.Date(y$updated, origin = "1899-12-30")
 y$updated = as.Date(y$updated, format="%m/%d/%y %H:%M:%S")
+y$end_date = as.Date(y$end_date, origin = "1899-12-30")
+y$end_date = as.Date(y$end_date, format="%m/%d/%y %H:%M:%S")
+y$target_date = as.Date(y$target_date, origin = "1899-12-30")
+y$target_date = as.Date(y$target_date, format="%m/%d/%y %H:%M:%S")
 oldDate = gsub("-","",unique(y$updated))
 
 fileName = paste(oldDate,"_",basename(MLTable),sep="")
@@ -277,13 +281,13 @@ check_function()
 gg = which(yx$Status.y>1)
 yx$Status.x[gg] = yx$Status.y[gg]
 
-delField = which(colnames(yx)=="Status.y" | colnames(yx)=="Remarks" | colnames(yx)=="CP.y")
+delField = which(str_detect(colnames(yx),"Status.y|Remarks|CP.y|end_date.y"))
 yx = yx[,-delField]
 
 # Rename Status.x to Status
 colnames(yx)[which(str_detect(colnames(yx),"CP"))] = "CP"
-colnames(yx)[which(str_detect(colnames(yx),"Status"))] = "Status"
-
+colnames(yx)[which(str_detect(colnames(yx),"Status.x$"))] = "Status"
+colnames(yx)[which(str_detect(colnames(yx),"end_date"))] = "end_date"
 
 # Date
 library(lubridate)
@@ -294,22 +298,13 @@ yx$updated = ymd(date_update)
 yx$updated = as.Date(yx$updated, origin = "1899-12-30")
 yx$updated = as.Date(yx$updated, format="%m/%d/%y %H:%M:%S")
 
-
-# Recover data in excel format
-yx$StartDate = as.Date(yx$StartDate, origin = "1899-12-30")
-yx$StartDate = as.Date(yx$StartDate, format="%m/%d/%y %H:%M:%S")
-
-yx$TargetDate = as.Date(yx$TargetDate, origin = "1899-12-30")
-yx$TargetDate = as.Date(yx$TargetDate, format="%m/%d/%y %H:%M:%S")
-
-
-# For now, remove end_date from this table
-id = which(str_detect(colnames(yx),"end_date"))
-yx = yx[,-id]
+yx$end_date = as.Date(yx$end_date, origin = "1899-12-30")
+yx$end_date = as.Date(yx$end_date, format="%m/%d/%y %H:%M:%S")
+yx$target_date = as.Date(yx$target_date, origin = "1899-12-30")
+yx$target_date = as.Date(yx$target_date, format="%m/%d/%y %H:%M:%S")
 
 # 
 write.xlsx(yx, MLTable)
-
 
 ###############################################################
 #######################:---- N-02 #################################:----
@@ -346,15 +341,15 @@ for(i in seq(coln)) {
   }
 }
 
-colnames(x)[1:2] = c("ID", "TargetDate")
+colnames(x)[1:2] = c("ID", "end_date")
 
 ## Find pier numbers starting with only "P" and "MT"
 keep_row = which(str_detect(x$ID, "^SF|^SFP"))
 x = x[keep_row,]
 
 # TargetDate = end_date (casted date)
-x$TargetDate = as.numeric(x$TargetDate)
-id=which(!is.na(x$TargetDate))
+x$end_date = as.numeric(x$end_date)
+id=which(!is.na(x$end_date))
 if(length(id)>0){
   x = x[id,]
 }
@@ -407,29 +402,28 @@ x.pile[!x.pile %in% yx.pile]
 gg = which(yx$Status.y>0)
 
 yx$Status.x[gg] = yx$Status.y[gg]
-yx$TargetDate.x[gg] = yx$TargetDate.y[gg]
 
-delField = which(colnames(yx)=="Status.y" | colnames(yx)=="CP.y" | colnames(yx)=="TargetDate.y")
+delField = which(str_detect(colnames(yx),"Status.y|Remarks|CP.y|end_date.y"))
 yx = yx[,-delField]
 
-# Change Status name
-colnames(yx)[str_detect(colnames(yx),pattern="Status")] = "Status"
-colnames(yx)[str_detect(colnames(yx),pattern="CP")] = "CP"
-colnames(yx)[str_detect(colnames(yx),pattern="TargetDate")] = "TargetDate"
+# Rename Status.x to Status
+colnames(yx)[which(str_detect(colnames(yx),"CP"))] = "CP"
+colnames(yx)[which(str_detect(colnames(yx),"Status.x$"))] = "Status"
+colnames(yx)[which(str_detect(colnames(yx),"end_date"))] = "end_date"
+
+# Date
+library(lubridate)
 
 
-# Add date of updating table
-## Delete old ones
-iid = which(colnames(yx) %in% colnames(yx)[str_detect(colnames(yx),"updated|Updated|UPDATED")])
-yx = yx[,-iid]
-
-unique(yx$TargetDate)
-str(yx)
-yx$TargetDate = as.POSIXlt(yx$TargetDate, origin="1970-01-01",tZ="UTC")
-yx$TargetDate = as.Date(yx$TargetDate, origin = "1899-12-30")
-yx$TargetDate = as.Date(yx$TargetDate, format="%m/%d/%y %H:%M:%S")
-
+## Overwrite master list with new date
 yx$updated = ymd(date_update)
+yx$updated = as.Date(yx$updated, origin = "1899-12-30")
+yx$updated = as.Date(yx$updated, format="%m/%d/%y %H:%M:%S")
+
+yx$end_date = as.Date(yx$end_date, origin = "1899-12-30")
+yx$end_date = as.Date(yx$end_date, format="%m/%d/%y %H:%M:%S")
+yx$target_date = as.Date(yx$target_date, origin = "1899-12-30")
+yx$target_date = as.Date(yx$target_date, format="%m/%d/%y %H:%M:%S")
 
 # Make sure to have no empty Status
 yx[is.na(yx$Status),]
@@ -515,83 +509,38 @@ x.pile[!x.pile %in% yx.pile]
 gg = which(yx$Status.y>0)
 
 yx$Status.x[gg] = yx$Status.y[gg]
-delField = which(colnames(yx)=="Status.y" | colnames(yx)=="CP.y")
+delField = which(str_detect(colnames(yx),"Status.y|Remarks|CP.y|end_date.y"))
 yx = yx[,-delField]
 
-# Change Status name
-colnames(yx)[str_detect(colnames(yx),pattern="Status")] = "Status"
-colnames(yx)[str_detect(colnames(yx),pattern="CP")] = "CP"
+# Rename Status.x to Status
+colnames(yx)[which(str_detect(colnames(yx),"CP"))] = "CP"
+colnames(yx)[which(str_detect(colnames(yx),"Status.x$"))] = "Status"
+colnames(yx)[which(str_detect(colnames(yx),"end_date"))] = "end_date"
+
+# Date
+library(lubridate)
 
 
-# Add date of updating table
-## Delete old ones
-iid = which(colnames(yx) %in% colnames(yx)[str_detect(colnames(yx),"updated|Updated|UPDATED")])
-yx = yx[,-iid]
-
-## Add new dates
+## Overwrite master list with new date
 yx$updated = ymd(date_update)
-
-str(yx)
 yx$updated = as.Date(yx$updated, origin = "1899-12-30")
 yx$updated = as.Date(yx$updated, format="%m/%d/%y %H:%M:%S")
 
-yx$StartDate = as.Date(yx$StartDate, origin = "1899-12-30")
-yx$StartDate = as.Date(yx$StartDate, format="%m/%d/%y %H:%M:%S")
-
-yx$TargetDate = as.Date(yx$TargetDate, origin = "1899-12-30")
-yx$TargetDate = as.Date(yx$TargetDate, format="%m/%d/%y %H:%M:%S")
-
-head(yx)
+yx$end_date = as.Date(yx$end_date, origin = "1899-12-30")
+yx$end_date = as.Date(yx$end_date, format="%m/%d/%y %H:%M:%S")
+yx$target_date = as.Date(yx$target_date, origin = "1899-12-30")
+yx$target_date = as.Date(yx$target_date, format="%m/%d/%y %H:%M:%S")
 
 # 
 write.xlsx(yx, MLTable)
 
-###############################
+########################################
+##### Update Status for Delay ###:------
+########################################
+# If planned_date < current date & Status is NOT complete, Status1 = 3 (delayed)
+today = Sys.Date()
+id = which(y$target_date < today & y$Status != 4)
 
-#############################
-z = choose.dir()
-setwd(z)
+y$Status[id] = 3 # delayed status
+write.xlsx(y, MLTable)
 
-
-aa = file.choose()
-y = read.xlsx(aa)
-
-
-bb = file.choose()
-x = read.xlsx(bb)
-
-head(x)
-head(y)
-
-head(y)
-id = which(colnames(y)=="ID" | colnames(y)=="Status")
-
-y1 = y[,id]
-na_id = which(is.na(y1$ID))
-y1 = y1[-na_id,]
-
-xy1 = left_join(x,y1,by="ID")
-
-gg = which(!is.na(xy1$ID))
-
-xy1$Status.x[gg] = xy1$Status.y[gg]
-
-xy1 = xy1[,-ncol(xy1)]
-head(xy1)
-colnames(xy1)[which(colnames(xy1)=="Status.x")] = "Status"
-
-xy1$updated = "2022-01-07"
-
-
-xy1$updated = as.Date(xy1$updated, origin = "1899-12-30")
-xy1$updated = as.Date(xy1$updated, format="%m/%d/%y %H:%M:%S")
-
-# Recover data in excel format
-xy1$StartDate = as.Date(xy1$StartDate, origin = "1899-12-30")
-xy1$StartDate = as.Date(xy1$StartDate, format="%m/%d/%y %H:%M:%S")
-
-xy1$TargetDate = as.Date(xy1$TargetDate, origin = "1899-12-30")
-xy1$TargetDate = as.Date(xy1$TargetDate, format="%m/%d/%y %H:%M:%S")
-
-
-write.xlsx(xy1,"N2_Station_Structure_masterList_new.xlsx")

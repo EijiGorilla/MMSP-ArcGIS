@@ -1,10 +1,11 @@
 import arcpy
+from datetime import date, datetime
 
 class Toolbox(object):
     def __init__(self):
         self.label = "IdentifyTBMLocation"
         self.alias = "IdentifyTBMLocation"
-        self.tools = [UpdateUsingMasterList, IdentifyTBM]
+        self.tools = [UpdateUsingMasterList, IdentifyTBM, DelayedSegment]
 
 class UpdateUsingMasterList(object):
     def __init__(self):
@@ -453,4 +454,40 @@ class IdentifyTBM(object):
                         row[3] = 2
                     else:
                         continue
+                cursor.updateRow(row)
+
+class DelayedSegment(object):
+    def __init__(self):
+        self.label = "3.Identify Delayed Segment in TBM tunnel"
+        self.description = "Identify the location of TBM segment being delayed"
+    
+    def getParameterInfo(self):
+        # Input Feature Layer
+        in_layer = arcpy.Parameter(
+            displayName = "Input Feature layer",
+            name = "Input Feature layer",
+            datatype = "GPFeatureLayer",
+            parameterType = "Required",
+            direction = "Input"
+        )
+
+        params = [in_layer]
+        return params
+
+    def updateMessages(self, params):
+        return
+
+    def execute(self, params, messages):
+        inFeature = params[0].valueAsText
+        arcpy.env.overwriteOutput = True
+
+        today = date.today()
+
+        with arcpy.da.UpdateCursor(inFeature, ["TargetDate", "delayed", "status"]) as cursor:
+            for row in cursor:
+                d2 = row[0].date()
+                if d2 < today and row[2] < 3: # 3 = completed [when status is not completed]
+                    row[1] = 1
+                else:
+                    row[1] = None
                 cursor.updateRow(row)

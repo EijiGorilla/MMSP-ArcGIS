@@ -124,7 +124,7 @@ write.xlsx(x,MLTable)
 
 #******************************************************************#
 ## Enter Date of Update ##
-date_update = "2023-10-04"
+date_update = "2023-10-25"
 
 #******************************************************************#
 
@@ -237,9 +237,10 @@ x$end_date = as.Date(x$end_date, format="%m/%d/%y %H:%M:%S")
 rid = which(is.na(x$nPierNumber))
 x = x[-rid,]
 
-## 3.2. Remove bored piles for station structure
-pile_id = which(str_detect(x$nPierNumber,"^P-|^P.*"))
+## 3.2. Keep bored piles for only viaduct
+pile_id = which(str_detect(x$nPierNumber,"^P-|^P.*|^MT.*"))
 x = x[pile_id,]
+
 
 ## 3.3.
 ###  Some piles failed for test and newly added to the list.
@@ -248,6 +249,7 @@ x$nPierNumber = gsub("-","",x$nPierNumber)
 
 id = which(str_detect(x$nPierNumber, "Add|add|ADD|replacement|Replacement|REPLACEMENT"))
 addPier = str_extract(x$nPierNumber[id],"P\\d+\\w+?") # any word before work break (space)
+
 
 ## Find exact match and casted
 collapsedPier = paste0("^",addPier, "$", collapse = "|")
@@ -260,7 +262,10 @@ if(length(id1) > 0){
 }
 
 ## Remove redundant (failed piers)
-x = x[-id,]
+if (length(id) > 0) {
+  x = x[-id,]
+}
+
 
 ## 3.3. Remove hyphen from npierNumber
 x$nPierNumber = gsub("-","",x$nPierNumber)
@@ -2055,7 +2060,7 @@ write.xlsx(yx, MLTable)
 ####################### N-04 #################################:----
 ##############################################################
 #boredPile = 4
-pCap_pCol_pHead = 5
+pCap_pCol_pHead = 6
 
 #url = "https://docs.google.com/spreadsheets/d/1OWdmM36PWL5MgH0lK9HpigaoVq4L7Q6hm7DSN2FxiAA/edit#gid=0"
 url = "https://docs.google.com/spreadsheets/d/1uVTh_m8Owr4dYypHSSc0nRnGzYCdtceiASCj_oPd6jo/edit?usp=sharing"

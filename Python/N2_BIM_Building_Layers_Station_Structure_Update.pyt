@@ -172,7 +172,15 @@ class ExportToExcel(object):
             multiValue = True
         )
 
-        params = [ws, in_replaced_fc]
+        in_fl = arcpy.Parameter(
+            displayName = "Directory that stores exported excel file",
+            name = "Export Directory",
+            datatype = "DEFolder",
+            parameterType = "Required",
+            direction = "Input"
+        )
+
+        params = [ws, in_replaced_fc, in_fl]
         return params
 
     def updateMessage(self, params):
@@ -181,6 +189,7 @@ class ExportToExcel(object):
     def execute(self, params, messages):
         workspace = params[0].valueAsText
         in_replaced_fc = params[1].valueAsText
+        in_fl = params[2].valueAsText
 
         arcpy.env.overwriteOutput = True
 
@@ -196,9 +205,9 @@ class ExportToExcel(object):
         arcpy.Sort_management(mergedLayer, sortedLayer, [["uniqueID", "ASCENDING"]])
 
         # 3. Export to excel
-        home = Path.home()
-        path = os.path.join(home, "Dropbox/01-Railway/02-NSCR-Ex/01-N2/03-During-Construction/02-Civil/02-Station Structure/01-Masterlist/01-Compiled")
-        arcpy.conversion.TableToExcel(sortedLayer, os.path.join(path, "N2_Station_Structure_P6ID_SDE.xlsx"))
+        #home = Path.home()
+        #path = os.path.join(home, "Dropbox/01-Railway/02-NSCR-Ex/01-N2/03-During-Construction/02-Civil/02-Station Structure/01-Masterlist/01-Compiled")
+        arcpy.conversion.TableToExcel(sortedLayer, os.path.join(in_fl, "N2_Station_Structure_P6ID_SDE.xlsx"))
 
         # 6. Delete copied files
         deletedLayers = [mergedLayer, sortedLayer]

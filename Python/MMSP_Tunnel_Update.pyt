@@ -485,9 +485,12 @@ class DelayedSegment(object):
 
         with arcpy.da.UpdateCursor(inFeature, ["TargetDate", "delayed", "status"]) as cursor:
             for row in cursor:
-                d2 = row[0].date()
-                if d2 < today and row[2] < 3: # 3 = completed [when status is not completed]
-                    row[1] = 1
+                if row[0] is None:
+                    continue
                 else:
-                    row[1] = None
+                    d2 = row[0].date()
+                    if d2 < today and row[2] < 3: # 3 = completed [when status is not completed]
+                        row[1] = 1
+                    else:
+                        row[1] = None
                 cursor.updateRow(row)

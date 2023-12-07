@@ -302,7 +302,7 @@ class UpdateFGDB(object):
 
         ## 2-2.3. XY Table to Points (FL)
         out_feature_class = "Status_for_Relocation_ISF_temp"
-        sr = arcpy.SpatialReference(32651)
+        sr = arcpy.SpatialReference(3123)
         outLayerISF = arcpy.management.XYTableToPoint(MasterListISF, out_feature_class, xCoords, yCoords, zCoords, sr)
 
 

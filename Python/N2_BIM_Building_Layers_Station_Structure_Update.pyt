@@ -11,6 +11,8 @@ The intention is to use the planned construction dates in P6 DB for the construc
 Note that we cannot use BIM revit models directly to update existing building layers, as we need to
 manually add planned construction dates from P6 DB.
 
+## Note that you do not need to export building layers to excel if excel ML keeps up-to-date information.
+
 ## A. Update target dates from P6 Database
 ## This R code update construction target dates from P6 database
 ## file name: 'N2_Viaduct_Station_Structure_P6_tableConversion.R'
@@ -41,7 +43,7 @@ class Toolbox(object):
     def __init__(self):
         self.label = "UpdateN2StationStructures"
         self.alias = "pdateN2StationStructures"
-        self.tools = [JustMessage, UpdateBuildingLayer, ExportToExcel]
+        self.tools = [JustMessage, UpdateBuildingLayer, JustMessage2, ExportToExcel]
 
 class JustMessage(object):
     def __init__(self):
@@ -149,9 +151,14 @@ class UpdateBuildingLayer(object):
             # 6. Delete copied files
             arcpy.management.Delete(output_name)
 
+class JustMessage2(object):
+    def __init__(self):
+        self.label = "3. (JUST MESSAGE): Update SDE manually, if necessary"
+        self.description = "Manually update SDE only when necessary."
+
 class ExportToExcel(object):
     def __init__(self):
-        self.label = "3. Export Building Layers in SDE to Excel"
+        self.label = "4. Export Building Layers in SDE to Excel, if necessary"
         self.description = "Export each building layer to excel and compile into one sheet"
 
     def getParameterInfo(self):

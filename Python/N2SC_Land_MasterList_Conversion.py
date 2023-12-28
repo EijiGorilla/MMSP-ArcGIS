@@ -5,10 +5,12 @@ from datetime import datetime
 import re
 import string
 
+from openpyxl import load_workbook
+
 home=Path.home()
 
 # Choose Project
-Project = 'SC'
+Project = 'N2'
 
 ## Directory and files
 n2_gis_dir = "Dropbox/01-Railway/02-NSCR-Ex/01-N2/02-Pre-Construction/01-Environment/01-LAR/99-MasterList/03-Compiled"
@@ -20,7 +22,7 @@ if Project == 'N2':
 else:
     lot_gis_dir=os.path.join(home,sc_gis_dir)
 
-last_update = '20231229'
+last_update = '20231228'
 
 def N2SC_Land_Update(lot_gis_dir, lot_rap_dir, Project ,last_update):
     # Definitions
@@ -61,7 +63,7 @@ def N2SC_Land_Update(lot_gis_dir, lot_rap_dir, Project ,last_update):
     lot_rap_files = os.listdir(lot_rap_dir)
 
     # Read as xlsx
-    queryExpGis = '^' + Project + '_Land.*xlsx$'
+    queryExpGis = '^' + Project + '_Land.*_Status.xlsx$'
     queryExpRap = '^' + Project + '_Parce.*xlsx$'
     queryExpRapSC1 = '^' + Project + '1_.*Parcellary.*.xlsx'
 
@@ -140,8 +142,8 @@ def N2SC_Land_Update(lot_gis_dir, lot_rap_dir, Project ,last_update):
     # Convert to numeric
     to_numeric_fields = ["TotalArea","AffectedArea","RemainingArea","HandedOverArea","HandedOver","Priority","StatusLA","MoA","PTE", 'Endorsed']
     cols = lot_rap_table.columns
-    non_match_col = non_match_elements(to_numeric_fields, cols)[0]
-    to_numeric_fields.remove(non_match_col)
+    non_match_col = non_match_elements(to_numeric_fields, cols)
+    [to_numeric_fields.remove(non_match_col[0]) if non_match_col else print('no need to remove field from the list for numeric conversion')]
 
     for field in to_numeric_fields:
        lot_rap_table[field] = lot_rap_table[field].replace(r'\s+|[^\w\s]', '', regex=True)
@@ -150,8 +152,8 @@ def N2SC_Land_Update(lot_gis_dir, lot_rap_dir, Project ,last_update):
     # Conver to date
     to_date_fields = ['HandOverDate','HandedOverDate']
     for field in to_date_fields:
-        lot_rap_table[field] = pd.to_datetime(lot_rap_table[field],errors='coerce')
-        lot_rap_table[field] = lot_rap_table[field].dt.strftime('%Y-%m-%d')
+        lot_rap_table[field] = pd.to_datetime(lot_rap_table[field],errors='coerce').dt.date
+        #lot_rap_table[field] = lot_rap_table[field].dt.strftime('%Y-%m-%d')
     
     ## Convert to uppercase letters for LandUse
     match_col = match_elements(cols, 'LandUse')
@@ -185,7 +187,6 @@ def N2SC_Land_Update(lot_gis_dir, lot_rap_dir, Project ,last_update):
     lot_rap_table['percentHandedOver'] = round((lot_rap_table['HandedOverArea'] / lot_rap_table['AffectedArea'])*100,0)
 
     # Export
-    #lot_rap_table.to_excel(os.path.join('test_',n2_lot_gis_file, query[0]), index=False)
-    lot_rap_table.to_excel(os.path.join(lot_gis_dir, 'TEST_' + queryGis), index=False)
+    lot_rap_table.to_excel(os.path.join(lot_gis_dir, 'test_'+queryGis), index=False, header=False, startrow=1,startcol=2)
     
 N2SC_Land_Update(lot_gis_dir, lot_rap_dir, Project ,last_update)

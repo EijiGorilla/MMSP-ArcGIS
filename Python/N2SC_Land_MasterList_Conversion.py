@@ -4,8 +4,8 @@ from pathlib import Path
 from datetime import datetime
 import re
 import string
-
-from openpyxl import load_workbook
+import xlsxwriter
+import openpyxl
 
 home=Path.home()
 
@@ -13,6 +13,7 @@ home=Path.home()
 Project = 'N2'
 
 ## Directory and files
+gdb_dir = "C:\\Users\\oc3512\\OneDrive - Oriental Consultants Global JV\\Documents\\ArcGIS\\Projects\\Pre-Construction_nscrexn2\\Pre-Construction_nscrexn2.gdb"
 n2_gis_dir = "Dropbox/01-Railway/02-NSCR-Ex/01-N2/02-Pre-Construction/01-Environment/01-LAR/99-MasterList/03-Compiled"
 sc_gis_dir = "Dropbox/01-Railway/02-NSCR-Ex/02-SC/02-Pre-Construction/01-Environment/01-LAR/99-MasterList/03-Compiled"
 lot_rap_dir=os.path.join(home,"Dropbox/01-Railway/02-NSCR-Ex/99-MasterList_RAP_Team")
@@ -24,7 +25,7 @@ else:
 
 last_update = '20231228'
 
-def N2SC_Land_Update(lot_gis_dir, lot_rap_dir, Project ,last_update):
+def N2SC_Land_Update(gdb_dir, lot_gis_dir, lot_rap_dir, Project ,last_update):
     # Definitions
     ## 1. Remove leading and trailing space for object columns
     def whitespace_removal(dataframe):
@@ -57,6 +58,15 @@ def N2SC_Land_Update(lot_gis_dir, lot_rap_dir, Project ,last_update):
             if i in list_b:
                 matched.append(i)
         return matched
+    
+    def toString(table, to_string_fields): # list of fields to be converted to string
+        for field in to_string_fields:
+            ## Need to convert string first, then apply space removal, and then convert to string again
+            ## If you do not apply string conversion twice, it will fail to join with the GIS attribute table
+            table[field] = table[field].astype(str)
+            table[field] = table[field].replace(r'\s+|[^\w\s]', '', regex=True)
+            table[field] = table[field].astype(str)
+
             
     # List files
     lot_gis_files = os.listdir(lot_gis_dir)
@@ -98,10 +108,10 @@ def N2SC_Land_Update(lot_gis_dir, lot_rap_dir, Project ,last_update):
         lot_rap_table_sc1[to_numeric_fields] = lot_rap_table_sc1[to_numeric_fields].replace(r'\s+|[^\w\s]', '', regex=True)
         lot_rap_table_sc1[to_numeric_fields] = pd.to_numeric(lot_rap_table_sc1[to_numeric_fields])
         
-        # Remove space
-        remove_space_fields = ["LotID"]
-        for field in remove_space_fields:
-            lot_rap_table_sc1[field] = lot_rap_table_sc1[field].replace(r'\s+|[^\w\s]', '', regex=True)
+        # Conver to string
+        to_string_fields = ['LotID']
+        toString(lot_rap_table_sc1, to_string_fields)
+
             
         # Create Priority1_1 for web mapping purpose only
         ## Unique priority values
@@ -134,11 +144,6 @@ def N2SC_Land_Update(lot_gis_dir, lot_rap_dir, Project ,last_update):
     # Rename column names
     lot_rap_table = lot_rap_table.rename(columns={'City/Municipality': 'Municipality'})
 
-    # Remove all white space from ID
-    remove_space_fields = ["LotID"]
-    for field in remove_space_fields:
-        lot_rap_table[field] = lot_rap_table[field].replace(r'\s+|[^\w\s]', '', regex=True)
-
     # Convert to numeric
     to_numeric_fields = ["TotalArea","AffectedArea","RemainingArea","HandedOverArea","HandedOver","Priority","StatusLA","MoA","PTE", 'Endorsed']
     cols = lot_rap_table.columns
@@ -148,13 +153,16 @@ def N2SC_Land_Update(lot_gis_dir, lot_rap_dir, Project ,last_update):
     for field in to_numeric_fields:
        lot_rap_table[field] = lot_rap_table[field].replace(r'\s+|[^\w\s]', '', regex=True)
        lot_rap_table[field] = pd.to_numeric(lot_rap_table[field])
-
-    # Conver to date
+        
+    # Conver to string
+    to_string_fields = ["LotID"]
+    toString(lot_rap_table, to_string_fields)
+        
+    # Conver to date   
     to_date_fields = ['HandOverDate','HandedOverDate']
     for field in to_date_fields:
         lot_rap_table[field] = pd.to_datetime(lot_rap_table[field],errors='coerce').dt.date
-        #lot_rap_table[field] = lot_rap_table[field].dt.strftime('%Y-%m-%d')
-    
+ 
     ## Convert to uppercase letters for LandUse
     match_col = match_elements(cols, 'LandUse')
     if len(match_col) > 0:
@@ -178,15 +186,25 @@ def N2SC_Land_Update(lot_gis_dir, lot_rap_dir, Project ,last_update):
     ## 3. HandedOver = 0 & !is.na(HandedOverDate) -> HandedOverDate = empty
     id = lot_rap_table.index[(lot_rap_table['HandedOver'] == 0) & (lot_rap_table['HandedOverDate'].notna())]
     lot_rap_table.loc[id, 'HandedOverDate'] = None
+    
+    ## 4. if the first row is empty, temporarily add the first row for 'HandedOverDate' and 'HandOverDate'
+    for field in to_date_fields:
+        date_item = lot_rap_table[field].iloc[:1].item()
+        if date_item is None:
+            lot_rap_table.loc[0, field] = pd.to_datetime('1990-01-01')
 
-    ## 4. is.na(HandedOverArea) -> HandedOverArea = 0
+    ## 5. is.na(HandedOverArea) -> HandedOverArea = 0
     id = lot_rap_table.index[lot_rap_table['HandedOverArea'] == None]
     lot_rap_table.loc[id, 'HandedOverDate'] = 0
 
     # Calculate percent handed-over
     lot_rap_table['percentHandedOver'] = round((lot_rap_table['HandedOverArea'] / lot_rap_table['AffectedArea'])*100,0)
-
+  
     # Export
-    lot_rap_table.to_excel(os.path.join(lot_gis_dir, 'test_'+queryGis), index=False, header=False, startrow=1,startcol=2)
+    to_excel_file = os.path.join(lot_gis_dir, 'test_'+ queryGis)
+    lot_rap_table.to_excel(to_excel_file, index=False)
     
-N2SC_Land_Update(lot_gis_dir, lot_rap_dir, Project ,last_update)
+    # Export to geodatabase table
+    arcpy.conversion.ExportTable(os.path.join(to_excel_file,"Sheet1$"), os.path.join(gdb_dir, Project + "_Land_Status_TEST"))
+    
+N2SC_Land_Update(lot_gis_dir, lot_rap_dir, Project ,last_update, gdb_dir)

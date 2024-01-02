@@ -217,7 +217,8 @@ class UpdateMasterList(object):
                     arcpy.AddMessage('You did not select {0} master list for updating contractors submission status.'.format('SC1_Land_Status '))
 
             # Rename column names
-            lot_rap_table = lot_rap_table.rename(columns={'City/Municipality': 'Municipality'})
+            colname_change = lot_rap_table.columns[lot_rap_table.columns.str.contains('Muni', 'City')]  
+            lot_rap_table = lot_rap_table.rename(columns={colname_change[0]: 'Municipality'})
 
             # Convert to numeric
             to_numeric_fields = ["TotalArea","AffectedArea","RemainingArea","HandedOverArea","HandedOver","Priority","StatusLA","MoA","PTE", 'Endorsed']

@@ -170,22 +170,27 @@ class UpdateLot(object):
             except Exception:
                 arcpy.AddMessage('You did not choose to create a backup file of {0} master list.'.format(proj + '_Land_Status'))
 
+            joinField = 'LotID'
            # SC1
             ## Join SC1 Lot to SC
             if proj == 'SC':
                 try:
-                    joinField = 'LotID'
                     joinedFields = [joinField, 'ContSubm', 'Subcon', 'Priority1', 'Reqs']
 
                     rap_table_sc1 = pd.read_excel(rap_lot_sc1_ms)
                     
                     # Add contractors submission
                     rap_table_sc1['ContSubm'] = 1
-
                     
                     # Rename Municipality
-                    rap_table_sc1 = rap_table_sc1.rename(columns={'City': 'Municipality'})
+                    colname_change = rap_table.columns[rap_table.columns.str.contains('City', 'Municipality')]  
+                    rap_table = rap_table.rename(columns={colname_change[0]: 'Municipality'})
                     
+                    colname_change = rap_table_sc1.columns[rap_table_sc1.columns.str.contains('City', 'Municipality')] 
+                    rap_table_sc1 = rap_table_sc1.rename(columns={colname_change[0]: 'Municipality'})
+                    
+                    arcpy.AddMessage(rap_table.columns)
+                    arcpy.AddMessage(rap_table_sc1.columns)
                     # Convert to numeric
                     to_numeric_fields = 'Priority1'
                     rap_table_sc1[to_numeric_fields] = rap_table_sc1[to_numeric_fields].replace(r'\s+|[^\w\s]', '', regex=True)
@@ -226,8 +231,14 @@ class UpdateLot(object):
                     arcpy.AddMessage('You did not select {0} master list for updating contractors submission status.'.format('SC1_Land_Status '))
 
             # Rename column names
-            colname_change = rap_table.columns[rap_table.columns.str.contains('Muni', 'City')]  
-            rap_table = rap_table.rename(columns={colname_change[0]: 'Municipality'})
+            try:
+                colname_change = rap_table.columns[rap_table.columns.str.contains('City', 'Municipality')]
+                arcpy.AddMessage(colname_change)
+                rap_table = rap_table.rename(columns={colname_change[0]: 'Municipality'})
+                arcpy.AddMessage(rap_table.columns)
+            except:
+                pass
+            arcpy.AddMessage(rap_table.columns)
 
             # Convert to numeric
             to_numeric_fields = ["TotalArea","AffectedArea","RemainingArea","HandedOverArea","HandedOver","Priority","StatusLA","MoA","PTE", 'Endorsed']
@@ -328,18 +339,17 @@ class UpdateLot(object):
             # 3. Join Field
             ## 3.1. Convert Excel tables to feature table
             arcpy.AddMessage(os.path.join(to_excel_file, 'Sheet1$'))
-            MasterListLot = arcpy.conversion.ExportTable(os.path.join(to_excel_file, 'Sheet1$'), 'MasterListLot')
-               
+            MasterListLot = arcpy.conversion.ExcelToTable(to_excel_file, 'MasterListLot')
+ 
             ## 3.2. Get Join Field from MasterList gdb table: Gain all fields except 'Id'
             inputFieldLot = [f.name for f in arcpy.ListFields(MasterListLot)]
+            arcpy.AddMessage(inputFieldLot)
             joinFieldLot = [e for e in inputFieldLot if e not in ('LotId', 'LotID','OBJECTID')]
                 
             ## 3.3. Extract a Field from MasterList and Feature Layer to be used to join two tables
             tLot = [f.name for f in arcpy.ListFields(copyLot)]             
             in_fieldLot = ' '.join(map(str, [f for f in tLot if f in ('LotId', 'LotID')]))
-                
             uLot = [f.name for f in arcpy.ListFields(MasterListLot)]
-                
             join_fieldLot=' '.join(map(str, [f for f in uLot if f in ('LotId', 'LotID')]))
                 
             ## 3.4 Join
@@ -565,33 +575,39 @@ class UpdateStructure(object):
             # SC
             if proj == 'SC':
                 try:
+                    arcpy.AddMessage("ok0")
                     joinedFields = [joinField, 'ContSubm', 'Subcon', 'BasicPlan']
+
+                    arcpy.AddMessage("ok00")
                     rap_table_sc1 = pd.read_excel(rap_struc_sc1_ms)
                     
+                    arcpy.AddMessage("ok1")
                     # Add contractors submission
                     rap_table_sc1['ContSubm'] = 1
                     
                     # Rename Municipality
                     rap_table_sc1 = rap_table_sc1.rename(columns={'City': 'Municipality'})
-                    
-                    rap_table_sc1.head()
-                    rap_table_sc1.dtypes
-                    
+                    arcpy.AddMessage("ok2")
+
                     # Conver to string with white space removal
                     to_string_fields = [joinField]
                     toString(rap_table_sc1, to_string_fields)
+
+                    arcpy.AddMessage("ok4")
 
                     # Filter fields
                     rap_table_sc1 = rap_table_sc1[joinedFields]
                     rap_table = rap_table.drop(joinedFields[2:], axis=1)
                     
-                    rap_table_sc1.head(10)
+                    arcpy.AddMessage("ok5")
 
                     # Left join
                     rap_table[joinField] = rap_table[joinField].astype(str)
                     rap_table_sc1[joinField] = rap_table_sc1[joinField].astype(str)
                     rap_table = pd.merge(left=rap_table, right=rap_table_sc1, how='left', left_on=joinField, right_on=joinField)
                 
+                    arcpy.AddMessage("ok6")
+
                     # Check if any missing StrucID when joined
                     id = rap_table.index[rap_table['ContSubm'] == 1]
                     lotID_sc = unique(rap_table.loc[id,joinField])
@@ -599,9 +615,11 @@ class UpdateStructure(object):
                     non_match_LotID = non_match_elements(lotID_sc, lotID_sc1)
                     if (len(non_match_LotID) > 0):
                         print('StrucIDs do not match between SC and SC1 tables.')
-                        
+                    arcpy.AddMessage("ok7")
+
                 except Exception:
-                    arcpy.AddMessage('You did not select {0} master list for updating contractors submission status.'.format('SC1_Land_Status '))
+                    arcpy.AddMessage('Did you select {0} master list for updating contractors submission status.'.format('SC1_Structure_Status '))
+                    arcpy.AddMessage('Or some geoprocessing process failed. Please check again.')
 
             # Rename column names
             colname_change = rap_table.columns[rap_table.columns.str.contains('Muni', 'City')]  
@@ -618,7 +636,10 @@ class UpdateStructure(object):
                 rap_table[field] = pd.to_numeric(rap_table[field])
                 
             # Conver to string
-            to_string_fields = ["StrucID", "CP", "StructureUse"]
+            if proj == 'N2':
+                to_string_fields = ["StrucID", "CP", "StructureUse"]
+            else:
+                to_string_fields = ["StrucID", "CP"]
             toString(rap_table, to_string_fields)
             
             # Reformat CP
@@ -626,10 +647,13 @@ class UpdateStructure(object):
             rap_table['CP'] = cp_suffix + rap_table['CP']
         
             ## Convert to uppercase letters for StructureUse
-            uppercase_field = 'StructureUse'
-            match_col = match_elements(cols, uppercase_field)
-            if len(match_col) > 0:
-                rap_table[uppercase_field] = rap_table[uppercase_field].apply(lambda x: x.upper())
+            try:
+                uppercase_field = 'StructureUse'
+                match_col = match_elements(cols, uppercase_field)
+                if len(match_col) > 0:
+                    rap_table[uppercase_field] = rap_table[uppercase_field].apply(lambda x: x.upper())
+            except:
+                 pass
 
             # Check and Fix StatusLA, HandedOverDate, HandOverDate, and HandedOverArea
             ## 1. StatusStruc =0 -> StatusStruc = empty
@@ -688,8 +712,10 @@ class UpdateStructure(object):
             # 3. Join Field
             ## 3.1. Convert Excel tables to feature table
             arcpy.AddMessage(os.path.join(to_excel_file, 'Sheet1$'))
-            file_loc = r"C:\Users\oc3512\Dropbox\01-Railway\02-NSCR-Ex\01-N2\02-Pre-Construction\01-Environment\01-LAR\99-MasterList\03-Compiled\N2_Structure_Status.xlsx\Sheet1$"
-            MasterList = arcpy.conversion.ExportTable(file_loc, 'MasterList')
+            file_loc = gis_struc_ms + "\Sheet1$"
+
+            #MasterList = arcpy.conversion.ExportTable(file_loc, 'MasterList')
+            MasterList = arcpy.conversion.ExcelToTable(gis_struc_ms, 'MasterList')
                
             ## 3.2. Get Join Field from MasterList gdb table: Gain all fields except 'Id'
             inputFields = [f.name for f in arcpy.ListFields(MasterList)]
@@ -731,8 +757,7 @@ class UpdateStructure(object):
             arcpy.Append_management(pointStruc, in_occupancy_layer, schema_type = 'NO_TEST')
 
             ## 2-2.1. Convert ISF (Relocation excel) to Feature table
-            file_loc = r"C:\Users\oc3512\Dropbox\01-Railway\02-NSCR-Ex\99-MasterList_RAP_Team\N2_Structure_Relocation_compiled.xlsx\Sheet1$"
-            MasterListISF = arcpy.conversion.ExportTable(file_loc, 'MasterListISF')
+            MasterListISF = arcpy.conversion.ExcelToTable(rap_relo_ms, 'MasterListISF')
 
             ## 2-2.2. Get Join Field from MasterList gdb table: Gain all fields except 'StrucId'
             inputFieldISF = [f.name for f in arcpy.ListFields(MasterListISF)]

@@ -437,17 +437,33 @@ class UpdateStructure(object):
         )
 
         rap_struc_sc1_ms = arcpy.Parameter(
-            displayName = "RAP SC1 Structure Status ML for SC",
-            name = "RAP SC1 Structure Status for SC",
+            displayName = "RAP SC1 Structure Status ML for SC (Excel)",
+            name = "RAP SC1 Structure Status for SC (Excel)",
             datatype = "DEFile",
             parameterType = "Optional",
             direction = "Input"
         )
 
         rap_relo_ms = arcpy.Parameter(
-            displayName = "RAP Structure Relocation Status ML",
-            name = "RAP Structure Relocation Status",
+            displayName = "RAP Structure Relocation Status ML (Excel)",
+            name = "RAP Structure Relocation Status ML (Excel)",
             datatype = "DEFile",
+            parameterType = "Required",
+            direction = "Input"
+        )
+
+        in_occupancy_layer = arcpy.Parameter(
+            displayName = "GIS Occupancy Feature Layer (Point)",
+            name = "GIS Occupancy Feature Layer (Point)",
+            datatype = "GPFeatureLayer",
+            parameterType = "Required",
+            direction = "Input"
+        )
+
+        in_isf_layer = arcpy.Parameter(
+            displayName = "GIS ISF Feature Layer (Point)",
+            name = "GIS ISF Feature Layer (Point)",
+            datatype = "GPFeatureLayer",
             parameterType = "Required",
             direction = "Input"
         )
@@ -460,7 +476,9 @@ class UpdateStructure(object):
             direction = "Input"
         )
 
-        params = [ws, proj, gis_dir, gis_bakcup_dir, in_struc_layer, gis_struc_ms, rap_struc_ms, rap_struc_sc1_ms, rap_relo_ms, lastupdate]
+        params = [ws, proj, gis_dir, gis_bakcup_dir, in_struc_layer, gis_struc_ms,
+                  rap_struc_ms, rap_struc_sc1_ms, rap_relo_ms,
+                  in_occupancy_layer, in_isf_layer, lastupdate]
         return params
 
     def updateMessages(self, params):
@@ -476,7 +494,9 @@ class UpdateStructure(object):
         rap_struc_ms = params[6].valueAsText
         rap_struc_sc1_ms = params[7].valueAsText
         rap_relo_ms = params[8].valueAsText
-        lastupdate = params[9].valueAsText
+        in_occupancy_layer = params[9].valueAsText
+        in_isf_layer = params[10].valueAsText
+        lastupdate = params[11].valueAsText
 
         arcpy.env.overwriteOutput = True
         #arcpy.env.addOutputsToMap = True
@@ -528,6 +548,9 @@ class UpdateStructure(object):
                     table[field] = table[field].apply(lambda x: x.replace(r'\s+', ''))
                     table[field] = table[field].astype(str)
             
+            ####################################################
+            # Update Excel Master List Tables
+            ####################################################
             rap_table = pd.read_excel(rap_struc_ms)
             rap_relo_table = pd.read_excel(rap_relo_ms)
             gis_table = pd.read_excel(gis_struc_ms)
@@ -537,11 +560,11 @@ class UpdateStructure(object):
                 gis_table.to_excel(os.path.join(gis_bakcup_dir, lastupdate + "_" + proj + "_Land_Status.xlsx"), index=False)
             except Exception:
                 arcpy.AddMessage('You did not choose to create a backup file of {0} master list.'.format(proj + '_Land_Status'))
-
+            
+            joinField = 'StrucID'
             # SC
             if proj == 'SC':
                 try:
-                    joinField = 'StrucID'
                     joinedFields = [joinField, 'ContSubm', 'Subcon', 'BasicPlan']
                     rap_table_sc1 = pd.read_excel(rap_struc_sc1_ms)
                     
@@ -631,8 +654,9 @@ class UpdateStructure(object):
             to_excel_file = os.path.join(gis_dir, export_file_name + ".xlsx")
             rap_table.to_excel(to_excel_file, index=False)
 
-            #########################
-            # 6. Update GIS attribute table
+            ####################################################
+            # Update Main GIS attribute table
+            ####################################################
             copyName = 'Struc_Temp'
                 
             copyLot = arcpy.CopyFeatures_management(in_struc_layer, copyName)               
@@ -664,28 +688,87 @@ class UpdateStructure(object):
             # 3. Join Field
             ## 3.1. Convert Excel tables to feature table
             arcpy.AddMessage(os.path.join(to_excel_file, 'Sheet1$'))
-            MasterListLot = arcpy.conversion.ExportTable(os.path.join(to_excel_file, 'Sheet1$'), 'MasterListLot')
+            file_loc = r"C:\Users\oc3512\Dropbox\01-Railway\02-NSCR-Ex\01-N2\02-Pre-Construction\01-Environment\01-LAR\99-MasterList\03-Compiled\N2_Structure_Status.xlsx\Sheet1$"
+            MasterList = arcpy.conversion.ExportTable(file_loc, 'MasterList')
                
             ## 3.2. Get Join Field from MasterList gdb table: Gain all fields except 'Id'
-            inputFields = [f.name for f in arcpy.ListFields(MasterListLot)]
-            joinFields = [e for e in inputFields if e not in ('LotId', 'LotID','OBJECTID')]
+            inputFields = [f.name for f in arcpy.ListFields(MasterList)]
+            joinFields = [e for e in inputFields if e not in ('StrucID', 'strucID','OBJECTID')]
                 
             ## 3.3. Extract a Field from MasterList and Feature Layer to be used to join two tables
             tLot = [f.name for f in arcpy.ListFields(copyLot)]             
-            in_fieldLot = ' '.join(map(str, [f for f in tLot if f in ('LotId', 'LotID')]))
+            in_fieldLot = ' '.join(map(str, [f for f in tLot if f in ('StrucID', 'strucID')]))
                 
-            uLot = [f.name for f in arcpy.ListFields(MasterListLot)]
+            uLot = [f.name for f in arcpy.ListFields(MasterList)]
                 
-            join_field=' '.join(map(str, [f for f in uLot if f in ('LotId', 'LotID')]))
+            join_field=' '.join(map(str, [f for f in uLot if f in ('StrucID', 'strucID')]))
                 
             ## 3.4 Join
-            arcpy.JoinField_management(in_data=copyLot, in_field=in_fieldLot, join_table=MasterListLot, join_field=join_field, fields=joinFields)
+            arcpy.JoinField_management(in_data=copyLot, in_field=in_fieldLot, join_table=MasterList, join_field=join_field, fields=joinFields)
 
             # 4. Trucnate
             arcpy.TruncateTable_management(in_struc_layer)
 
             # 5. Append
             arcpy.Append_management(copyLot, in_struc_layer, schema_type = 'NO_TEST')
+
+            arcpy.AddMessage('Main structure layer was successfully updated.')
+
+            #########################################################
+            # Update Existing Structure (Occupancy) & Structure (ISF)
+            #########################################################
+            ## 2-1.1. Feature to Point for Occupany
+            outFeatureClassPointStruc = 'Structure_point_occupancy_temp'
+            pointStruc = arcpy.FeatureToPoint_management(in_struc_layer, outFeatureClassPointStruc, "CENTROID")
+            
+            ## 2-1.2. Add XY Coordinates
+            arcpy.AddXY_management(pointStruc)
+            
+            ## 2-1.3. Truncate original point structure layer (Occupancy)
+            arcpy.TruncateTable_management(in_occupancy_layer)
+
+            ## 2-1.4. Append to the original FL
+            arcpy.Append_management(pointStruc, in_occupancy_layer, schema_type = 'NO_TEST')
+
+            ## 2-2.1. Convert ISF (Relocation excel) to Feature table
+            file_loc = r"C:\Users\oc3512\Dropbox\01-Railway\02-NSCR-Ex\99-MasterList_RAP_Team\N2_Structure_Relocation_compiled.xlsx\Sheet1$"
+            MasterListISF = arcpy.conversion.ExportTable(file_loc, 'MasterListISF')
+
+            ## 2-2.2. Get Join Field from MasterList gdb table: Gain all fields except 'StrucId'
+            inputFieldISF = [f.name for f in arcpy.ListFields(MasterListISF)]
+            joinFieldISF = [e for e in inputFieldISF if e not in ('StrucId', 'strucID','OBJECTID')]
+
+            ## 3.3. Extract a Field from MasterList and Feature Layer to be used to join two tables
+            tISF = [f.name for f in arcpy.ListFields(in_occupancy_layer)] # Note 'inputLayerOccupOrigin' must be used, not ISF
+            in_fieldISF= ' '.join(map(str, [f for f in tISF if f in ('StrucID','strucID')]))
+
+            uISF = [f.name for f in arcpy.ListFields(MasterListISF)]
+            join_fieldISF = ' '.join(map(str, [f for f in uISF if f in ('StrucID', 'strucID')]))
+
+            ## Join
+            xCoords = "POINT_X"
+            yCoords = "POINT_Y"
+            zCoords = "POINT_Z"
+
+            # Join only 'POINT_X' and 'POINT_Y' in the 'inputLayerOccupOrigin' to 'MasterListISF'
+            arcpy.JoinField_management(in_data=MasterListISF, in_field=join_fieldISF, join_table=in_occupancy_layer, join_field=in_fieldISF, fields=[xCoords, yCoords, zCoords])
+
+            ## 2-2.3. XY Table to Points (FL)
+            out_feature_class = "Status_for_Relocation_ISF_temp"
+            sr = arcpy.SpatialReference(3123)
+            outLayerISF = arcpy.management.XYTableToPoint(MasterListISF, out_feature_class, xCoords, yCoords, zCoords, sr)
+
+
+            ### Delete 'POINT_X', 'POINT_Y', 'POINT_Z'; otherwise, it gives error for the next batch
+            dropXYZ = [xCoords, yCoords, zCoords]
+            arcpy.DeleteField_management(outLayerISF, dropXYZ)
+
+            ## 2-2.4. Add Domain
+            ## 2-2.5. Truncate original ISF point FL
+            arcpy.TruncateTable_management(in_isf_layer)
+
+            ## 2-2.6. Append to the Original ISF
+            arcpy.Append_management(outLayerISF, in_isf_layer, schema_type = 'NO_TEST')
 
         N2SC_Structure_Update()
 

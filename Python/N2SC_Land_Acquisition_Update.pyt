@@ -12,12 +12,12 @@ class Toolbox(object):
     def __init__(self):
         self.label = "UpdateLandAcquisition"
         self.alias = "UpdateLandAcquisition"
-        self.tools = [UpdateLot, UpdateStructure, UpdateFGDB, UpdateSDE, UpdateUsingMasterList]
+        self.tools = [UpdateLot, UpdateStructure, UpdateBarangay, UpdateFGDB, UpdateSDE, UpdateUsingMasterList]
 
 class UpdateLot(object):
     def __init__(self):
-        self.label = "1.0. Update Excel Master List and Feature Layer (Lot)"
-        self.description = "Update Excel Master List and Feature Layer (Lot)"
+        self.label = "1.0. Update Excel Master List (Lot)"
+        self.description = "Update Excel Master List (Lot)"
 
     def getParameterInfo(self):
         ws = arcpy.Parameter(
@@ -54,14 +54,6 @@ class UpdateLot(object):
             direction = "Input"
         )
 
-        in_lot_layer = arcpy.Parameter(
-            displayName = "GIS Land Feature Layer",
-            name = "GIS Land Feature Layer",
-            datatype = "GPFeatureLayer",
-            parameterType = "Required",
-            direction = "Input"
-        )
-
         gis_lot_ms = arcpy.Parameter(
             displayName = "GIS Land Status ML (Excel)",
             name = "GIS Land Status ML (Excel)",
@@ -94,7 +86,7 @@ class UpdateLot(object):
             direction = "Input"
         )
 
-        params = [ws, proj, gis_dir, gis_bakcup_dir, in_lot_layer, gis_lot_ms, rap_lot_ms, rap_lot_sc1_ms, lastupdate]
+        params = [ws, proj, gis_dir, gis_bakcup_dir, gis_lot_ms, rap_lot_ms, rap_lot_sc1_ms, lastupdate]
         return params
 
     def updateMessages(self, params):
@@ -105,11 +97,10 @@ class UpdateLot(object):
         proj = params[1].valueAsText
         gis_dir = params[2].valueAsText
         gis_bakcup_dir = params[3].valueAsText
-        in_lot_layer = params[4].valueAsText
-        gis_lot_ms = params[5].valueAsText
-        rap_lot_ms = params[6].valueAsText
-        rap_lot_sc1_ms = params[7].valueAsText
-        lastupdate = params[8].valueAsText
+        gis_lot_ms = params[4].valueAsText
+        rap_lot_ms = params[5].valueAsText
+        rap_lot_sc1_ms = params[6].valueAsText
+        lastupdate = params[7].valueAsText
 
         arcpy.env.overwriteOutput = True
         #arcpy.env.addOutputsToMap = True
@@ -160,6 +151,14 @@ class UpdateLot(object):
                     table[field] = table[field].astype(str)
                     table[field] = table[field].apply(lambda x: x.replace(r'\s+', ''))
                     table[field] = table[field].astype(str)
+
+            def rename_columns_title(table, search_names, renamed_word): # search_names are list, renamed_word is a string
+                colname_change = table.columns[table.columns.str.contains('|'.join(search_names))]
+                table = table.rename(columns={str(colname_change[0]): renamed_word})
+
+            def first_letter_capital(table, column_names): # column_names are list
+                for name in column_names:
+                    table[name] = table[name].apply(lambda x: x.title())
             
             rap_table = pd.read_excel(rap_lot_ms)
             gis_table = pd.read_excel(gis_lot_ms)
@@ -170,7 +169,11 @@ class UpdateLot(object):
             except Exception:
                 arcpy.AddMessage('You did not choose to create a backup file of {0} master list.'.format(proj + '_Land_Status'))
 
+            # Common query and definitions
             joinField = 'LotID'
+            search_names_city = ['City/Municipality', 'City', 'Munici']
+            renamed_city = 'Municipality'
+
            # SC1
             ## Join SC1 Lot to SC
             if proj == 'SC':
@@ -183,14 +186,15 @@ class UpdateLot(object):
                     rap_table_sc1['ContSubm'] = 1
                     
                     # Rename Municipality
-                    colname_change = rap_table.columns[rap_table.columns.str.contains('City', 'Municipality')]  
-                    rap_table = rap_table.rename(columns={colname_change[0]: 'Municipality'})
-                    
-                    colname_change = rap_table_sc1.columns[rap_table_sc1.columns.str.contains('City', 'Municipality')] 
-                    rap_table_sc1 = rap_table_sc1.rename(columns={colname_change[0]: 'Municipality'})
-                    
-                    arcpy.AddMessage(rap_table.columns)
-                    arcpy.AddMessage(rap_table_sc1.columns)
+                    colname_change = rap_table.columns[rap_table.columns.str.contains('|'.join(search_names_city))]
+                    rap_table = rap_table.rename(columns={str(colname_change[0]): renamed_city})
+
+                    colname_change = rap_table_sc1.columns[rap_table_sc1.columns.str.contains('|'.join(search_names_city))]
+                    rap_table_sc1 = rap_table_sc1.rename(columns={str(colname_change[0]): renamed_city})
+
+                    first_letter_capital(rap_table, [renamed_city])
+                    first_letter_capital(rap_table, [renamed_city])
+
                     # Convert to numeric
                     to_numeric_fields = 'Priority1'
                     rap_table_sc1[to_numeric_fields] = rap_table_sc1[to_numeric_fields].replace(r'\s+|[^\w\s]', '', regex=True)
@@ -230,18 +234,22 @@ class UpdateLot(object):
                 except Exception:
                     arcpy.AddMessage('You did not select {0} master list for updating contractors submission status.'.format('SC1_Land_Status '))
 
-            # Rename column names
+            # Rename City for Municipality
             try:
-                colname_change = rap_table.columns[rap_table.columns.str.contains('City', 'Municipality')]
-                arcpy.AddMessage(colname_change)
-                rap_table = rap_table.rename(columns={colname_change[0]: 'Municipality'})
-                arcpy.AddMessage(rap_table.columns)
+                colname_change = rap_table.columns[rap_table.columns.str.contains('|'.join(search_names_city))]
+                rap_table = rap_table.rename(columns={str(colname_change[0]): renamed_city})
             except:
                 pass
-            arcpy.AddMessage(rap_table.columns)
 
+            first_letter_capital(rap_table, [renamed_city])
+            
             # Convert to numeric
-            to_numeric_fields = ["TotalArea","AffectedArea","RemainingArea","HandedOverArea","HandedOver","Priority","StatusLA","MoA","PTE", 'Endorsed']
+            numeric_fields_common = ["TotalArea","AffectedArea","RemainingArea","HandedOverArea","HandedOver","Priority","StatusLA","MoA","PTE"]
+            if proj == 'N2':
+                to_numeric_fields = numeric_fields_common + ['Endorsed']
+            else:
+                to_numeric_fields = numeric_fields_common
+            
             cols = rap_table.columns
             non_match_col = non_match_elements(to_numeric_fields, cols)
             [to_numeric_fields.remove(non_match_col[0]) if non_match_col else arcpy.AddMessage('no need to remove field from the list for numeric conversion')]
@@ -267,7 +275,7 @@ class UpdateLot(object):
             ## Convert to uppercase letters for LandUse
             match_col = match_elements(cols, 'LandUse')
             if len(match_col) > 0:
-                rap_table['LandUse'] = rap_table['LandUse'].apply(lambda x: x.upper())   
+                rap_table['LandUse'] = rap_table['LandUse'].apply(lambda x: x.upper())  
 
             # Add scale from old master list
             rap_table = rap_table.drop('Scale',axis=1)
@@ -291,7 +299,7 @@ class UpdateLot(object):
            ## 4. if the first row is empty, temporarily add the first row for 'HandedOverDate' and 'HandOverDate'
             for field in to_date_fields:
                 date_item = rap_table[field].iloc[:1].item()
-                if date_item is None:
+                if date_item is None or pd.isnull(date_item):
                     rap_table.loc[0, field] = pd.to_datetime('1990-01-01')
 
             ## 5. is.na(HandedOverArea) -> HandedOverArea = 0
@@ -306,86 +314,34 @@ class UpdateLot(object):
             to_excel_file = os.path.join(gis_dir, export_file_name + ".xlsx")
             rap_table.to_excel(to_excel_file, index=False)
 
-            #########################
-            # 6. Update GIS attribute table
-            copyNameLot = 'LA_Temp'
-                
-            copyLot = arcpy.CopyFeatures_management(in_lot_layer, copyNameLot)               
-            arcpy.AddMessage("Stage 1: Copy feature layer was success")
-                    
-            # 2. Delete Field
-            fieldNameLot = [f.name for f in arcpy.ListFields(copyLot)]
-                
-            ## 2.1. Identify fields to be dropped
-            dropFieldLot = [e for e in fieldNameLot if e not in ('LotId', 'LotID','Shape','Shape_Length','Shape_Area','Shape.STArea()','Shape.STLength()','OBJECTID','GlobalID')]
-                
-            ## 2.2. Extract existing fields
-            inFieldLot = [f.name for f in arcpy.ListFields(copyLot)]                
-            arcpy.AddMessage("Stage 1: Extract existing fields was success")
-                
-            ## 2.3. Check if there are fields to be dropped
-            finalDropFieldLot = [f for f in inFieldLot if f in tuple(dropFieldLot)]               
-            arcpy.AddMessage("Stage 1: Checking for Fields to be dropped was success")
-                
-            ## 2.4 Drop
-            if len(finalDropFieldLot) == 0:
-                arcpy.AddMessage("There is no field that can be dropped from the feature layer")
-            else:
-                arcpy.DeleteField_management(copyLot, finalDropFieldLot)
+            arcpy.AddMessage("The master list was successfully exported.")
 
-            arcpy.AddMessage("Stage 1: Dropping Fields was success")
-            arcpy.AddMessage("Section 2 of Stage 1 was successfully implemented")
+            ########################
+            # ### Remove temporary date added
+            # for field in to_date_fields:
+            #     with arcpy.da.UpdateCursor(copyLot, [field]) as cursor:
+            #         for row in cursor:
+            #             if row[0]:
+            #                 year = row[0].strftime("%Y")
+            #                 if int(year) < 2000:
+            #                     row[0] = None
+            #                 else:
+            #                     row[0] = row[0]
+            #             cursor.updateRow(row)
 
-            # 3. Join Field
-            ## 3.1. Convert Excel tables to feature table
-            arcpy.AddMessage(os.path.join(to_excel_file, 'Sheet1$'))
-            MasterListLot = arcpy.conversion.ExcelToTable(to_excel_file, 'MasterListLot')
- 
-            ## 3.2. Get Join Field from MasterList gdb table: Gain all fields except 'Id'
-            inputFieldLot = [f.name for f in arcpy.ListFields(MasterListLot)]
-            arcpy.AddMessage(inputFieldLot)
-            joinFieldLot = [e for e in inputFieldLot if e not in ('LotId', 'LotID','OBJECTID')]
-                
-            ## 3.3. Extract a Field from MasterList and Feature Layer to be used to join two tables
-            tLot = [f.name for f in arcpy.ListFields(copyLot)]             
-            in_fieldLot = ' '.join(map(str, [f for f in tLot if f in ('LotId', 'LotID')]))
-            uLot = [f.name for f in arcpy.ListFields(MasterListLot)]
-            join_fieldLot=' '.join(map(str, [f for f in uLot if f in ('LotId', 'LotID')]))
-                
-            ## 3.4 Join
-            arcpy.JoinField_management(in_data=copyLot, in_field=in_fieldLot, join_table=MasterListLot, join_field=join_fieldLot, fields=joinFieldLot)
-
-            ### Remove temporary date added
-            for field in to_date_fields:
-                with arcpy.da.UpdateCursor(copyLot, [field]) as cursor:
-                    for row in cursor:
-                        if row[0]:
-                            year = row[0].strftime("%Y")
-                            if int(year) < 2000:
-                                row[0] = None
-                            else:
-                                row[0] = row[0]
-                        cursor.updateRow(row)
-
-            # 4. Trucnate
-            arcpy.TruncateTable_management(in_lot_layer)
-
-            # 5. Append
-            arcpy.Append_management(copyLot, in_lot_layer, schema_type = 'NO_TEST')
-            
-            ## Remove temporary date from the feature layer and master list excel table
-            for field in to_date_fields:
-                field = 'HandedOverDate'
-                id = rap_table.index[rap_table[field] == pd.to_datetime('1990-01-01')]
-                rap_table.loc[id, field] = None
-            rap_table.to_excel(to_excel_file, index=False)
+            # ## Remove temporary date from the feature layer and master list excel table
+            # for field in to_date_fields:
+            #     field = 'HandedOverDate'
+            #     id = rap_table.index[rap_table[field] == pd.to_datetime('1990-01-01')]
+            #     rap_table.loc[id, field] = None
+            # rap_table.to_excel(to_excel_file, index=False)
 
         N2SC_Land_Update()
 
 class UpdateStructure(object):
     def __init__(self):
-        self.label = "1.1. Update Excel Master List and Feature Layer (Structure)"
-        self.description = "Update Excel Master List and Feature Layer (Structure)"
+        self.label = "1.1. Update Excel Master List (Structure)"
+        self.description = "Update Excel Master List (Structure)"
 
     def getParameterInfo(self):
         ws = arcpy.Parameter(
@@ -422,14 +378,6 @@ class UpdateStructure(object):
             direction = "Input"
         )
 
-        in_struc_layer = arcpy.Parameter(
-            displayName = "GIS Structure Feature Layer",
-            name = "GIS Structure Feature Layer",
-            datatype = "GPFeatureLayer",
-            parameterType = "Required",
-            direction = "Input"
-        )
-
         gis_struc_ms = arcpy.Parameter(
             displayName = "GIS Structure Status ML (Excel)",
             name = "GIS Structure Status ML (Excel)",
@@ -462,22 +410,6 @@ class UpdateStructure(object):
             direction = "Input"
         )
 
-        in_occupancy_layer = arcpy.Parameter(
-            displayName = "GIS Occupancy Feature Layer (Point)",
-            name = "GIS Occupancy Feature Layer (Point)",
-            datatype = "GPFeatureLayer",
-            parameterType = "Required",
-            direction = "Input"
-        )
-
-        in_isf_layer = arcpy.Parameter(
-            displayName = "GIS ISF Feature Layer (Point)",
-            name = "GIS ISF Feature Layer (Point)",
-            datatype = "GPFeatureLayer",
-            parameterType = "Required",
-            direction = "Input"
-        )
-
         lastupdate = arcpy.Parameter(
             displayName = "Date of last update (yyyymmdd) e.g., 20240101 for backup",
             name = "Date of last update (yyyymmdd) e.g., 20240101",
@@ -486,9 +418,8 @@ class UpdateStructure(object):
             direction = "Input"
         )
 
-        params = [ws, proj, gis_dir, gis_bakcup_dir, in_struc_layer, gis_struc_ms,
-                  rap_struc_ms, rap_struc_sc1_ms, rap_relo_ms,
-                  in_occupancy_layer, in_isf_layer, lastupdate]
+        params = [ws, proj, gis_dir, gis_bakcup_dir, gis_struc_ms,
+                  rap_struc_ms, rap_struc_sc1_ms, rap_relo_ms, lastupdate]
         return params
 
     def updateMessages(self, params):
@@ -499,14 +430,11 @@ class UpdateStructure(object):
         proj = params[1].valueAsText
         gis_dir = params[2].valueAsText
         gis_bakcup_dir = params[3].valueAsText
-        in_struc_layer = params[4].valueAsText
-        gis_struc_ms = params[5].valueAsText
-        rap_struc_ms = params[6].valueAsText
-        rap_struc_sc1_ms = params[7].valueAsText
-        rap_relo_ms = params[8].valueAsText
-        in_occupancy_layer = params[9].valueAsText
-        in_isf_layer = params[10].valueAsText
-        lastupdate = params[11].valueAsText
+        gis_struc_ms = params[4].valueAsText
+        rap_struc_ms = params[5].valueAsText
+        rap_struc_sc1_ms = params[6].valueAsText
+        rap_relo_ms = params[7].valueAsText
+        lastupdate = params[8].valueAsText
 
         arcpy.env.overwriteOutput = True
         #arcpy.env.addOutputsToMap = True
@@ -517,14 +445,6 @@ class UpdateStructure(object):
                 cp_suffix = 'N-'
             else:
                 cp_suffix = 'S-'
-            
-            ## 1. Remove leading and trailing space for object columns
-            def whitespace_removal(dataframe):
-                for i in dataframe.columns:
-                    try:
-                        dataframe[i] = dataframe[i].apply(lambda x: x.strip())
-                    except AttributeError:
-                        print("Not processed: " + '{}'.format(i))
 
             ## 2. Return unique values
             def unique(lists):
@@ -557,6 +477,10 @@ class UpdateStructure(object):
                     table[field] = table[field].astype(str)
                     table[field] = table[field].apply(lambda x: x.replace(r'\s+', ''))
                     table[field] = table[field].astype(str)
+
+            def first_letter_capital(table, column_names): # column_names are list
+                for name in column_names:
+                    table[name] = table[name].apply(lambda x: x.title())
             
             ####################################################
             # Update Excel Master List Tables
@@ -571,7 +495,11 @@ class UpdateStructure(object):
             except Exception:
                 arcpy.AddMessage('You did not choose to create a backup file of {0} master list.'.format(proj + '_Land_Status'))
             
+            # Common query and definitions
             joinField = 'StrucID'
+            search_names_city = ['City/Municipality', 'City', 'Munici']
+            renamed_city = 'Municipality'
+
             # SC
             if proj == 'SC':
                 try:
@@ -584,10 +512,6 @@ class UpdateStructure(object):
                     arcpy.AddMessage("ok1")
                     # Add contractors submission
                     rap_table_sc1['ContSubm'] = 1
-                    
-                    # Rename Municipality
-                    rap_table_sc1 = rap_table_sc1.rename(columns={'City': 'Municipality'})
-                    arcpy.AddMessage("ok2")
 
                     # Conver to string with white space removal
                     to_string_fields = [joinField]
@@ -622,8 +546,10 @@ class UpdateStructure(object):
                     arcpy.AddMessage('Or some geoprocessing process failed. Please check again.')
 
             # Rename column names
-            colname_change = rap_table.columns[rap_table.columns.str.contains('Muni', 'City')]  
-            rap_table = rap_table.rename(columns={colname_change[0]: 'Municipality'})
+            colname_change = rap_table.columns[rap_table.columns.str.contains('|'.join(search_names_city))]
+            rap_table = rap_table.rename(columns={str(colname_change[0]): renamed_city})
+                    
+            first_letter_capital(rap_table, [renamed_city])
 
             # Convert to numeric
             to_numeric_fields = ["TotalArea","AffectedArea","RemainingArea","HandOver","StatusStruc","Status","MoA","PTE", "Occupancy"]
@@ -636,10 +562,11 @@ class UpdateStructure(object):
                 rap_table[field] = pd.to_numeric(rap_table[field])
                 
             # Conver to string
+            common_fields = ["StrucID", "CP"]
             if proj == 'N2':
-                to_string_fields = ["StrucID", "CP", "StructureUse"]
+                to_string_fields = common_fields + ["StructureUse"]
             else:
-                to_string_fields = ["StrucID", "CP"]
+                to_string_fields = common_fields
             toString(rap_table, to_string_fields)
             
             # Reformat CP
@@ -678,128 +605,154 @@ class UpdateStructure(object):
             to_excel_file = os.path.join(gis_dir, export_file_name + ".xlsx")
             rap_table.to_excel(to_excel_file, index=False)
 
-            ####################################################
-            # Update Main GIS attribute table
-            ####################################################
-            copyName = 'Struc_Temp'
-                
-            copyLot = arcpy.CopyFeatures_management(in_struc_layer, copyName)               
-            arcpy.AddMessage("Stage 1: Copy feature layer was success")
-                    
-            # 2. Delete Field
-            fieldNameDelete = [f.name for f in arcpy.ListFields(copyLot)]
-                
-            ## 2.1. Identify fields to be dropped
-            dropField = [e for e in fieldNameDelete if e not in ('StrucID', 'strucID','Shape','Shape_Length','Shape_Area','Shape.STArea()','Shape.STLength()','OBJECTID','GlobalID')]
-            
-            ## 2.2. Extract existing fields
-            inFields= [f.name for f in arcpy.ListFields(copyLot)]                
-            arcpy.AddMessage("Stage 1: Extract existing fields was success")
-                
-            ## 2.3. Check if there are fields to be dropped
-            finalDropField = [f for f in inFields if f in tuple(dropField)]               
-            arcpy.AddMessage("Stage 1: Checking for Fields to be dropped was success")
-                
-            ## 2.4 Drop
-            if len(finalDropField) == 0:
-                arcpy.AddMessage("There is no field that can be dropped from the feature layer")
-            else:
-                arcpy.DeleteField_management(copyLot, finalDropField)
-
-            arcpy.AddMessage("Stage 1: Dropping Fields was success")
-            arcpy.AddMessage("Section 2 of Stage 1 was successfully implemented")
-
-            # 3. Join Field
-            ## 3.1. Convert Excel tables to feature table
-            arcpy.AddMessage(os.path.join(to_excel_file, 'Sheet1$'))
-            file_loc = gis_struc_ms + "\Sheet1$"
-
-            #MasterList = arcpy.conversion.ExportTable(file_loc, 'MasterList')
-            MasterList = arcpy.conversion.ExcelToTable(gis_struc_ms, 'MasterList')
-               
-            ## 3.2. Get Join Field from MasterList gdb table: Gain all fields except 'Id'
-            inputFields = [f.name for f in arcpy.ListFields(MasterList)]
-            joinFields = [e for e in inputFields if e not in ('StrucID', 'strucID','OBJECTID')]
-                
-            ## 3.3. Extract a Field from MasterList and Feature Layer to be used to join two tables
-            tLot = [f.name for f in arcpy.ListFields(copyLot)]             
-            in_fieldLot = ' '.join(map(str, [f for f in tLot if f in ('StrucID', 'strucID')]))
-                
-            uLot = [f.name for f in arcpy.ListFields(MasterList)]
-                
-            join_field=' '.join(map(str, [f for f in uLot if f in ('StrucID', 'strucID')]))
-                
-            ## 3.4 Join
-            arcpy.JoinField_management(in_data=copyLot, in_field=in_fieldLot, join_table=MasterList, join_field=join_field, fields=joinFields)
-
-            # 4. Trucnate
-            arcpy.TruncateTable_management(in_struc_layer)
-
-            # 5. Append
-            arcpy.Append_management(copyLot, in_struc_layer, schema_type = 'NO_TEST')
-
-            arcpy.AddMessage('Main structure layer was successfully updated.')
-
-            #########################################################
-            # Update Existing Structure (Occupancy) & Structure (ISF)
-            #########################################################
-            ## 2-1.1. Feature to Point for Occupany
-            outFeatureClassPointStruc = 'Structure_point_occupancy_temp'
-            pointStruc = arcpy.FeatureToPoint_management(in_struc_layer, outFeatureClassPointStruc, "CENTROID")
-            
-            ## 2-1.2. Add XY Coordinates
-            arcpy.AddXY_management(pointStruc)
-            
-            ## 2-1.3. Truncate original point structure layer (Occupancy)
-            arcpy.TruncateTable_management(in_occupancy_layer)
-
-            ## 2-1.4. Append to the original FL
-            arcpy.Append_management(pointStruc, in_occupancy_layer, schema_type = 'NO_TEST')
-
-            ## 2-2.1. Convert ISF (Relocation excel) to Feature table
-            MasterListISF = arcpy.conversion.ExcelToTable(rap_relo_ms, 'MasterListISF')
-
-            ## 2-2.2. Get Join Field from MasterList gdb table: Gain all fields except 'StrucId'
-            inputFieldISF = [f.name for f in arcpy.ListFields(MasterListISF)]
-            joinFieldISF = [e for e in inputFieldISF if e not in ('StrucId', 'strucID','OBJECTID')]
-
-            ## 3.3. Extract a Field from MasterList and Feature Layer to be used to join two tables
-            tISF = [f.name for f in arcpy.ListFields(in_occupancy_layer)] # Note 'inputLayerOccupOrigin' must be used, not ISF
-            in_fieldISF= ' '.join(map(str, [f for f in tISF if f in ('StrucID','strucID')]))
-
-            uISF = [f.name for f in arcpy.ListFields(MasterListISF)]
-            join_fieldISF = ' '.join(map(str, [f for f in uISF if f in ('StrucID', 'strucID')]))
-
-            ## Join
-            xCoords = "POINT_X"
-            yCoords = "POINT_Y"
-            zCoords = "POINT_Z"
-
-            # Join only 'POINT_X' and 'POINT_Y' in the 'inputLayerOccupOrigin' to 'MasterListISF'
-            arcpy.JoinField_management(in_data=MasterListISF, in_field=join_fieldISF, join_table=in_occupancy_layer, join_field=in_fieldISF, fields=[xCoords, yCoords, zCoords])
-
-            ## 2-2.3. XY Table to Points (FL)
-            out_feature_class = "Status_for_Relocation_ISF_temp"
-            sr = arcpy.SpatialReference(3123)
-            outLayerISF = arcpy.management.XYTableToPoint(MasterListISF, out_feature_class, xCoords, yCoords, zCoords, sr)
-
-
-            ### Delete 'POINT_X', 'POINT_Y', 'POINT_Z'; otherwise, it gives error for the next batch
-            dropXYZ = [xCoords, yCoords, zCoords]
-            arcpy.DeleteField_management(outLayerISF, dropXYZ)
-
-            ## 2-2.4. Add Domain
-            ## 2-2.5. Truncate original ISF point FL
-            arcpy.TruncateTable_management(in_isf_layer)
-
-            ## 2-2.6. Append to the Original ISF
-            arcpy.Append_management(outLayerISF, in_isf_layer, schema_type = 'NO_TEST')
-
         N2SC_Structure_Update()
+
+class UpdateBarangay(object):
+    def __init__(self):
+        self.label = "1.2. Update Barangay Excel Master List (SC1)"
+        self.description = "Update Barangay Excel Master List (SC1)"
+
+    def getParameterInfo(self):
+        gis_dir = arcpy.Parameter(
+            displayName = "GIS Masterlist Storage Directory",
+            name = "GIS master-list directory",
+            datatype = "DEWorkspace",
+            parameterType = "Required",
+            direction = "Input"
+        )
+
+        gis_bakcup_dir = arcpy.Parameter(
+            displayName = "GIS Masterlist Backup Directory",
+            name = "GIS Masterlist Backup Directory",
+            datatype = "DEWorkspace",
+            parameterType = "Optional",
+            direction = "Input"
+        )
+
+        gis_barangay_ms = arcpy.Parameter(
+            displayName = "GIS SC1 Barangay Status ML (Excel)",
+            name = "GIS SC1 Barangay Status ML (Excel)",
+            datatype = "DEFile",
+            parameterType = "Required",
+            direction = "Input"
+        )
+
+        rap_barangay_ms = arcpy.Parameter(
+            displayName = "RAP SC1 Barangay Status ML (Excel)",
+            name = "RAP SC1 Barangay Status ML (Excel)",
+            datatype = "DEFile",
+            parameterType = "Required",
+            direction = "Input"
+        )
+
+        lastupdate = arcpy.Parameter(
+            displayName = "Date of last update (yyyymmdd) e.g., 20240101 for backup",
+            name = "Date of last update (yyyymmdd) e.g., 20240101",
+            datatype = "GPString",
+            parameterType = "Optional",
+            direction = "Input"
+        )
+
+        params = [gis_dir, gis_bakcup_dir, gis_barangay_ms, rap_barangay_ms, lastupdate]
+        return params
+
+    def updateMessages(self, params):
+        return
+
+    def execute(self, params, messages):
+        gis_dir = params[0].valueAsText
+        gis_bakcup_dir = params[1].valueAsText
+        gis_barangay_ms = params[2].valueAsText
+        rap_barangay_ms = params[3].valueAsText
+        lastupdate = params[4].valueAsText
+
+        arcpy.env.overwriteOutput = True
+        #arcpy.env.addOutputsToMap = True
+
+        def SC1_Barangay_Update():
+            ## 2. Return unique values
+            def unique(lists):
+                collect = []
+                unique_list = pd.Series(lists).drop_duplicates().tolist()
+                for x in unique_list:
+                    collect.append(x)
+                return(collect)
+            
+            ## 3. Return non-matched values between two lists
+            def non_match_elements(list_a, list_b):
+                non_match = []
+                for i in list_a:
+                    if i not in list_b:
+                        non_match.append(i)
+                return non_match
+            
+            ## 4. Return matched elements
+            def match_elements(list_a, list_b):
+                matched = []
+                for i in list_a:
+                    if i in list_b:
+                        matched.append(i)
+                return matched
+            
+            def toString(table, to_string_fields): # list of fields to be converted to string
+                for field in to_string_fields:
+                    ## Need to convert string first, then apply space removal, and then convert to string again
+                    ## If you do not apply string conversion twice, it will fail to join with the GIS attribute table
+                    table[field] = table[field].astype(str)
+                    table[field] = table[field].apply(lambda x: x.replace(r'\s+', ''))
+                    table[field] = table[field].astype(str)
+
+            def first_letter_capital(table, column_names): # column_names are list
+                for name in column_names:
+                    table[name] = table[name].apply(lambda x: x.title())
+            
+            ####################################################
+            # Update Excel Master List Tables
+            ####################################################
+            rap_table = pd.read_excel(rap_barangay_ms)
+            gis_table = pd.read_excel(gis_barangay_ms)
+
+            # Create backup files
+            try:
+                gis_table.to_excel(os.path.join(gis_bakcup_dir, lastupdate + "_" + "SC1_Barangay_Status.xlsx"), index=False)
+            except Exception:
+                arcpy.AddMessage('You did not choose to create a backup file of {0} master list.'.format('SC1_Barangay_Status'))
+            
+            # Rename 'City' to Municipality
+            renamed_city = 'Municipality'
+            renamed_col = rap_table.columns[rap_table.columns.str.contains('|'.join(['City','city']))]
+            rap_table = rap_table.rename(columns={str(renamed_col[0]): renamed_city})
+            first_letter_capital(rap_table, [renamed_city])
+
+            # Rename Barangay
+            renamed_brgy = 'Barangay'
+            renamed_col = rap_table.columns[rap_table.columns.str.contains('|'.join(['Bgy','bgy']))]
+            rap_table = rap_table.rename(columns={str(renamed_col[0]): renamed_brgy})
+            first_letter_capital(rap_table, [renamed_brgy])
+
+            # Make sure no space
+            toString(rap_table, ['Municipality', 'Barangay', 'Subcon'])
+
+            # Convert to numeric
+            to_numeric_fields = ["Coop"]
+            cols = rap_table.columns
+            non_match_col = non_match_elements(to_numeric_fields, cols)
+            [to_numeric_fields.remove(non_match_col[0]) if non_match_col else print('no need to remove field from the list for numeric conversion')]
+
+            for field in to_numeric_fields:
+                rap_table[field] = rap_table[field].replace(r'\s+|[^\w\s]', '', regex=True)
+                rap_table[field] = pd.to_numeric(rap_table[field])
+
+            # Export
+            export_file_name = os.path.splitext(os.path.basename(gis_barangay_ms))[0]
+            to_excel_file = os.path.join(gis_dir, export_file_name + ".xlsx")
+            rap_table.to_excel(to_excel_file, index=False)
+
+        SC1_Barangay_Update()
 
 class UpdateFGDB(object):
     def __init__(self):
-        self.label = "1. Update GIS Attribute Tables using Updated Excel ML"
+        self.label = "2. Update GIS Attribute Tables"
         self.description = "Update feature layers for land, structure, and ISF of N2/SC"
 
     def getParameterInfo(self):
@@ -906,7 +859,7 @@ class UpdateFGDB(object):
 
         arcpy.env.overwriteOutput = True
 
-        # 1. Copy
+        # 1. For Pier
         try:
             copyNameN2Pier = 'N2_Pier_test'
             copyN2Pier = arcpy.CopyFeatures_management(inPier, copyNameN2Pier)
@@ -957,9 +910,7 @@ class UpdateFGDB(object):
         except:
             pass
 
-        #######################################################################################
-        #######################################################################################
-            
+        ## For Record: Original code below
         # 1. Copy Original Feature Layers
             
         copyNameLot = 'LA_Temp'
@@ -1009,8 +960,6 @@ class UpdateFGDB(object):
 
         # 3. Join Field
         ## 3.1. Convert Excel tables to feature table
-        ##MasterListLot = arcpy.TableToTable_conversion(mlLot, workspace, 'MasterListLot')
-        ##MasterListStruc = arcpy.TableToTable_conversion(mlStruct, workspace, 'MasterListStruc')
         MasterListLot = arcpy.conversion.ExportTable(mlLot, 'MasterListLot')
         MasterListStruc = arcpy.conversion.ExportTable(mlStruct, 'MasterListStruc')
             
@@ -1066,7 +1015,6 @@ class UpdateFGDB(object):
         ## 2-1.4. Append to the original FL
         arcpy.Append_management(pointStruc, inOccup, schema_type = 'NO_TEST')
 
-
         # STAGE: 2-2. Create and Update ISF Feture Layer
         ## 2-2.1. Convert ISF (Relocation excel) to Feature table
         ##MasterListISF = arcpy.TableToTable_conversion(mlISF, workspace, 'MasterListISF')
@@ -1096,7 +1044,6 @@ class UpdateFGDB(object):
         sr = arcpy.SpatialReference(3123)
         outLayerISF = arcpy.management.XYTableToPoint(MasterListISF, out_feature_class, xCoords, yCoords, zCoords, sr)
 
-
         ### Delete 'POINT_X', 'POINT_Y', 'POINT_Z'; otherwise, it gives error for the next batch
         dropXYZ = [xCoords, yCoords, zCoords]
         arcpy.DeleteField_management(outLayerISF, dropXYZ)
@@ -1109,9 +1056,8 @@ class UpdateFGDB(object):
         ## 2-2.6. Append to the Original ISF
         arcpy.Append_management(outLayerISF, inISF, schema_type = 'NO_TEST')
 
-
         # Delete the copied feature layer
-        deleteTempLayers = [copyLot, copyStruc, pointStruc, outLayerISF, MasterListLot, MasterListStruc, MasterListISF]
+        deleteTempLayers = [copyLot, copyStruc, pointStruc, outLayerISF, MasterListISF]
         arcpy.Delete_management(deleteTempLayers)
 
 class UpdateSDE(object):

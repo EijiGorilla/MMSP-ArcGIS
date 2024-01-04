@@ -12,7 +12,7 @@ class Toolbox(object):
     def __init__(self):
         self.label = "UpdateLandAcquisition"
         self.alias = "UpdateLandAcquisition"
-        self.tools = [UpdateLot, UpdateStructure, UpdateBarangay, UpdateFGDB, UpdateSDE, UpdateUsingMasterList]
+        self.tools = [UpdateLot, UpdateISF, UpdateStructure, UpdateBarangay, UpdateFGDB, UpdateSDE, UpdateUsingMasterList]
 
 class UpdateLot(object):
     def __init__(self):
@@ -338,9 +338,178 @@ class UpdateLot(object):
 
         N2SC_Land_Update()
 
+class UpdateISF(object):
+    def __init__(self):
+        self.label = "1.1. Update Excel Master List (ISF)"
+        self.description = "Update Excel Master List (ISF)"
+
+    def getParameterInfo(self):
+        proj = arcpy.Parameter(
+            displayName = "Project Extension: N2 or SC",
+            name = "Project Extension: N2 or SC",
+            datatype = "GPString",
+            parameterType = "Required",
+            direction = "Input"
+        )
+        proj.filter.type = "ValueList"
+        proj.filter.list = ['N2', 'SC']
+
+        gis_dir = arcpy.Parameter(
+            displayName = "GIS Masterlist Storage Directory",
+            name = "GIS master-list directory",
+            datatype = "DEWorkspace",
+            parameterType = "Required",
+            direction = "Input"
+        )
+
+        gis_bakcup_dir = arcpy.Parameter(
+            displayName = "GIS Masterlist Backup Directory",
+            name = "GIS Masterlist Backup Directory",
+            datatype = "DEWorkspace",
+            parameterType = "Optional",
+            direction = "Input"
+        )
+
+        gis_isf_ms = arcpy.Parameter(
+            displayName = "GIS ISF Relocation Status ML (Excel)",
+            name = "GIS ISF Relocation Status ML (Excel)",
+            datatype = "DEFile",
+            parameterType = "Required",
+            direction = "Input"
+        )
+
+        rap_isf_ms = arcpy.Parameter(
+            displayName = "RAP ISF Relocation Status ML (Excel)",
+            name = "RAP ISF Relocation Status ML (Excel)",
+            datatype = "DEFile",
+            parameterType = "Required",
+            direction = "Input"
+        )
+
+        lastupdate = arcpy.Parameter(
+            displayName = "Date of last update (yyyymmdd) e.g., 20240101 for backup",
+            name = "Date of last update (yyyymmdd) e.g., 20240101",
+            datatype = "GPString",
+            parameterType = "Optional",
+            direction = "Input"
+        )
+
+        params = [proj, gis_dir, gis_bakcup_dir, gis_isf_ms, rap_isf_ms, lastupdate]
+        return params
+
+    def updateMessages(self, params):
+        return
+
+    def execute(self, params, messages):
+        proj = params[0].valueAsText
+        gis_dir = params[1].valueAsText
+        gis_bakcup_dir = params[2].valueAsText
+        gis_isf_ms = params[3].valueAsText
+        rap_isf_ms = params[4].valueAsText
+        lastupdate = params[5].valueAsText
+
+        arcpy.env.overwriteOutput = True
+        #arcpy.env.addOutputsToMap = True
+        def N2SC_ISF_Update():
+            ## 2. Return unique values
+            def unique(lists):
+                collect = []
+                unique_list = pd.Series(lists).drop_duplicates().tolist()
+                for x in unique_list:
+                    collect.append(x)
+                return(collect)
+            
+            ## 3. Return non-matched values between two lists
+            def non_match_elements(list_a, list_b):
+                non_match = []
+                for i in list_a:
+                    if i not in list_b:
+                        non_match.append(i)
+                return non_match
+            
+            ## 4. Return matched elements
+            def match_elements(list_a, list_b):
+                matched = []
+                for i in list_a:
+                    if i in list_b:
+                        matched.append(i)
+                return matched
+            
+            def toString(table, to_string_fields): # list of fields to be converted to string
+                for field in to_string_fields:
+                    ## Need to convert string first, then apply space removal, and then convert to string again
+                    ## If you do not apply string conversion twice, it will fail to join with the GIS attribute table
+                    table[field] = table[field].astype(str)
+                    table[field] = table[field].apply(lambda x: x.replace(r'\s+', ''))
+                    table[field] = table[field].astype(str)
+
+            def first_letter_capital(table, column_names): # column_names are list
+                for name in column_names:
+                    table[name] = table[name].apply(lambda x: x.title())
+            
+            ####################################################
+            # Update Excel Master List Tables
+            ####################################################
+            if proj == 'N2':
+                cp_suffix = 'N-'
+            else:
+                cp_suffix = 'S-'
+        
+            rap_table = pd.read_excel(rap_isf_ms)
+            gis_table = pd.read_excel(gis_isf_ms)
+
+            # Create backup files
+            try:
+                gis_table.to_excel(os.path.join(gis_bakcup_dir, lastupdate + proj + "_" + "ISF_Relocation_Status.xlsx"), index=False)
+            except Exception:
+                arcpy.AddMessage('You did not choose to create a backup file of {0} master list.'.format('ISF_Relocation_Status'))
+            
+            # Rename 'City' to Municipality
+            renamed_city = 'Municipality'
+            try:
+                renamed_col = rap_table.columns[rap_table.columns.str.contains('|'.join(['City','city', 'Muni']))]
+                rap_table = rap_table.rename(columns={str(renamed_col[0]): renamed_city})
+                first_letter_capital(rap_table, [renamed_city])
+            except:
+                pass
+
+            # Rename Barangay
+            renamed_brgy = 'Barangay'
+            try:
+                renamed_col = rap_table.columns[rap_table.columns.str.contains('|'.join(['Bara','bara']))]
+                rap_table = rap_table.rename(columns={str(renamed_col[0]): renamed_brgy})
+                #first_letter_capital(rap_table, [renamed_brgy])
+            except:
+                pass
+
+            # Make sure no space
+            toString(rap_table, ['Municipality', 'Barangay', 'StrucID', 'CP'])
+
+            # Reformat CP
+            if proj == 'N2':
+                rap_table['CP'] = rap_table['CP'].str[-2:]       
+                rap_table['CP'] = cp_suffix + rap_table['CP']
+
+            # Convert to numeric
+            to_numeric_fields = ["StatusRC", "TypeRC", "HandOver"]
+            cols = rap_table.columns
+            non_match_col = non_match_elements(to_numeric_fields, cols)
+            [to_numeric_fields.remove(non_match_col[0]) if non_match_col else print('no need to remove field from the list for numeric conversion')]
+
+            for field in to_numeric_fields:
+                rap_table[field] = rap_table[field].replace(r'\s+|[^\w\s]', '', regex=True)
+                rap_table[field] = pd.to_numeric(rap_table[field])
+
+            # Export
+            export_file_name = os.path.splitext(os.path.basename(gis_isf_ms))[0]
+            to_excel_file = os.path.join(gis_dir, export_file_name + ".xlsx")
+            rap_table.to_excel(to_excel_file, index=False)
+
+        N2SC_ISF_Update()
+
 class UpdateStructure(object):
     def __init__(self):
-        self.label = "1.1. Update Excel Master List (Structure)"
+        self.label = "1.2. Update Excel Master List (Structure)"
         self.description = "Update Excel Master List (Structure)"
 
     def getParameterInfo(self):
@@ -513,10 +682,13 @@ class UpdateStructure(object):
                     # Add contractors submission
                     rap_table_sc1['ContSubm'] = 1
 
-                    # Conver to string with white space removal
+                    # Conver to string with white space removal and uppercase
                     to_string_fields = [joinField]
                     toString(rap_table_sc1, to_string_fields)
 
+                    rap_table[joinField] = rap_table[joinField].apply(lambda x: x.upper())
+                    rap_table_sc1[joinField] = rap_table_sc1[joinField].apply(lambda x: x.upper())
+                    
                     arcpy.AddMessage("ok4")
 
                     # Filter fields
@@ -573,7 +745,7 @@ class UpdateStructure(object):
             rap_table['CP'] = rap_table['CP'].str[-2:]    
             rap_table['CP'] = cp_suffix + rap_table['CP']
         
-            ## Convert to uppercase letters for StructureUse
+            ## Convert to uppercase letters for StructureUse and StrucID
             try:
                 uppercase_field = 'StructureUse'
                 match_col = match_elements(cols, uppercase_field)
@@ -581,6 +753,8 @@ class UpdateStructure(object):
                     rap_table[uppercase_field] = rap_table[uppercase_field].apply(lambda x: x.upper())
             except:
                  pass
+            
+            rap_table[joinField] = rap_table[joinField].apply(lambda x: x.upper())
 
             # Check and Fix StatusLA, HandedOverDate, HandOverDate, and HandedOverArea
             ## 1. StatusStruc =0 -> StatusStruc = empty
@@ -609,7 +783,7 @@ class UpdateStructure(object):
 
 class UpdateBarangay(object):
     def __init__(self):
-        self.label = "1.2. Update Barangay Excel Master List (SC1)"
+        self.label = "1.3. Update Barangay Excel Master List (SC1)"
         self.description = "Update Barangay Excel Master List (SC1)"
 
     def getParameterInfo(self):
@@ -749,6 +923,7 @@ class UpdateBarangay(object):
             rap_table.to_excel(to_excel_file, index=False)
 
         SC1_Barangay_Update()
+
 
 class UpdateFGDB(object):
     def __init__(self):

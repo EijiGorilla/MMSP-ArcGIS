@@ -316,26 +316,6 @@ class UpdateLot(object):
 
             arcpy.AddMessage("The master list was successfully exported.")
 
-            ########################
-            # ### Remove temporary date added
-            # for field in to_date_fields:
-            #     with arcpy.da.UpdateCursor(copyLot, [field]) as cursor:
-            #         for row in cursor:
-            #             if row[0]:
-            #                 year = row[0].strftime("%Y")
-            #                 if int(year) < 2000:
-            #                     row[0] = None
-            #                 else:
-            #                     row[0] = row[0]
-            #             cursor.updateRow(row)
-
-            # ## Remove temporary date from the feature layer and master list excel table
-            # for field in to_date_fields:
-            #     field = 'HandedOverDate'
-            #     id = rap_table.index[rap_table[field] == pd.to_datetime('1990-01-01')]
-            #     rap_table.loc[id, field] = None
-            # rap_table.to_excel(to_excel_file, index=False)
-
         N2SC_Land_Update()
 
 class UpdateISF(object):
@@ -1251,7 +1231,39 @@ class UpdateFGDB(object):
         except:
             pass
 
-        ## For Record: Original code below
+        ### Remove temporary date added
+        try:
+            to_date_fields = ['HandOverDate', 'HandedOverDate']
+            for field in to_date_fields:
+                with arcpy.da.UpdateCursor(inLot, [field]) as cursor:
+                    for row in cursor:
+                        if row[0]:
+                            year = row[0].strftime("%Y")
+                            if int(year) < 2000:
+                                row[0] = None
+                            else:
+                                row[0] = row[0]
+                        cursor.updateRow(row)
+
+            for field in to_date_fields:
+                with arcpy.da.UpdateCursor(mlLot, [field]) as cursor:
+                    for row in cursor:
+                        if row[0]:
+                            year = row[0].strftime("%Y")
+                            if int(year) < 2000:
+                                row[0] = None
+                            else:
+                                row[0] = row[0]
+                        cursor.updateRow(row)
+            ## Remove temporary date from the feature layer and master list excel table
+            # for field in to_date_fields:
+            #     field = 'HandedOverDate'
+            #     id = rap_table.index[rap_table[field] == pd.to_datetime('1990-01-01')]
+            #     rap_table.loc[id, field] = None
+            # rap_table.to_excel(to_excel_file, index=False)
+        except:
+            pass
+
         # 1. Copy Original Feature Layers
             
         copyNameLot = 'LA_Temp'

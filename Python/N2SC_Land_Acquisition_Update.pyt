@@ -12,7 +12,7 @@ class Toolbox(object):
     def __init__(self):
         self.label = "UpdateLandAcquisition"
         self.alias = "UpdateLandAcquisition"
-        self.tools = [UpdateLot, UpdateISF, UpdateStructure, UpdateBarangay, UpdateFGDB, UpdateSDE, UpdateUsingMasterList]
+        self.tools = [UpdateLot, UpdateISF, UpdateStructure, UpdateBarangay, UpdatePier, UpdateFGDB, UpdateSDE, UpdateUsingMasterList]
 
 class UpdateLot(object):
     def __init__(self):
@@ -924,6 +924,172 @@ class UpdateBarangay(object):
 
         SC1_Barangay_Update()
 
+class UpdatePier(object):
+    def __init__(self):
+        self.label = "1.4. Update Excel Master List (Pier)"
+        self.description = "Update Excel Master List (Pier)"
+
+    def getParameterInfo(self):
+        proj = arcpy.Parameter(
+            displayName = "Project Extension: N2 or SC",
+            name = "Project Extension: N2 or SC",
+            datatype = "GPString",
+            parameterType = "Required",
+            direction = "Input"
+        )
+        proj.filter.type = "ValueList"
+        proj.filter.list = ['N2', 'SC']
+
+        gis_dir = arcpy.Parameter(
+            displayName = "GIS Masterlist Storage Directory",
+            name = "GIS master-list directory",
+            datatype = "DEWorkspace",
+            parameterType = "Required",
+            direction = "Input"
+        )
+
+        gis_bakcup_dir = arcpy.Parameter(
+            displayName = "GIS Masterlist Backup Directory",
+            name = "GIS Masterlist Backup Directory",
+            datatype = "DEWorkspace",
+            parameterType = "Optional",
+            direction = "Input"
+        )
+
+        gis_pier_ms = arcpy.Parameter(
+            displayName = "GIS Pier Number List ML (Excel)",
+            name = "GIS Pier Number List ML (Excel)",
+            datatype = "DEFile",
+            parameterType = "Required",
+            direction = "Input"
+        )
+
+        rap_pier_ms = arcpy.Parameter(
+            displayName = "RAP Pier Number List ML (Excel)",
+            name = "RAP Pier Number List ML (Excel)",
+            datatype = "DEFile",
+            parameterType = "Required",
+            direction = "Input"
+        )
+
+        lastupdate = arcpy.Parameter(
+            displayName = "Date of last update (yyyymmdd) e.g., 20240101 for backup",
+            name = "Date of last update (yyyymmdd) e.g., 20240101",
+            datatype = "GPString",
+            parameterType = "Optional",
+            direction = "Input"
+        )
+
+        params = [proj, gis_dir, gis_bakcup_dir, gis_pier_ms, rap_pier_ms, lastupdate]
+        return params
+
+    def updateMessages(self, params):
+        return
+
+    def execute(self, params, messages):
+        proj = params[0].valueAsText
+        gis_dir = params[1].valueAsText
+        gis_bakcup_dir = params[2].valueAsText
+        gis_pier_ms = params[3].valueAsText
+        rap_pier_ms = params[4].valueAsText
+        lastupdate = params[5].valueAsText
+
+        arcpy.env.overwriteOutput = True
+        #arcpy.env.addOutputsToMap = True
+        def N2SC_Pier_Update():
+            ## 2. Return unique values
+            def unique(lists):
+                collect = []
+                unique_list = pd.Series(lists).drop_duplicates().tolist()
+                for x in unique_list:
+                    collect.append(x)
+                return(collect)
+            
+            ## 3. Return non-matched values between two lists
+            def non_match_elements(list_a, list_b):
+                non_match = []
+                for i in list_a:
+                    if i not in list_b:
+                        non_match.append(i)
+                return non_match
+            
+            ## 4. Return matched elements
+            def match_elements(list_a, list_b):
+                matched = []
+                for i in list_a:
+                    if i in list_b:
+                        matched.append(i)
+                return matched
+            
+            def toString(table, to_string_fields): # list of fields to be converted to string
+                for field in to_string_fields:
+                    ## Need to convert string first, then apply space removal, and then convert to string again
+                    ## If you do not apply string conversion twice, it will fail to join with the GIS attribute table
+                    table[field] = table[field].astype(str)
+                    table[field] = table[field].apply(lambda x: x.replace(r'\s+', ''))
+                    table[field] = table[field].astype(str)
+
+            def first_letter_capital(table, column_names): # column_names are list
+                for name in column_names:
+                    table[name] = table[name].apply(lambda x: x.title())
+            
+            ####################################################
+            # Update Excel Master List Tables
+            ####################################################
+            if proj == 'N2':
+                cp_suffix = 'N-'
+            else:
+                cp_suffix = 'S-'
+        
+            rap_table = pd.read_excel(rap_pier_ms)
+            gis_table = pd.read_excel(gis_pier_ms)
+
+            # Create backup files
+            try:
+                gis_table.to_excel(os.path.join(gis_bakcup_dir, lastupdate + proj + "_" + "Pier_Land.xlsx"), index=False)
+            except Exception:
+                arcpy.AddMessage('You did not choose to create a backup file of {0} master list.'.format('Pier_Land Table'))
+            
+            # Rename 'City' to Municipality
+            renamed_city = 'Municipality'
+            try:
+                renamed_col = rap_table.columns[rap_table.columns.str.contains('|'.join(['City','city', 'Muni']))]
+                rap_table = rap_table.rename(columns={str(renamed_col[0]): renamed_city})
+                first_letter_capital(rap_table, [renamed_city])
+            except:
+                pass       
+            
+            # Convert Pier column name to upper case
+            try:
+                renamed_col = rap_table.columns[rap_table.columns.str.contains('|'.join(['pier','Pier', 'PIER']))]
+                rap_table = rap_table.rename(columns={str(renamed_col[0]): "PIER"})
+            except:
+                pass
+
+            # Make sure no space
+            toString(rap_table, ['Municipality', 'PIER', 'CP'])
+
+            # CP to upper case
+            rap_table['CP'] = rap_table['CP'].apply(lambda x: x.upper())  
+
+            # Reformat CP
+            if proj == 'N2':
+                rap_table['CP'] = rap_table['CP'].str[-2:]       
+                rap_table['CP'] = cp_suffix + rap_table['CP']
+
+            # check match between RAP and GIS
+            pier_rap = unique(rap_table['PIER'])
+            pier_gis = unique(gis_table['PIER'])
+            non_match_piers = non_match_elements(pier_rap, pier_gis)
+            if (len(non_match_piers) > 0):
+                print('Pier Numbers do not match between GIS excel ML and RAP excel ML.')
+
+            # Export
+            export_file_name = os.path.splitext(os.path.basename(gis_pier_ms))[0]
+            to_excel_file = os.path.join(gis_dir, export_file_name + ".xlsx")
+            rap_table.to_excel(to_excel_file, index=False)
+
+        N2SC_Pier_Update()
 
 class UpdateFGDB(object):
     def __init__(self):

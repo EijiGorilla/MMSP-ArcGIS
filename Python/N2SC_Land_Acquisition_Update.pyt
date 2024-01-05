@@ -12,7 +12,8 @@ class Toolbox(object):
     def __init__(self):
         self.label = "UpdateLandAcquisition"
         self.alias = "UpdateLandAcquisition"
-        self.tools = [UpdateLot, UpdateISF, UpdateStructure, UpdateBarangay, UpdatePier, UpdateFGDB, UpdateSDE, UpdateUsingMasterList]
+        self.tools = [UpdateLot, UpdateISF, UpdateStructure, UpdateBarangay, UpdatePier,
+                      UpdateLotGIS, UpdateStructureGIS, UpdatePierGIS, UpdateBarangayGIS]
 
 class UpdateLot(object):
     def __init__(self):
@@ -20,13 +21,13 @@ class UpdateLot(object):
         self.description = "Update Excel Master List (Lot)"
 
     def getParameterInfo(self):
-        ws = arcpy.Parameter(
-            displayName = "Workspace",
-            name = "workspace",
-            datatype = "DEWorkspace",
-            parameterType = "Required",
-            direction = "Input"
-        )
+        # ws = arcpy.Parameter(
+        #     displayName = "Workspace",
+        #     name = "workspace",
+        #     datatype = "DEWorkspace",
+        #     parameterType = "Required",
+        #     direction = "Input"
+        # )
 
         proj = arcpy.Parameter(
             displayName = "Project Extension: N2 or SC",
@@ -71,7 +72,7 @@ class UpdateLot(object):
         )
 
         rap_lot_sc1_ms = arcpy.Parameter(
-            displayName = "RAP SC1 Land Status ML for SC",
+            displayName = "RAP SC1 Land Status ML for SC (SC ONLY)",
             name = "RAP SC1 Land Status for SC",
             datatype = "DEFile",
             parameterType = "Optional",
@@ -86,21 +87,20 @@ class UpdateLot(object):
             direction = "Input"
         )
 
-        params = [ws, proj, gis_dir, gis_bakcup_dir, gis_lot_ms, rap_lot_ms, rap_lot_sc1_ms, lastupdate]
+        params = [proj, gis_dir, gis_bakcup_dir, gis_lot_ms, rap_lot_ms, rap_lot_sc1_ms, lastupdate]
         return params
 
     def updateMessages(self, params):
         return
 
     def execute(self, params, messages):
-        ws = params[0].valueAsText
-        proj = params[1].valueAsText
-        gis_dir = params[2].valueAsText
-        gis_bakcup_dir = params[3].valueAsText
-        gis_lot_ms = params[4].valueAsText
-        rap_lot_ms = params[5].valueAsText
-        rap_lot_sc1_ms = params[6].valueAsText
-        lastupdate = params[7].valueAsText
+        proj = params[0].valueAsText
+        gis_dir = params[1].valueAsText
+        gis_bakcup_dir = params[2].valueAsText
+        gis_lot_ms = params[3].valueAsText
+        rap_lot_ms = params[4].valueAsText
+        rap_lot_sc1_ms = params[5].valueAsText
+        lastupdate = params[6].valueAsText
 
         arcpy.env.overwriteOutput = True
         #arcpy.env.addOutputsToMap = True
@@ -229,12 +229,12 @@ class UpdateLot(object):
                     lotID_sc1 = unique(rap_table_sc1[joinField])
                     non_match_LotID = non_match_elements(lotID_sc, lotID_sc1)
                     if (len(non_match_LotID) > 0):
-                        print('LotIDs do not match between SC and SC1 tables.')
+                        arcpy.AddMessage('LotIDs do not match between SC and SC1 tables.')
 
                 except Exception:
                     arcpy.AddMessage('You did not select {0} master list for updating contractors submission status.'.format('SC1_Land_Status '))
 
-            # Rename City for Municipality
+            # Rename City for Municipality and upper case letter for the first letter
             try:
                 colname_change = rap_table.columns[rap_table.columns.str.contains('|'.join(search_names_city))]
                 rap_table = rap_table.rename(columns={str(colname_change[0]): renamed_city})
@@ -242,6 +242,7 @@ class UpdateLot(object):
                 pass
 
             first_letter_capital(rap_table, [renamed_city])
+            # first_letter_capital(rap_table, ['Barangay'])
             
             # Convert to numeric
             numeric_fields_common = ["TotalArea","AffectedArea","RemainingArea","HandedOverArea","HandedOver","Priority","StatusLA","MoA","PTE"]
@@ -273,9 +274,8 @@ class UpdateLot(object):
                 rap_table[field] = pd.to_datetime(rap_table[field],errors='coerce').dt.date
         
             ## Convert to uppercase letters for LandUse
-            match_col = match_elements(cols, 'LandUse')
-            if len(match_col) > 0:
-                rap_table['LandUse'] = rap_table['LandUse'].apply(lambda x: x.upper())  
+            if proj == 'N2':
+                rap_table['LandUse'] = rap_table['LandUse'].apply(lambda x: x.upper())
 
             # Add scale from old master list
             rap_table = rap_table.drop('Scale',axis=1)
@@ -493,13 +493,13 @@ class UpdateStructure(object):
         self.description = "Update Excel Master List (Structure)"
 
     def getParameterInfo(self):
-        ws = arcpy.Parameter(
-            displayName = "Workspace",
-            name = "workspace",
-            datatype = "DEWorkspace",
-            parameterType = "Required",
-            direction = "Input"
-        )
+        # ws = arcpy.Parameter(
+        #     displayName = "Workspace",
+        #     name = "workspace",
+        #     datatype = "DEWorkspace",
+        #     parameterType = "Required",
+        #     direction = "Input"
+        # )
 
         proj = arcpy.Parameter(
             displayName = "Project Extension: N2 or SC",
@@ -552,7 +552,7 @@ class UpdateStructure(object):
         )
 
         rap_relo_ms = arcpy.Parameter(
-            displayName = "RAP Structure Relocation Status ML (Excel)",
+            displayName = "RAP Structure ISF Relocation Status ML (Excel)",
             name = "RAP Structure Relocation Status ML (Excel)",
             datatype = "DEFile",
             parameterType = "Required",
@@ -567,7 +567,7 @@ class UpdateStructure(object):
             direction = "Input"
         )
 
-        params = [ws, proj, gis_dir, gis_bakcup_dir, gis_struc_ms,
+        params = [proj, gis_dir, gis_bakcup_dir, gis_struc_ms,
                   rap_struc_ms, rap_struc_sc1_ms, rap_relo_ms, lastupdate]
         return params
 
@@ -575,15 +575,14 @@ class UpdateStructure(object):
         return
 
     def execute(self, params, messages):
-        ws = params[0].valueAsText
-        proj = params[1].valueAsText
-        gis_dir = params[2].valueAsText
-        gis_bakcup_dir = params[3].valueAsText
-        gis_struc_ms = params[4].valueAsText
-        rap_struc_ms = params[5].valueAsText
-        rap_struc_sc1_ms = params[6].valueAsText
-        rap_relo_ms = params[7].valueAsText
-        lastupdate = params[8].valueAsText
+        proj = params[0].valueAsText
+        gis_dir = params[1].valueAsText
+        gis_bakcup_dir = params[2].valueAsText
+        gis_struc_ms = params[3].valueAsText
+        rap_struc_ms = params[4].valueAsText
+        rap_struc_sc1_ms = params[5].valueAsText
+        rap_relo_ms = params[6].valueAsText
+        lastupdate = params[7].valueAsText
 
         arcpy.env.overwriteOutput = True
         #arcpy.env.addOutputsToMap = True
@@ -750,9 +749,9 @@ class UpdateStructure(object):
             df = rap_relo_table.groupby(joinField).count()[['FamilyNumber']]
             rap_table = pd.merge(left=rap_table, right=df, how='left', left_on=joinField, right_on=joinField)
             
-            # MoA is 'No Need to Acquire' -> StatusStruc is null
-            id = rap_table.index[(rap_table['MoA'] == 4) & (rap_table[status_field] >= 1)]
-            rap_table.loc[id, status_field] = None
+            # MoA is 'No Need to Acquire' -> StatusStruc is null: What is THIS?
+            # id = rap_table.index[rap_table['MoA'] == 4 & (rap_table[status_field] >= 1)]
+            # rap_table.loc[id, status_field] = None
         
             # Export
             export_file_name = os.path.splitext(os.path.basename(gis_struc_ms))[0]
@@ -824,6 +823,13 @@ class UpdateBarangay(object):
         #arcpy.env.addOutputsToMap = True
 
         def SC1_Barangay_Update():
+            def whitespace_removal(dataframe): # remove leading and trailing white space
+                for i in dataframe.columns:
+                    try:
+                        dataframe[i] = dataframe[i].apply(lambda x: x.strip())
+                    except AttributeError:
+                        print("Not processed: " + '{}'.format(i))
+
             ## 2. Return unique values
             def unique(lists):
                 collect = []
@@ -883,6 +889,10 @@ class UpdateBarangay(object):
             renamed_col = rap_table.columns[rap_table.columns.str.contains('|'.join(['Bgy','bgy']))]
             rap_table = rap_table.rename(columns={str(renamed_col[0]): renamed_brgy})
             first_letter_capital(rap_table, [renamed_brgy])
+
+            # Remove 'Barangay'
+            rap_table = rap_table.replace(regex="^Barangay", value="")
+            whitespace_removal(rap_table)
 
             # Make sure no space
             toString(rap_table, ['Municipality', 'Barangay', 'Subcon'])
@@ -1046,6 +1056,9 @@ class UpdatePier(object):
             except:
                 pass
 
+            # Reformat date
+            rap_table['AccessDate'] = pd.to_datetime(rap_table['AccessDate'],errors='coerce').dt.date
+
             # Make sure no space
             toString(rap_table, ['Municipality', 'PIER', 'CP'])
 
@@ -1058,11 +1071,24 @@ class UpdatePier(object):
                 rap_table['CP'] = cp_suffix + rap_table['CP']
 
             # check match between RAP and GIS
-            pier_rap = unique(rap_table['PIER'])
-            pier_gis = unique(gis_table['PIER'])
-            non_match_piers = non_match_elements(pier_rap, pier_gis)
-            if (len(non_match_piers) > 0):
-                print('Pier Numbers do not match between GIS excel ML and RAP excel ML.')
+            try:
+                pier_rap = unique(rap_table['PIER'])
+                pier_gis = unique(gis_table['PIER'])
+
+                non_match_piers = non_match_elements(pier_rap, pier_gis)
+                if (len(non_match_piers) > 0):
+                    arcpy.AddMessage('Pier Numbers do not match between GIS excel ML and RAP excel ML.')
+                    arcpy.AddMessage(non_match_piers)
+                else:
+                    arcpy.AddMessage('Pier Numbers match between Excel ML and GIS table.')
+            except:
+                pass
+
+            # Change the following pier numbers
+            piers_change = ['P-2152-A', 'P-2153-A', 'P-2206-A']
+            for old_pier in piers_change:
+                new_pier = old_pier.replace(r'-A','A')
+                rap_table['PIER'].replace(old_pier, new_pier, inplace=True)
 
             # Export
             export_file_name = os.path.splitext(os.path.basename(gis_pier_ms))[0]
@@ -1071,180 +1097,45 @@ class UpdatePier(object):
 
         N2SC_Pier_Update()
 
-class UpdateFGDB(object):
+class UpdateLotGIS(object):
     def __init__(self):
-        self.label = "2. Update GIS Attribute Tables"
-        self.description = "Update feature layers for land, structure, and ISF of N2/SC"
+        self.label = "2.1. Update GIS Attribute Table (Lot)"
+        self.description = "Update feature layer for land acquisition"
 
     def getParameterInfo(self):
-        ws = arcpy.Parameter(
-            displayName = "Workspace",
-            name = "workspace",
-            datatype = "DEWorkspace",
-            parameterType = "Required",
-            direction = "Input"
-        )
-
         # Input Feature Layers
         in_lot = arcpy.Parameter(
-            displayName = "Status of Lot (Polygon)",
-            name = "Status of Lot (Polygon)",
+            displayName = "GIS Lot Status (Polygon)",
+            name = "GIS Lot Status (Polygon)",
             datatype = "GPFeatureLayer",
             parameterType = "Required",
-            direction = "Input"
-        )
-
-        in_structure = arcpy.Parameter(
-            displayName = "Status of Structure (Polygon)",
-            name = "Status of Structure (Polygon)",
-            datatype = "GPFeatureLayer",
-            parameterType = "Required",
-            direction = "Input"
-        )
-
-        in_occupancy = arcpy.Parameter(
-            displayName = "Status of Occupancy (Point)",
-            name = "Status of Occupancy (Point)",
-            datatype = "GPFeatureLayer",
-            parameterType = "Required",
-            direction = "Input"
-        )
-
-        in_isf = arcpy.Parameter(
-            displayName = "Status of ISF (Point)",
-            name = "Status of ISF (Point)",
-            datatype = "GPFeatureLayer",
-            parameterType = "Required",
-            direction = "Input"
-        )
-
-        in_pier = arcpy.Parameter(
-            displayName = "Status of Pier (Point)",
-            name = "Status of Pier (Point)",
-            datatype = "GPFeatureLayer",
-            parameterType = "Optional",
             direction = "Input"
         )
 
         # Input Excel master list tables
         ml_lot = arcpy.Parameter(
-            displayName = "Lot_ML (Excel)",
-            name = "Lot_ML (Excel)",
+            displayName = "Excel MasterList (Lot)",
+            name = "Excel MasterList (Lot)",
             datatype = "GPTableView",
             parameterType = "Required",
             direction = "Input"
         )
 
-        ml_structure = arcpy.Parameter(
-            displayName = "Structure_ML (Excel)",
-            name = "Structure_ML (Excel)",
-            datatype = "GPTableView",
-            parameterType = "Required",
-            direction = "Input"
-        )
-
-        ml_isf = arcpy.Parameter(
-            displayName = "ISF_Relocation_ML (Excel)",
-            name = "ISF_Relocation_ML (Excel)",
-            datatype = "GPTableView",
-            parameterType = "Required",
-            direction = "Input"
-        )
-
-        ml_pier = arcpy.Parameter(
-            displayName = "Pier_ML (Excel)",
-            name = "Pier_ML (Excel)",
-            datatype = "GPTableView",
-            parameterType = "Optional",
-            direction = "Input"
-        )
-
-        params = [ws, in_lot, in_structure, in_occupancy, in_isf, in_pier,
-                  ml_lot, ml_structure, ml_isf, ml_pier]
+        params = [in_lot, ml_lot]
         return params
 
     def updateMessages(self, params):
         return
 
     def execute(self, params, messages):
-        workspace = params[0].valueAsText
-        inLot = params[1].valueAsText
-        inStruc = params[2].valueAsText
-        inOccup = params[3].valueAsText
-        inISF = params[4].valueAsText
-        inPier = params[5].valueAsText
-        mlLot = params[6].valueAsText
-        mlStruct = params[7].valueAsText
-        mlISF = params[8].valueAsText
-        mlPier = params[9].valueAsText
+        inLot = params[0].valueAsText
+        mlLot = params[1].valueAsText
 
         arcpy.env.overwriteOutput = True
-
-        # 1. For Pier
-        try:
-            copyNameN2Pier = 'N2_Pier_test'
-            copyN2Pier = arcpy.CopyFeatures_management(inPier, copyNameN2Pier)
-            
-            # 2. Delete fields: 'Municipality' and 'AccessDate'
-            fieldNameN2Pier = [f.name for f in arcpy.ListFields(copyN2Pier)]
-            
-            ## 2.1. Fields to be dropped
-            dropFieldN2Pier = [e for e in fieldNameN2Pier if e not in ('PIER','CP','Shape','Shape_Length','Shape_Area','Shape.STArea()','Shape.STLength()','OBJECTID','GlobalID')]
-            
-            ## 2.2 Extract existing fields
-            inFieldN2Pier = [f.name for f in arcpy.ListFields(copyN2Pier)]
-            
-            ## 2.3. Check if there are fields to be dropped
-            finalDropFieldN2Pier = [f for f in inFieldN2Pier if f in tuple(dropFieldN2Pier)]
-            
-            ## 2.4 Drop
-            if len(finalDropFieldN2Pier) == 0:
-                arcpy.AddMessage("There is no field that can be dropped from the feature layer")
-            else:
-                arcpy.DeleteField_management(copyN2Pier, finalDropFieldN2Pier)
-                
-            # 3. Join Field
-            ## 3.1. Convert Excel tables to feature table
-            ##MasterListN2Pier = arcpy.TableToTable_conversion(mlPier, workspace, 'MasterListN2Pier')
-            MasterListN2Pier = arcpy.conversion.ExportTable(mlPier, 'MasterListN2Pier')
-            
-            ## 3.2. Get Join Field from MasterList gdb table: Gain all fields except 'Id'
-            inputFieldN2Pier = [f.name for f in arcpy.ListFields(MasterListN2Pier)]
-            joinFieldN2Pier = [e for e in inputFieldN2Pier if e not in ('PIER', 'Pier','OBJECTID')]
-            
-            ## 3.3. Extract a Field from MasterList and Feature Layer to be used to join two tables
-            tN2Pier = [f.name for f in arcpy.ListFields(copyN2Pier)]
-            in_fieldN2Pier = ' '.join(map(str, [f for f in tN2Pier if f in ('PIER', 'Pier')]))
-            
-            uN2Pier = [f.name for f in arcpy.ListFields(MasterListN2Pier)]
-            join_fieldN2Pier=' '.join(map(str, [f for f in uN2Pier if f in ('PIER', 'Pier')]))
-            
-            ## 3.4 Join
-            arcpy.JoinField_management(in_data=copyN2Pier, in_field=in_fieldN2Pier, join_table=MasterListN2Pier, join_field=join_fieldN2Pier, fields=joinFieldN2Pier)
-            
-            # 4. Trucnate
-            arcpy.TruncateTable_management(inPier)
-            
-            # 5. Append
-            arcpy.Append_management(copyN2Pier, inPier, schema_type = 'NO_TEST')
-            
-        except:
-            pass
-
         ### Remove temporary date added
         try:
+            arcpy.AddMessage('Removing temporary added date from Lot excel master list has started...')
             to_date_fields = ['HandOverDate', 'HandedOverDate']
-            for field in to_date_fields:
-                with arcpy.da.UpdateCursor(inLot, [field]) as cursor:
-                    for row in cursor:
-                        if row[0]:
-                            year = row[0].strftime("%Y")
-                            if int(year) < 2000:
-                                row[0] = None
-                            else:
-                                row[0] = row[0]
-                        cursor.updateRow(row)
-
             for field in to_date_fields:
                 with arcpy.da.UpdateCursor(mlLot, [field]) as cursor:
                     for row in cursor:
@@ -1255,21 +1146,134 @@ class UpdateFGDB(object):
                             else:
                                 row[0] = row[0]
                         cursor.updateRow(row)
-            ## Remove temporary date from the feature layer and master list excel table
-            # for field in to_date_fields:
-            #     field = 'HandedOverDate'
-            #     id = rap_table.index[rap_table[field] == pd.to_datetime('1990-01-01')]
-            #     rap_table.loc[id, field] = None
-            # rap_table.to_excel(to_excel_file, index=False)
         except:
             pass
 
+
+        # For updating lot
+        try:
+            arcpy.AddMessage('Updating Lot status has started..')
+            # 1. Copy Original Feature Layers
+            copyNameLot = 'LA_Temp'               
+            copyLot = arcpy.CopyFeatures_management(inLot, copyNameLot)
+                
+            arcpy.AddMessage("Stage 1: Copy feature layer was success")
+                    
+            # 2. Delete Field
+            fieldNameLot = [f.name for f in arcpy.ListFields(copyLot)]
+                
+            ## 2.1. Identify fields to be dropped
+            dropFieldLot = [e for e in fieldNameLot if e not in ('LotId', 'LotID','Shape','Shape_Length','Shape_Area','Shape.STArea()','Shape.STLength()','OBJECTID','GlobalID')]
+                
+            ## 2.2. Extract existing fields
+            inFieldLot = [f.name for f in arcpy.ListFields(copyLot)]
+                
+            arcpy.AddMessage("Stage 1: Extract existing fields was success")
+                
+            ## 2.3. Check if there are fields to be dropped
+            finalDropFieldLot = [f for f in inFieldLot if f in tuple(dropFieldLot)]
+                
+            arcpy.AddMessage("Stage 1: Checking for Fields to be dropped was success")
+                
+            ## 2.4 Drop
+            if len(finalDropFieldLot) == 0:
+                arcpy.AddMessage("There is no field that can be dropped from the feature layer")
+            else:
+                arcpy.DeleteField_management(copyLot, finalDropFieldLot)
+                    
+            arcpy.AddMessage("Stage 1: Dropping Fields was success")
+            arcpy.AddMessage("Section 2 of Stage 1 was successfully implemented")
+
+            # 3. Join Field
+            ## 3.1. Convert Excel tables to feature table
+            MasterListLot = arcpy.conversion.ExportTable(mlLot, 'MasterListLot')
+                
+            ## 3.2. Get Join Field from MasterList gdb table: Gain all fields except 'Id'
+            inputFieldLot = [f.name for f in arcpy.ListFields(MasterListLot)]
+            joinFieldLot = [e for e in inputFieldLot if e not in ('LotId', 'LotID','OBJECTID')]
+                
+            ## 3.3. Extract a Field from MasterList and Feature Layer to be used to join two tables
+            tLot = [f.name for f in arcpy.ListFields(copyLot)]  
+            in_fieldLot = ' '.join(map(str, [f for f in tLot if f in ('LotId', 'LotID')]))      
+            uLot = [f.name for f in arcpy.ListFields(MasterListLot)]
+                
+            join_fieldLot=' '.join(map(str, [f for f in uLot if f in ('LotId', 'LotID')]))
+                
+            ## 3.4 Join
+            arcpy.JoinField_management(in_data=copyLot, in_field=in_fieldLot, join_table=MasterListLot, join_field=join_fieldLot, fields=joinFieldLot)
+
+            # 4. Trucnate
+            arcpy.TruncateTable_management(inLot)
+
+            # 5. Append
+            arcpy.Append_management(copyLot, inLot, schema_type = 'NO_TEST')
+
+        except:
+            pass
+
+class UpdateStructureGIS(object):
+    def __init__(self):
+        self.label = "2.2. Update GIS Attribute Tables (Structures/Occupancy/ISF Relocation)"
+        self.description = "Update feature layers for structures including occupany and ISF Relocation"
+
+    def getParameterInfo(self):
+        in_structure = arcpy.Parameter(
+            displayName = "GIS Structure Status (Polygon)",
+            name = "GIS Structure Status (Polygon)",
+            datatype = "GPFeatureLayer",
+            parameterType = "Required",
+            direction = "Input"
+        )
+
+        in_occupancy = arcpy.Parameter(
+            displayName = "GIS Structure Occupancy (Point)",
+            name = "GIS Structure Occupancy (Point)",
+            datatype = "GPFeatureLayer",
+            parameterType = "Required",
+            direction = "Input"
+        )
+
+        in_isf = arcpy.Parameter(
+            displayName = "GIS ISF Relocation (Point)",
+            name = "GIS ISF Relocation (Point)",
+            datatype = "GPFeatureLayer",
+            parameterType = "Required",
+            direction = "Input"
+        )
+
+        ml_structure = arcpy.Parameter(
+            displayName = "Excel MasterList (Structure)",
+            name = "Structure_ML (Excel)",
+            datatype = "GPTableView",
+            parameterType = "Required",
+            direction = "Input"
+        )
+
+        ml_isf = arcpy.Parameter(
+            displayName = "Excel MasterList (ISF Relocation)",
+            name = "ISF_Relocation_ML (Excel)",
+            datatype = "GPTableView",
+            parameterType = "Required",
+            direction = "Input"
+        )
+
+        params = [in_structure, in_occupancy, in_isf, ml_structure, ml_isf]
+        return params
+
+    def updateMessages(self, params):
+        return
+
+    def execute(self, params, messages):
+        inStruc = params[0].valueAsText
+        inOccup = params[1].valueAsText
+        inISF = params[2].valueAsText
+        mlStruct = params[3].valueAsText
+        mlISF = params[4].valueAsText
+
+        arcpy.env.overwriteOutput = True
+
         # 1. Copy Original Feature Layers
-            
-        copyNameLot = 'LA_Temp'
         copyNameStruc = 'Struc_Temp'
-            
-        copyLot = arcpy.CopyFeatures_management(inLot, copyNameLot)
         copyStruc = arcpy.CopyFeatures_management(inStruc, copyNameStruc)
             
         #copyLot = arcpy.CopyFeatures_management(inputLayerLot, copyNameLot)
@@ -1278,31 +1282,22 @@ class UpdateFGDB(object):
         arcpy.AddMessage("Stage 1: Copy feature layer was success")
                 
         # 2. Delete Field
-        fieldNameLot = [f.name for f in arcpy.ListFields(copyLot)]
         fieldNameStruc = [f.name for f in arcpy.ListFields(copyStruc)]
             
         ## 2.1. Identify fields to be dropped
-        dropFieldLot = [e for e in fieldNameLot if e not in ('LotId', 'LotID','Shape','Shape_Length','Shape_Area','Shape.STArea()','Shape.STLength()','OBJECTID','GlobalID')]
         dropFieldStruc = [e for e in fieldNameStruc if e not in ('StrucID', 'strucID','Shape','Shape_Length','Shape_Area','Shape.STArea()','Shape.STLength()','OBJECTID','GlobalID')]
             
         ## 2.2. Extract existing fields
-        inFieldLot = [f.name for f in arcpy.ListFields(copyLot)]
         inFieldStruc = [f.name for f in arcpy.ListFields(copyStruc)]
             
         arcpy.AddMessage("Stage 1: Extract existing fields was success")
             
         ## 2.3. Check if there are fields to be dropped
-        finalDropFieldLot = [f for f in inFieldLot if f in tuple(dropFieldLot)]
         finalDropFieldStruc = [f for f in inFieldStruc if f in tuple(dropFieldStruc)]
             
         arcpy.AddMessage("Stage 1: Checking for Fields to be dropped was success")
             
-        ## 2.4 Drop
-        if len(finalDropFieldLot) == 0:
-            arcpy.AddMessage("There is no field that can be dropped from the feature layer")
-        else:
-            arcpy.DeleteField_management(copyLot, finalDropFieldLot)
-                
+        ## 2.4 Drop               
         if len(finalDropFieldStruc) == 0:
             arcpy.AddMessage("There is no field that can be dropped from the feature layer")
         else:
@@ -1313,39 +1308,25 @@ class UpdateFGDB(object):
 
         # 3. Join Field
         ## 3.1. Convert Excel tables to feature table
-        MasterListLot = arcpy.conversion.ExportTable(mlLot, 'MasterListLot')
         MasterListStruc = arcpy.conversion.ExportTable(mlStruct, 'MasterListStruc')
             
         ## 3.2. Get Join Field from MasterList gdb table: Gain all fields except 'Id'
-        inputFieldLot = [f.name for f in arcpy.ListFields(MasterListLot)]
         inputFieldStruc = [f.name for f in arcpy.ListFields(MasterListStruc)]
-            
-        joinFieldLot = [e for e in inputFieldLot if e not in ('LotId', 'LotID','OBJECTID')]
         joinFieldStruc = [e for e in inputFieldStruc if e not in ('StrucID', 'strucID','OBJECTID')]
             
         ## 3.3. Extract a Field from MasterList and Feature Layer to be used to join two tables
-        tLot = [f.name for f in arcpy.ListFields(copyLot)]
         tStruc = [f.name for f in arcpy.ListFields(copyStruc)]
-            
-        in_fieldLot = ' '.join(map(str, [f for f in tLot if f in ('LotId', 'LotID')]))
         in_fieldStruc = ' '.join(map(str, [f for f in tStruc if f in ('StrucID', 'strucID')]))
-            
-        uLot = [f.name for f in arcpy.ListFields(MasterListLot)]
         uStruc = [f.name for f in arcpy.ListFields(MasterListStruc)]
-            
-        join_fieldLot=' '.join(map(str, [f for f in uLot if f in ('LotId', 'LotID')]))
         join_fieldStruc = ' '.join(map(str, [f for f in uStruc if f in ('StrucID', 'strucID')]))
             
         ## 3.4 Join
-        arcpy.JoinField_management(in_data=copyLot, in_field=in_fieldLot, join_table=MasterListLot, join_field=join_fieldLot, fields=joinFieldLot)
         arcpy.JoinField_management(in_data=copyStruc, in_field=in_fieldStruc, join_table=MasterListStruc, join_field=join_fieldStruc, fields=joinFieldStruc)
 
         # 4. Trucnate
-        arcpy.TruncateTable_management(inLot)
         arcpy.TruncateTable_management(inStruc)
 
         # 5. Append
-        arcpy.Append_management(copyLot, inLot, schema_type = 'NO_TEST')
         arcpy.Append_management(copyStruc, inStruc, schema_type = 'NO_TEST')
 
         ##########################################################################
@@ -1410,361 +1391,201 @@ class UpdateFGDB(object):
         arcpy.Append_management(outLayerISF, inISF, schema_type = 'NO_TEST')
 
         # Delete the copied feature layer
-        deleteTempLayers = [copyLot, copyStruc, pointStruc, outLayerISF, MasterListISF]
+        deleteTempLayers = [copyStruc, pointStruc, outLayerISF, MasterListISF]
         arcpy.Delete_management(deleteTempLayers)
 
-class UpdateSDE(object):
+class UpdatePierGIS(object):
     def __init__(self):
-        self.label = "Update Enterprise Geodatabase from File Geodatabase (Run if necessary)"
-        self.description = "Update feature layers in enterprise geodatabase for land, structure, and ISF of N2/SC"
-        # self.alias = 'test'
+        self.label = "2.3. Update GIS Attribute Tables (Pier Number)"
+        self.description = "Update feature layers for pier number"
 
     def getParameterInfo(self):
-        ws = arcpy.Parameter(
-            displayName = "Workspace",
-            name = "workspace",
-            datatype = "DEWorkspace",
-            parameterType = "Required",
-            direction = "Input"
-        )
-
-        lot_fgdb = arcpy.Parameter(
-            displayName = "Status of Lot in file geodatabase",
-            name = "Status of Lot in file geodatabase",
+        in_pier = arcpy.Parameter(
+            displayName = "GIS Pier Number (Point)",
+            name = "GIS Pier Number",
             datatype = "GPFeatureLayer",
             parameterType = "Required",
             direction = "Input"
         )
 
-        struc_fgdb = arcpy.Parameter(
-            displayName = "Status of Structure in file geodatabase",
-            name = "Status of Structure in file geodatabase",
-            datatype = "GPFeatureLayer",
-            parameterType = "Required",
-            direction = "Input"
-        )
-
-        occup_fgdb = arcpy.Parameter(
-            displayName = "Occupancy of structures (point) in file geodatabase",
-            name = "Occupancy of structures (point) in file geodatabase",
-            datatype = "GPFeatureLayer",
-            parameterType = "Required",
-            direction = "Input"
-        )
-
-        isf_fgdb = arcpy.Parameter(
-            displayName = "ISF Relocation of structures (point) in file geodatabase",
-            name = "ISF Relocation of structures (point) in file geodatabase",
-            datatype = "GPFeatureLayer",
-            parameterType = "Required",
-            direction = "Input"
-        )
-
-        barang_fgdb = arcpy.Parameter(
-            displayName = "Barangay in file geodatabase",
-            name = "Barangay in file geodatabase",
-            datatype = "GPFeatureLayer",
-            parameterType = "Optional",
-            direction = "Input"
-        )
-
-        pier_fgdb = arcpy.Parameter(
-            displayName = "Pier in file geodatabase",
-            name = "Pier in file geodatabase",
-            datatype = "GPFeatureLayer",
-            parameterType = "Optional",
-            direction = "Input"
-        )
-
-        lot_sde = arcpy.Parameter(
-            displayName = "Status of Lot in enterprise geodatabase",
-            name = "Status of Lot in enterprise geodatabase",
-            datatype = "GPFeatureLayer",
-            parameterType = "Required",
-            direction = "Input"
-        )
-
-        struc_sde = arcpy.Parameter(
-            displayName = "Status of Structure in enterprise geodatabase",
-            name = "Status of Structure in enterprise geodatabase",
-            datatype = "GPFeatureLayer",
-            parameterType = "Required",
-            direction = "Input"
-        )
-
-        occup_sde = arcpy.Parameter(
-            displayName = "Occupancy of structures (point) in enterprise geodatabase",
-            name = "Occupancy of structures (point) in enterprise geodatabase",
-            datatype = "GPFeatureLayer",
-            parameterType = "Required",
-            direction = "Input"
-        )
-
-        isf_sde = arcpy.Parameter(
-            displayName = "ISF Relocation of structures (point) in enterprise geodatabase",
-            name = "ISF Relocation of structures (point) in enterprise geodatabase",
-            datatype = "GPFeatureLayer",
-            parameterType = "Required",
-            direction = "Input"
-        )
-
-        barang_sde = arcpy.Parameter(
-            displayName = "Barangay in enterprise geodatabase",
-            name = "Barangay in enterprise geodatabase",
-            datatype = "GPFeatureLayer",
-            parameterType = "Optional",
-            direction = "Input"
-        )
-
-        pier_sde = arcpy.Parameter(
-            displayName = "Pier in enterprise geodatabase",
-            name = "Pier in enterprise geodatabase",
-            datatype = "GPFeatureLayer",
-            parameterType = "Optional",
-            direction = "Input"
-        )
-
-        params = [ws, lot_fgdb, struc_fgdb, occup_fgdb, isf_fgdb, barang_fgdb, pier_fgdb,
-                  lot_sde, struc_sde, occup_sde ,isf_sde, barang_sde, pier_sde]
-        return params
-
-    def updateMessages(self, params):
-        return
-
-    def execute(self, params, messages):
-        workspace = params[0].valueAsText
-        lot_fgdb = params[1].valueAsText
-        struc_fgdb = params[2].valueAsText
-        occup_fgdb = params[3].valueAsText
-        isf_fgdb = params[4].valueAsText
-        barang_fgdb = params[5].valueAsText
-        pier_fgdb = params[6].valueAsText
-        lot_sde = params[7].valueAsText
-        struc_sde = params[8].valueAsText
-        occup_sde = params[9].valueAsText
-        isf_sde = params[10].valueAsText
-        barang_sde = params[11].valueAsText
-        pier_sde = params[12].valueAsText
-
-        arcpy.env.overwriteOutput = True
-
-        # Copy each layer in PRS92, Truncate, and append
-        layerList_fgdb = list()
-        layerList_sde = list()
-
-        layerList_fgdb.append(lot_fgdb)
-        layerList_fgdb.append(struc_fgdb)
-        layerList_fgdb.append(occup_fgdb)
-        layerList_fgdb.append(isf_fgdb)
-        #layerList_fgdb.append(barang_fgdb)
-
-        layerList_sde.append(lot_sde)
-        layerList_sde.append(struc_sde)
-        layerList_sde.append(occup_sde)
-        layerList_sde.append(isf_sde)
-        #layerList_sde.append(barang_sde)
-
-        # Delete empty elements (i.e., if some layers are not selected, we need to vacate this element)
-        layerList_fgdb = [s for s in layerList_fgdb if s != '']
-        layerList_sde = [s for s in layerList_sde if s != '']
-
-        arcpy.AddMessage("Layer List of FGDB: " + str(layerList_fgdb))
-        arcpy.AddMessage("Layer List of SDE: " + str(layerList_sde))
-
-        for layer in layerList_fgdb:
-            #arcpy.AddMessage("Layer to be added: " + str(layer))
-            
-            try:
-                # Copy to transform WGS84 to PRS92
-                copied = "copied_layer"
-                copyL = arcpy.CopyFeatures_management(layer, copied)
-                
-                arcpy.AddMessage("Copy to CS tranformation for PRS92: Success")
-                
-                # Truncate and append
-                if layer == layerList_fgdb[0]:
-                    arcpy.TruncateTable_management(lot_sde)
-                    arcpy.Append_management(copyL, lot_sde, schema_type = 'NO_TEST')
-                    
-                elif layer == layerList_fgdb[1]:
-                    arcpy.TruncateTable_management(struc_sde)
-                    arcpy.Append_management(copyL, struc_sde, schema_type = 'NO_TEST')
-                    
-                elif layer == layerList_fgdb[2]:
-                    arcpy.TruncateTable_management(occup_sde)
-                    arcpy.Append_management(copyL, occup_sde, schema_type = 'NO_TEST')
-                    
-                elif layer == layerList_fgdb[3]:
-                    arcpy.TruncateTable_management(isf_sde)
-                    arcpy.Append_management(copyL, isf_sde, schema_type = 'NO_TEST')
-                
-                elif layer == layerList_fgdb[4]:
-                    arcpy.TruncateTable_management(barang_sde)
-                    arcpy.Append_management(copyL, barang_sde, schema_type = 'NO_TEST')
-                    
-                    arcpy.AddMessage("Truncate and Append is Success")
-                    
-            except:
-                pass
-            
-            # Delete
-        arcpy.Delete_management(copyL)
-        arcpy.AddMessage("Delete copied layer is Success")
-
-
-        # We need to run Barangay independently from others.
-        try:
-            copied = "copied_layer"
-            copyB = arcpy.CopyFeatures_management(barang_fgdb, copied)
-                
-            arcpy.AddMessage("Barangay Layer: Copy to CS tranformation for PRS92: Success")
-            
-            # Truncate and append
-            arcpy.TruncateTable_management(barang_sde)
-            arcpy.Append_management(copyB, barang_sde, schema_type = 'NO_TEST')
-            
-            arcpy.AddMessage("Barangay Layer:Truncate and Append is Success")
-            arcpy.Delete_management(copyB)
-            
-        except:
-            pass
-
-        arcpy.AddMessage("Delete copied layer is Success")
-
-        # We need to run pier independently from others.
-        try:
-            copied = "copied_layer"
-            copyP = arcpy.CopyFeatures_management(pier_fgdb, copied)
-                
-            arcpy.AddMessage("Pier Layer: Copy to CS tranformation for PRS92: Success")
-            
-            # Truncate and append
-            arcpy.TruncateTable_management(pier_sde)
-            arcpy.Append_management(copyP, pier_sde, schema_type = 'NO_TEST')
-            
-            arcpy.AddMessage("Pier Layer:Truncate and Append is Success")
-            arcpy.Delete_management(copyP)
-            
-        except:
-            pass
-
-        arcpy.AddMessage("Delete copied layer is Success")
-
-class UpdateUsingMasterList(object):
-    def __init__(self):
-        self.label = "Update Feature Layer using Excel Master List (Run case-by-case)"
-        self.description = "Update any type of feature layers using excel master list table."
-
-    def getParameterInfo(self):
-        ws = arcpy.Parameter(
-            displayName = "Workspace",
-            name = "workspace",
-            datatype = "DEWorkspace",
-            parameterType = "Required",
-            direction = "Input"
-        )
-
-        in_fc = arcpy.Parameter(
-            displayName = "Input Feature Layer",
-            name = "Input Feature Layer",
-            datatype = "GPFeatureLayer",
-            parameterType = "Required",
-            direction = "Input"
-        )
-
-        ml = arcpy.Parameter(
-            displayName = "Excel Master List",
-            name = "Excel Master List",
+        ml_pier = arcpy.Parameter(
+            displayName = "Excel MasterList (Pier No.)",
+            name = "Excel MasterList (Pier No.)",
             datatype = "GPTableView",
             parameterType = "Required",
             direction = "Input"
         )
 
-        jField = arcpy.Parameter(
-            displayName = "Join Field",
-            name = "Join Field",
-            datatype = "Field",
-            parameterType = "Required",
-            direction = "Input"            
-        )
-        jField.parameterDependencies = [in_fc.name]
-
-        params = [ws, in_fc, ml, jField]
+        params = [in_pier, ml_pier]
         return params
 
     def updateMessages(self, params):
         return
 
     def execute(self, params, messages):
-        workspace = params[0].valueAsText
-        in_fc = params[1].valueAsText
-        ml = params[2].valueAsText
-        joinField = params[3].valueAsText
+        inPier = params[0].valueAsText
+        mlPier = params[1].valueAsText
 
         arcpy.env.overwriteOutput = True
 
-        # 1. Copy feature layer
-        copyLayer = 'copiedLayer'
+        def unique_values(table, field):  ##uses list comprehension
+            with arcpy.da.SearchCursor(table, [field]) as cursor:
+                return sorted({row[0] for row in cursor if row[0] is not None})
 
-        copiedL = arcpy.CopyFeatures_management(in_fc, copyLayer)
-
-        # 2. Delete Field
-        fieldNames= [f.name for f in arcpy.ListFields(copiedL)]
-
-        ## 2.1. Identify fields to be droppeds
-        baseField = ['Shape','Shape_Length','Shape_Area','Shape.STArea()','Shape.STLength()','OBJECTID','OBJECTID_1','GlobalID']
-        fieldsKeep = tuple([joinField]) + tuple(baseField)
-
-        dropField = [e for e in fieldNames if e not in fieldsKeep]
-
-        ## 2.2. Extract existing fields
-        inField = [f.name for f in arcpy.ListFields(copiedL)]
-
-        arcpy.AddMessage("Stage 1: Extract existing fields was success")
-
-        ## 2.3. Check if there are fields to be dropped
-        finalDropField = [f for f in inField if f in tuple(dropField)]
-
-        arcpy.AddMessage("Stage 1: Checking for Fields to be dropped was success")
-
-        ## 2.4 Drop
-        if len(finalDropField) == 0:
-            arcpy.AddMessage("There is no field that can be dropped from the feature layer")
-        else:
-            arcpy.DeleteField_management(copiedL, finalDropField)
+        # 1. For Pier
+        try:
+            arcpy.AddMessage('Updating Pier No. list has started..')
+            pier_copied_name = 'N2_Pier_test'
+            pier_copied_gis = arcpy.CopyFeatures_management(inPier, pier_copied_name)
             
-        arcpy.AddMessage("Stage 1: Dropping Fields was success")
-        arcpy.AddMessage("Section 2 of Stage 1 was successfully implemented")
+            # 2. Delete fields: 'Municipality' and 'AccessDate'
+            pier_gis_fields = [f.name for f in arcpy.ListFields(pier_copied_gis)]
+            
+            ## 2.1. Fields to be dropped
+            pier_drop_fields = [e for e in pier_gis_fields if e not in ('PIER','CP','Shape','Shape_Length','Shape_Area','Shape.STArea()','Shape.STLength()','OBJECTID','GlobalID')]
+            
+            ## 2.3. Check if there are fields to be dropped
+            pier_drop_fields_check = [f for f in pier_gis_fields if f in tuple(pier_drop_fields)]
+            
+            ## 2.4 Drop
+            if len(pier_drop_fields_check) == 0:
+                arcpy.AddMessage("There is no field that can be dropped from the feature layer")
+            else:
+                arcpy.DeleteField_management(pier_copied_gis, pier_drop_fields_check)
 
-        # 3. Join Field
-        ## 3.1. Convert Excel tables to feature table
-        ##MasterList = arcpy.TableToTable_conversion(ml, workspace, 'MasterList')
-        MasterList = arcpy.conversion.ExportTable(ml, 'MasterList')
+            # 3. Join Field
+            ## 3.1. Convert Excel tables to feature table
+            ##MasterListN2Pier = arcpy.TableToTable_conversion(mlPier, workspace, 'MasterListN2Pier')
+            pier_ml_table = arcpy.conversion.ExportTable(mlPier, 'pier_ml_table')
 
-        ## 3.2. Get Join Field from MasterList gdb table: Gain all fields except 'Id'
-        inputField = [f.name for f in arcpy.ListFields(MasterList)]
+            # Check if pier numbers match between ML and GIS
+            pier_field = 'PIER'
+            piers_gis = unique_values(pier_copied_gis, pier_field)
+            piers_ml = unique_values(pier_ml_table, pier_field)
+            
+            piers_miss_gis = [e for e in piers_gis if e not in piers_ml] # missing in gis
+            piers_miss_ml = [e for e in piers_ml if e not in piers_gis] # missing in ML
 
-        toBeJoinedField = tuple([joinField]) + tuple(['OBJECTID'])
-        joiningField = [e for e in inputField if e not in toBeJoinedField]
+            if piers_miss_ml:
+                arcpy.AddMessage('The following pier numbers do not match between ML and GIS.')
+                arcpy.AddMessage('Subject piers for GIS: {}'.format(piers_miss_gis))
+                arcpy.AddMessage('Subject piers for ML: {}'.format(piers_miss_ml))
+            
+            ## 3.2. Get Join Field from MasterList gdb table: Gain all fields except 'Id'
+            pier_ml_fields = [f.name for f in arcpy.ListFields(pier_ml_table)]
+            transfer_fields = [e for e in pier_ml_fields if e not in ('PIER', 'Pier','OBJECTID')]
+            
+            ## 3.3. Extract a Field from MasterList and Feature Layer to be used to join two tables
+            gis_join_field = ' '.join(map(str, [f for f in pier_gis_fields if f in ('PIER', 'Pier')]))
+            ml_join_field =' '.join(map(str, [f for f in pier_ml_fields if f in ('PIER', 'Pier')]))
+            
+            ## 3.4 Join
+            arcpy.JoinField_management(in_data=pier_copied_gis, in_field=gis_join_field, join_table=pier_ml_table, join_field=ml_join_field, fields=transfer_fields)
+            
+            # 4. Trucnate
+            arcpy.TruncateTable_management(inPier)
+            
+            # 5. Append
+            arcpy.Append_management(pier_copied_gis, inPier, schema_type = 'NO_TEST')
+            
+        except:
+            pass
 
-        ## 3.3. Extract a Field from MasterList and Feature Layer to be used to join two tables
-        tLot = [f.name for f in arcpy.ListFields(copiedL)]
+class UpdateBarangayGIS(object):
+    def __init__(self):
+        self.label = "2.4. Update GIS Attribute Tables (SC1 Barangay)"
+        self.description = "Update GIS Attribute Tables (SC1 Barangay)"
 
-        in_field = ' '.join(map(str, [f for f in tLot if f in tuple([joinField])]))
-        uLot = [f.name for f in arcpy.ListFields(MasterList)]
+    def getParameterInfo(self):
+        in_pier = arcpy.Parameter(
+            displayName = "GIS SC1 arangay (Polygon)",
+            name = "GIS SC1 arangay (Polygon)",
+            datatype = "GPFeatureLayer",
+            parameterType = "Required",
+            direction = "Input"
+        )
 
-        join_field=' '.join(map(str, [f for f in uLot if f in tuple([joinField])]))
+        ml_barangay = arcpy.Parameter(
+            displayName = "Excel MasterList (SC1 Barangay)",
+            name = "Excel MasterList (SC1 Barangay)",
+            datatype = "GPTableView",
+            parameterType = "Required",
+            direction = "Input"
+        )
 
-        ## 3.4 Join
-        arcpy.JoinField_management(in_data=copiedL, in_field=in_field, join_table=MasterList, join_field=join_field, fields=joiningField)
+        params = [in_pier, ml_barangay]
+        return params
 
-        # 4. Trucnate
-        arcpy.TruncateTable_management(in_fc)
+    def updateMessages(self, params):
+        return
 
-        # 5. Append
-        arcpy.Append_management(copiedL, in_fc, schema_type = 'NO_TEST')
+    def execute(self, params, messages):
+        inPier = params[0].valueAsText
+        mlPier = params[1].valueAsText
 
-        # Delete the copied feature layer
-        deleteTempLayers = [copiedL, MasterList]
-        arcpy.Delete_management(deleteTempLayers)
+        arcpy.env.overwriteOutput = True
+
+        def unique_values(table, field):  ##uses list comprehension
+            with arcpy.da.SearchCursor(table, [field]) as cursor:
+                return sorted({row[0] for row in cursor if row[0] is not None})
+
+        # 1. For Pier
+        try:
+            join_field = 'Barangay'
+            arcpy.AddMessage('Updating SC1 Barangay has started..')
+            barangay_copied_name = 'N2_Pier_barangay'
+            barangay_copied_gis = arcpy.CopyFeatures_management(inPier, barangay_copied_name)
+            
+            # 2. Delete fields: 'Municipality' and 'AccessDate'
+            barangay_gis_fields = [f.name for f in arcpy.ListFields(barangay_copied_gis)]
+            
+            ## 2.1. Fields to be dropped
+            barangay_drop_fields = [e for e in barangay_gis_fields if e not in (join_field,'Shape','Shape_Length','Shape_Area','Shape.STArea()','Shape.STLength()','OBJECTID','GlobalID')]
+            
+            ## 2.3. Check if there are fields to be dropped
+            barangay_drop_fields_check = [f for f in barangay_gis_fields if f in tuple(barangay_drop_fields)]
+            
+            ## 2.4 Drop
+            if len(barangay_drop_fields_check) == 0:
+                arcpy.AddMessage("There is no field that can be dropped from the feature layer")
+            else:
+                arcpy.DeleteField_management(barangay_copied_gis, barangay_drop_fields_check)
+
+            # 3. Join Field
+            ## 3.1. Convert Excel tables to feature table
+            ##MasterListN2Pier = arcpy.TableToTable_conversion(mlPier, workspace, 'MasterListN2Pier')
+            barangay_ml_table = arcpy.conversion.ExportTable(mlPier, 'barangay_ml_table')
+
+            # Check if pier numbers match between ML and GIS
+            barangay_field = 'PIER'
+            piers_gis = unique_values(barangay_copied_gis, barangay_field)
+            piers_ml = unique_values(barangay_ml_table, barangay_field)
+            
+            piers_miss_gis = [e for e in piers_gis if e not in piers_ml] # missing in gis
+            piers_miss_ml = [e for e in piers_ml if e not in piers_gis] # missing in ML
+
+            if piers_miss_ml:
+                arcpy.AddMessage('The following pier numbers do not match between ML and GIS.')
+                arcpy.AddMessage('Subject piers for GIS: {}'.format(piers_miss_gis))
+                arcpy.AddMessage('Subject piers for ML: {}'.format(piers_miss_ml))
+            
+            ## 3.2. Get Join Field from MasterList gdb table: Gain all fields except 'Id'
+            barangay_ml_fields = [f.name for f in arcpy.ListFields(barangay_ml_table)]
+            transfer_fields = [e for e in barangay_ml_fields if e not in (join_field, 'barangay','OBJECTID')]
+            
+            ## 3.3. Extract a Field from MasterList and Feature Layer to be used to join two tables
+            gis_join_field = ' '.join(map(str, [f for f in barangay_gis_fields if f in (join_field, 'barangay')]))
+            ml_join_field =' '.join(map(str, [f for f in barangay_ml_fields if f in (join_field, 'barangay')]))
+            
+            ## 3.4 Join
+            arcpy.JoinField_management(in_data=barangay_copied_gis, in_field=gis_join_field, join_table=barangay_ml_table, join_field=ml_join_field, fields=transfer_fields)
+            
+            # 4. Trucnate
+            arcpy.TruncateTable_management(inPier)
+            
+            # 5. Append
+            arcpy.Append_management(barangay_copied_gis, inPier, schema_type = 'NO_TEST')
+            
+        except:
+            pass
 

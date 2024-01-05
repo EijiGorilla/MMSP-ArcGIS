@@ -1154,59 +1154,54 @@ class UpdateLotGIS(object):
         try:
             arcpy.AddMessage('Updating Lot status has started..')
             # 1. Copy Original Feature Layers
-            copyNameLot = 'LA_Temp'               
-            copyLot = arcpy.CopyFeatures_management(inLot, copyNameLot)
+            copied_name = 'LA_Temp'               
+            gis_copied = arcpy.CopyFeatures_management(inLot, copied_name)
                 
             arcpy.AddMessage("Stage 1: Copy feature layer was success")
                     
             # 2. Delete Field
-            fieldNameLot = [f.name for f in arcpy.ListFields(copyLot)]
+            gis_fields = [f.name for f in arcpy.ListFields(gis_copied)]
                 
             ## 2.1. Identify fields to be dropped
-            dropFieldLot = [e for e in fieldNameLot if e not in ('LotId', 'LotID','Shape','Shape_Length','Shape_Area','Shape.STArea()','Shape.STLength()','OBJECTID','GlobalID')]
+            gis_drop_fields_check = [e for e in gis_fields if e not in ('LotId', 'LotID','Shape','Shape_Length','Shape_Area','Shape.STArea()','Shape.STLength()','OBJECTID','GlobalID')]
                 
             ## 2.2. Extract existing fields
-            inFieldLot = [f.name for f in arcpy.ListFields(copyLot)]
-                
             arcpy.AddMessage("Stage 1: Extract existing fields was success")
                 
             ## 2.3. Check if there are fields to be dropped
-            finalDropFieldLot = [f for f in inFieldLot if f in tuple(dropFieldLot)]
+            gis_drop_fields = [f for f in gis_fields if f in tuple(gis_drop_fields_check)]
                 
             arcpy.AddMessage("Stage 1: Checking for Fields to be dropped was success")
                 
             ## 2.4 Drop
-            if len(finalDropFieldLot) == 0:
+            if len(gis_drop_fields) == 0:
                 arcpy.AddMessage("There is no field that can be dropped from the feature layer")
             else:
-                arcpy.DeleteField_management(copyLot, finalDropFieldLot)
+                arcpy.DeleteField_management(gis_copied, gis_drop_fields)
                     
             arcpy.AddMessage("Stage 1: Dropping Fields was success")
             arcpy.AddMessage("Section 2 of Stage 1 was successfully implemented")
 
             # 3. Join Field
             ## 3.1. Convert Excel tables to feature table
-            MasterListLot = arcpy.conversion.ExportTable(mlLot, 'MasterListLot')
+            lot_ml = arcpy.conversion.ExportTable(mlLot, 'lot_ml')
                 
             ## 3.2. Get Join Field from MasterList gdb table: Gain all fields except 'Id'
-            inputFieldLot = [f.name for f in arcpy.ListFields(MasterListLot)]
-            joinFieldLot = [e for e in inputFieldLot if e not in ('LotId', 'LotID','OBJECTID')]
+            lot_ml_fields = [f.name for f in arcpy.ListFields(lot_ml)]
+            lot_ml_transfer_fields = [e for e in lot_ml_fields if e not in ('LotId', 'LotID','OBJECTID')]
                 
             ## 3.3. Extract a Field from MasterList and Feature Layer to be used to join two tables
-            tLot = [f.name for f in arcpy.ListFields(copyLot)]  
-            in_fieldLot = ' '.join(map(str, [f for f in tLot if f in ('LotId', 'LotID')]))      
-            uLot = [f.name for f in arcpy.ListFields(MasterListLot)]
-                
-            join_fieldLot=' '.join(map(str, [f for f in uLot if f in ('LotId', 'LotID')]))
+            gis_join_field = ' '.join(map(str, [f for f in gis_fields if f in ('LotId', 'LotID')]))                      
+            lot_ml_join_field =' '.join(map(str, [f for f in lot_ml_fields if f in ('LotId', 'LotID')]))
                 
             ## 3.4 Join
-            arcpy.JoinField_management(in_data=copyLot, in_field=in_fieldLot, join_table=MasterListLot, join_field=join_fieldLot, fields=joinFieldLot)
+            arcpy.JoinField_management(in_data=gis_copied, in_field=gis_join_field, join_table=lot_ml, join_field=lot_ml_join_field, fields=lot_ml_transfer_fields)
 
             # 4. Trucnate
             arcpy.TruncateTable_management(inLot)
 
             # 5. Append
-            arcpy.Append_management(copyLot, inLot, schema_type = 'NO_TEST')
+            arcpy.Append_management(gis_copied, inLot, schema_type = 'NO_TEST')
 
         except:
             pass
@@ -1273,61 +1268,51 @@ class UpdateStructureGIS(object):
         arcpy.env.overwriteOutput = True
 
         # 1. Copy Original Feature Layers
-        copyNameStruc = 'Struc_Temp'
-        copyStruc = arcpy.CopyFeatures_management(inStruc, copyNameStruc)
-            
-        #copyLot = arcpy.CopyFeatures_management(inputLayerLot, copyNameLot)
-        #copyStruc = arcpy.CopyFeatures_management(inputLayerStruc, copyNameStruc)
+        copied_name = 'Struc_Temp'
+        gis_copied = arcpy.CopyFeatures_management(inStruc, copied_name)
             
         arcpy.AddMessage("Stage 1: Copy feature layer was success")
                 
         # 2. Delete Field
-        fieldNameStruc = [f.name for f in arcpy.ListFields(copyStruc)]
+        gis_fields = [f.name for f in arcpy.ListFields(gis_copied)]
             
         ## 2.1. Identify fields to be dropped
-        dropFieldStruc = [e for e in fieldNameStruc if e not in ('StrucID', 'strucID','Shape','Shape_Length','Shape_Area','Shape.STArea()','Shape.STLength()','OBJECTID','GlobalID')]
-            
-        ## 2.2. Extract existing fields
-        inFieldStruc = [f.name for f in arcpy.ListFields(copyStruc)]
-            
-        arcpy.AddMessage("Stage 1: Extract existing fields was success")
-            
+        gis_drop_fields_check = [e for e in gis_fields if e not in ('StrucID', 'strucID','Shape','Shape_Length','Shape_Area','Shape.STArea()','Shape.STLength()','OBJECTID','GlobalID')]
+                        
         ## 2.3. Check if there are fields to be dropped
-        finalDropFieldStruc = [f for f in inFieldStruc if f in tuple(dropFieldStruc)]
+        gis_drop_fields = [f for f in gis_fields if f in tuple(gis_drop_fields_check)]
             
         arcpy.AddMessage("Stage 1: Checking for Fields to be dropped was success")
             
         ## 2.4 Drop               
-        if len(finalDropFieldStruc) == 0:
+        if len(gis_drop_fields) == 0:
             arcpy.AddMessage("There is no field that can be dropped from the feature layer")
         else:
-            arcpy.DeleteField_management(copyStruc, finalDropFieldStruc)
+            arcpy.DeleteField_management(gis_copied, gis_drop_fields)
                 
         arcpy.AddMessage("Stage 1: Dropping Fields was success")
         arcpy.AddMessage("Section 2 of Stage 1 was successfully implemented")
 
         # 3. Join Field
         ## 3.1. Convert Excel tables to feature table
-        MasterListStruc = arcpy.conversion.ExportTable(mlStruct, 'MasterListStruc')
+        struc_ml = arcpy.conversion.ExportTable(mlStruct, 'structure_ml')
             
         ## 3.2. Get Join Field from MasterList gdb table: Gain all fields except 'Id'
-        inputFieldStruc = [f.name for f in arcpy.ListFields(MasterListStruc)]
-        joinFieldStruc = [e for e in inputFieldStruc if e not in ('StrucID', 'strucID','OBJECTID')]
+        struc_ml_fields = [f.name for f in arcpy.ListFields(struc_ml)]
+        struc_ml_transfer_fields = [e for e in struc_ml_fields if e not in ('StrucID', 'strucID','OBJECTID')]
             
         ## 3.3. Extract a Field from MasterList and Feature Layer to be used to join two tables
-        tStruc = [f.name for f in arcpy.ListFields(copyStruc)]
-        in_fieldStruc = ' '.join(map(str, [f for f in tStruc if f in ('StrucID', 'strucID')]))
-        uStruc = [f.name for f in arcpy.ListFields(MasterListStruc)]
-        join_fieldStruc = ' '.join(map(str, [f for f in uStruc if f in ('StrucID', 'strucID')]))
+        gis_join_field = ' '.join(map(str, [f for f in gis_fields if f in ('StrucID', 'strucID')]))
+        struc_ml_join_field = ' '.join(map(str, [f for f in struc_ml_fields if f in ('StrucID', 'strucID')]))
             
         ## 3.4 Join
-        arcpy.JoinField_management(in_data=copyStruc, in_field=in_fieldStruc, join_table=MasterListStruc, join_field=join_fieldStruc, fields=joinFieldStruc)
+        arcpy.JoinField_management(in_data=gis_copied, in_field=gis_join_field, join_table=struc_ml, join_field=struc_ml_join_field, fields=struc_ml_transfer_fields)
 
         # 4. Trucnate
         arcpy.TruncateTable_management(inStruc)
 
         # 5. Append
-        arcpy.Append_management(copyStruc, inStruc, schema_type = 'NO_TEST')
+        arcpy.Append_management(gis_copied, inStruc, schema_type = 'NO_TEST')
 
         ##########################################################################
         ##### STAGE 2: Update Existing Structure (Occupancy) & Structure (ISF) ######

@@ -17,7 +17,7 @@ class Toolbox(object):
 
 class UpdateLot(object):
     def __init__(self):
-        self.label = "1.0. Update Excel Master List (Lot)"
+        self.label = "1.1. Update Excel Master List (Lot)"
         self.description = "Update Excel Master List (Lot)"
 
     def getParameterInfo(self):
@@ -312,7 +312,7 @@ class UpdateLot(object):
 
 class UpdateISF(object):
     def __init__(self):
-        self.label = "1.1. Update Excel Master List (ISF)"
+        self.label = "1.2. Update Excel Master List (ISF)"
         self.description = "Update Excel Master List (ISF)"
 
     def getParameterInfo(self):
@@ -481,7 +481,7 @@ class UpdateISF(object):
 
 class UpdateStructure(object):
     def __init__(self):
-        self.label = "1.2. Update Excel Master List (Structure)"
+        self.label = "1.3. Update Excel Master List (Structure)"
         self.description = "Update Excel Master List (Structure)"
 
     def getParameterInfo(self):
@@ -753,7 +753,7 @@ class UpdateStructure(object):
 
 class UpdateBarangay(object):
     def __init__(self):
-        self.label = "1.3. Update Excel Master List (SC1 Barangay )"
+        self.label = "1.4. Update Excel Master List (SC1 Barangay )"
         self.description = "Update Excel Master List (SC1 Barangay )"
 
     def getParameterInfo(self):
@@ -907,7 +907,7 @@ class UpdateBarangay(object):
 
 class UpdatePier(object):
     def __init__(self):
-        self.label = "1.4. Update Excel Master List (Pier)"
+        self.label = "1.5. Update Excel Master List (Pier)"
         self.description = "Update Excel Master List (Pier)"
 
     def getParameterInfo(self):
@@ -1406,7 +1406,7 @@ class UpdateStructureGIS(object):
 
 class UpdatePierGIS(object):
     def __init__(self):
-        self.label = "2.3. Update GIS Attribute Tables (Pier Number)"
+        self.label = "2.3. Update GIS Attribute Tables (Pier)"
         self.description = "Update feature layers for pier number"
 
     def getParameterInfo(self):

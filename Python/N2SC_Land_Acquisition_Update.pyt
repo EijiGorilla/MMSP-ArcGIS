@@ -12,8 +12,118 @@ class Toolbox(object):
     def __init__(self):
         self.label = "UpdateLandAcquisition"
         self.alias = "UpdateLandAcquisition"
-        self.tools = [UpdateLot, UpdateISF, UpdateStructure, UpdateBarangay, UpdatePier,
+        self.tools = [RestoreScaleForLot, UpdateLot, UpdateISF, UpdateStructure, UpdateBarangay, UpdatePier,
                       UpdateLotGIS, UpdateStructureGIS, UpdatePierGIS, UpdateBarangayGIS]
+
+class RestoreScaleForLot(object):
+    def __init__(self):
+        self.label = "1.0. Add Scale To GIS Excel ML (Lot)"
+        self.description = "Add Scale To GIS Excel ML (Lot)"
+
+    def getParameterInfo(self):
+        gis_dir = arcpy.Parameter(
+            displayName = "GIS Masterlist Storage Directory",
+            name = "GIS master-list directory",
+            datatype = "DEWorkspace",
+            parameterType = "Required",
+            direction = "Input"
+        )
+
+        input_lot_ms = arcpy.Parameter(
+            displayName = "Input GIS Land Status Table (Excel)",
+            name = "Input GIS Land Status Table (Excel)",
+            datatype = "DEFile",
+            parameterType = "Required",
+            direction = "Input"
+        )
+
+        join_lot_ms = arcpy.Parameter(
+            displayName = "Join GIS Land Status Table (Excel)",
+            name = "Join GIS Land Status Table (Excel)",
+            datatype = "DEFile",
+            parameterType = "Optional",
+            direction = "Input"
+        )
+
+        join_lot_fl = arcpy.Parameter(
+            displayName = "Join GIS Land Status Table (GIS Feature Layer)",
+            name = "Join GIS Land Status Table (GIS Feature Layer)",
+            datatype = "GPFeatureLayer",
+            parameterType = "Optional",
+            direction = "Input"
+        )
+
+        params = [gis_dir, input_lot_ms, join_lot_ms, join_lot_fl]
+        return params
+
+    def updateMessages(self, params):
+        return
+
+    def execute(self, params, messages):
+        gis_dir = params[0].valueAsText
+        input_lot_ms = params[1].valueAsText
+        join_lot_ms = params[2].valueAsText
+        join_lot_fl = params[3].valueAsText
+
+        arcpy.env.overwriteOutput = True
+        #arcpy.env.addOutputsToMap = True
+
+        def N2SC_Restore_Scale():           
+            input_table = pd.read_excel(input_lot_ms)
+
+            # Common query and definitions
+            joinField = 'LotID'
+            
+            # Convert to numeric
+            transfer_field = "Scale"
+
+            # Exported file name and directory
+            export_file_name = os.path.splitext(os.path.basename(input_lot_ms))[0]
+            to_excel_file = os.path.join(gis_dir, export_file_name + ".xlsx")
+
+            # When join table is excel:
+            try:
+                join_table = pd.read_excel(join_lot_ms)
+                join_table[transfer_field] = join_table[transfer_field].replace(r'\s+|[^\w\s]', '', regex=True)
+                join_table[transfer_field] = pd.to_numeric(join_table[transfer_field])
+                
+                # Add scale from old master list
+                input_table = input_table.drop(transfer_field,axis=1)
+                lot_scale = join_table[[transfer_field, joinField]]
+                input_table = pd.merge(left=input_table, right=lot_scale, how='left', left_on=joinField, right_on=joinField)
+
+                arcpy.AddMessage("Scale field was successfully joined to the input table.")
+
+                # Export
+                input_table.to_excel(to_excel_file, index=False)
+
+                arcpy.AddMessage("The master list was successfully exported.")
+            except:
+                pass
+
+            # When join table is GIS Feature layer:
+            try:
+                # export GIS FL to excel (join table)
+                temp_excel_file = os.path.join(gis_dir, "temp.xlsx")
+                arcpy.conversion.TableToExcel(join_lot_fl, temp_excel_file)
+                temp_excel = pd.read_excel(temp_excel_file)
+
+                # Add scale from old master list
+                input_table = input_table.drop(transfer_field,axis=1)
+                lot_scale = temp_excel[[transfer_field, joinField]]
+                input_table = pd.merge(left=input_table, right=lot_scale, how='left', left_on=joinField, right_on=joinField)
+
+                arcpy.AddMessage("Scale field was successfully joined to the input table.")
+
+                # Export
+                input_table.to_excel(to_excel_file, index=False)
+
+                arcpy.AddMessage("The master list was successfully exported.")
+            except:
+                pass
+
+        N2SC_Restore_Scale()
+
 
 class UpdateLot(object):
     def __init__(self):
@@ -432,7 +542,7 @@ class UpdateISF(object):
 
             # Create backup files
             try:
-                gis_table.to_excel(os.path.join(gis_bakcup_dir, lastupdate + proj + "_" + "ISF_Relocation_Status.xlsx"), index=False)
+                gis_table.to_excel(os.path.join(gis_bakcup_dir, lastupdate + "_" + proj + "_" + "ISF_Relocation_Status.xlsx"), index=False)
             except Exception:
                 arcpy.AddMessage('You did not choose to create a backup file of {0} master list.'.format('ISF_Relocation_Status'))
             

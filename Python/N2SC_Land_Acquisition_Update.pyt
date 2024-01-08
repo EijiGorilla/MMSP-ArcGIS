@@ -21,14 +21,6 @@ class UpdateLot(object):
         self.description = "Update Excel Master List (Lot)"
 
     def getParameterInfo(self):
-        # ws = arcpy.Parameter(
-        #     displayName = "Workspace",
-        #     name = "workspace",
-        #     datatype = "DEWorkspace",
-        #     parameterType = "Required",
-        #     direction = "Input"
-        # )
-
         proj = arcpy.Parameter(
             displayName = "Project Extension: N2 or SC",
             name = "Project Extension: N2 or SC",
@@ -44,14 +36,6 @@ class UpdateLot(object):
             name = "GIS master-list directory",
             datatype = "DEWorkspace",
             parameterType = "Required",
-            direction = "Input"
-        )
-
-        gis_bakcup_dir = arcpy.Parameter(
-            displayName = "GIS Masterlist Backup Directory",
-            name = "GIS Masterlist Backup Directory",
-            datatype = "DEWorkspace",
-            parameterType = "Optional",
             direction = "Input"
         )
 
@@ -79,15 +63,23 @@ class UpdateLot(object):
             direction = "Input"
         )
 
+        gis_bakcup_dir = arcpy.Parameter(
+            displayName = "GIS Masterlist Backup Directory",
+            name = "GIS Masterlist Backup Directory",
+            datatype = "DEWorkspace",
+            parameterType = "Optional",
+            direction = "Input"
+        )
+
         lastupdate = arcpy.Parameter(
-            displayName = "Date of last update (yyyymmdd) e.g., 20240101 for backup",
-            name = "Date of last update (yyyymmdd) e.g., 20240101",
+            displayName = "Date for Backup: use 'yyyymmdd' format. eg. 20240101",
+            name = "Date for Backup: use 'yyyymmdd' format. eg. 20240101",
             datatype = "GPString",
             parameterType = "Optional",
             direction = "Input"
         )
 
-        params = [proj, gis_dir, gis_bakcup_dir, gis_lot_ms, rap_lot_ms, rap_lot_sc1_ms, lastupdate]
+        params = [proj, gis_dir, gis_lot_ms, rap_lot_ms, rap_lot_sc1_ms, gis_bakcup_dir, lastupdate]
         return params
 
     def updateMessages(self, params):
@@ -96,10 +88,10 @@ class UpdateLot(object):
     def execute(self, params, messages):
         proj = params[0].valueAsText
         gis_dir = params[1].valueAsText
-        gis_bakcup_dir = params[2].valueAsText
-        gis_lot_ms = params[3].valueAsText
-        rap_lot_ms = params[4].valueAsText
-        rap_lot_sc1_ms = params[5].valueAsText
+        gis_lot_ms = params[2].valueAsText
+        rap_lot_ms = params[3].valueAsText
+        rap_lot_sc1_ms = params[4].valueAsText
+        gis_bakcup_dir = params[5].valueAsText
         lastupdate = params[6].valueAsText
 
         arcpy.env.overwriteOutput = True
@@ -342,14 +334,6 @@ class UpdateISF(object):
             direction = "Input"
         )
 
-        gis_bakcup_dir = arcpy.Parameter(
-            displayName = "GIS Masterlist Backup Directory",
-            name = "GIS Masterlist Backup Directory",
-            datatype = "DEWorkspace",
-            parameterType = "Optional",
-            direction = "Input"
-        )
-
         gis_isf_ms = arcpy.Parameter(
             displayName = "GIS ISF Relocation Status ML (Excel)",
             name = "GIS ISF Relocation Status ML (Excel)",
@@ -366,15 +350,23 @@ class UpdateISF(object):
             direction = "Input"
         )
 
+        gis_bakcup_dir = arcpy.Parameter(
+            displayName = "GIS Masterlist Backup Directory",
+            name = "GIS Masterlist Backup Directory",
+            datatype = "DEWorkspace",
+            parameterType = "Optional",
+            direction = "Input"
+        )
+
         lastupdate = arcpy.Parameter(
-            displayName = "Date of last update (yyyymmdd) e.g., 20240101 for backup",
-            name = "Date of last update (yyyymmdd) e.g., 20240101",
+            displayName = "Date for Backup: use 'yyyymmdd' format. eg. 20240101",
+            name = "Date for Backup: use 'yyyymmdd' format. eg. 20240101",
             datatype = "GPString",
             parameterType = "Optional",
             direction = "Input"
         )
 
-        params = [proj, gis_dir, gis_bakcup_dir, gis_isf_ms, rap_isf_ms, lastupdate]
+        params = [proj, gis_dir, gis_isf_ms, rap_isf_ms, gis_bakcup_dir, lastupdate]
         return params
 
     def updateMessages(self, params):
@@ -383,9 +375,9 @@ class UpdateISF(object):
     def execute(self, params, messages):
         proj = params[0].valueAsText
         gis_dir = params[1].valueAsText
-        gis_bakcup_dir = params[2].valueAsText
-        gis_isf_ms = params[3].valueAsText
-        rap_isf_ms = params[4].valueAsText
+        gis_isf_ms = params[2].valueAsText
+        rap_isf_ms = params[3].valueAsText
+        gis_bakcup_dir = params[4].valueAsText
         lastupdate = params[5].valueAsText
 
         arcpy.env.overwriteOutput = True
@@ -519,14 +511,6 @@ class UpdateStructure(object):
             direction = "Input"
         )
 
-        gis_bakcup_dir = arcpy.Parameter(
-            displayName = "GIS Masterlist Backup Directory",
-            name = "GIS Masterlist Backup Directory",
-            datatype = "DEWorkspace",
-            parameterType = "Optional",
-            direction = "Input"
-        )
-
         gis_struc_ms = arcpy.Parameter(
             displayName = "GIS Structure Status ML (Excel)",
             name = "GIS Structure Status ML (Excel)",
@@ -559,16 +543,24 @@ class UpdateStructure(object):
             direction = "Input"
         )
 
+        gis_bakcup_dir = arcpy.Parameter(
+            displayName = "GIS Masterlist Backup Directory",
+            name = "GIS Masterlist Backup Directory",
+            datatype = "DEWorkspace",
+            parameterType = "Optional",
+            direction = "Input"
+        )
+
         lastupdate = arcpy.Parameter(
-            displayName = "Date of last update (yyyymmdd) e.g., 20240101 for backup",
-            name = "Date of last update (yyyymmdd) e.g., 20240101",
+            displayName = "Date for Backup: use 'yyyymmdd' format. eg. 20240101",
+            name = "Date for Backup: use 'yyyymmdd' format. eg. 20240101",
             datatype = "GPString",
             parameterType = "Optional",
             direction = "Input"
         )
 
-        params = [proj, gis_dir, gis_bakcup_dir, gis_struc_ms,
-                  rap_struc_ms, rap_struc_sc1_ms, rap_relo_ms, lastupdate]
+        params = [proj, gis_dir, gis_struc_ms,
+                  rap_struc_ms, rap_struc_sc1_ms, rap_relo_ms, gis_bakcup_dir, lastupdate]
         return params
 
     def updateMessages(self, params):
@@ -577,11 +569,11 @@ class UpdateStructure(object):
     def execute(self, params, messages):
         proj = params[0].valueAsText
         gis_dir = params[1].valueAsText
-        gis_bakcup_dir = params[2].valueAsText
-        gis_struc_ms = params[3].valueAsText
-        rap_struc_ms = params[4].valueAsText
-        rap_struc_sc1_ms = params[5].valueAsText
-        rap_relo_ms = params[6].valueAsText
+        gis_struc_ms = params[2].valueAsText
+        rap_struc_ms = params[3].valueAsText
+        rap_struc_sc1_ms = params[4].valueAsText
+        rap_relo_ms = params[5].valueAsText
+        gis_bakcup_dir = params[6].valueAsText
         lastupdate = params[7].valueAsText
 
         arcpy.env.overwriteOutput = True
@@ -639,9 +631,9 @@ class UpdateStructure(object):
 
             # Create backup files
             try:
-                gis_table.to_excel(os.path.join(gis_bakcup_dir, lastupdate + "_" + proj + "_Land_Status.xlsx"), index=False)
+                gis_table.to_excel(os.path.join(gis_bakcup_dir, lastupdate + "_" + proj + "_Structure_Status.xlsx"), index=False)
             except Exception:
-                arcpy.AddMessage('You did not choose to create a backup file of {0} master list.'.format(proj + '_Land_Status'))
+                arcpy.AddMessage('You did not choose to create a backup file of {0} master list.'.format(proj + '_Structure_Status'))
             
             # Common query and definitions
             joinField = 'StrucID'
@@ -761,8 +753,8 @@ class UpdateStructure(object):
 
 class UpdateBarangay(object):
     def __init__(self):
-        self.label = "1.3. Update Barangay Excel Master List (SC1)"
-        self.description = "Update Barangay Excel Master List (SC1)"
+        self.label = "1.3. Update Excel Master List (SC1 Barangay )"
+        self.description = "Update Excel Master List (SC1 Barangay )"
 
     def getParameterInfo(self):
         gis_dir = arcpy.Parameter(
@@ -770,14 +762,6 @@ class UpdateBarangay(object):
             name = "GIS master-list directory",
             datatype = "DEWorkspace",
             parameterType = "Required",
-            direction = "Input"
-        )
-
-        gis_bakcup_dir = arcpy.Parameter(
-            displayName = "GIS Masterlist Backup Directory",
-            name = "GIS Masterlist Backup Directory",
-            datatype = "DEWorkspace",
-            parameterType = "Optional",
             direction = "Input"
         )
 
@@ -797,15 +781,23 @@ class UpdateBarangay(object):
             direction = "Input"
         )
 
+        gis_bakcup_dir = arcpy.Parameter(
+            displayName = "GIS Masterlist Backup Directory",
+            name = "GIS Masterlist Backup Directory",
+            datatype = "DEWorkspace",
+            parameterType = "Optional",
+            direction = "Input"
+        )
+
         lastupdate = arcpy.Parameter(
-            displayName = "Date of last update (yyyymmdd) e.g., 20240101 for backup",
-            name = "Date of last update (yyyymmdd) e.g., 20240101",
+            displayName = "Date for Backup: use 'yyyymmdd' format. eg. 20240101",
+            name = "Date for Backup: use 'yyyymmdd' format. eg. 20240101",
             datatype = "GPString",
             parameterType = "Optional",
             direction = "Input"
         )
 
-        params = [gis_dir, gis_bakcup_dir, gis_barangay_ms, rap_barangay_ms, lastupdate]
+        params = [gis_dir, gis_barangay_ms, rap_barangay_ms, gis_bakcup_dir, lastupdate]
         return params
 
     def updateMessages(self, params):
@@ -813,9 +805,9 @@ class UpdateBarangay(object):
 
     def execute(self, params, messages):
         gis_dir = params[0].valueAsText
-        gis_bakcup_dir = params[1].valueAsText
-        gis_barangay_ms = params[2].valueAsText
-        rap_barangay_ms = params[3].valueAsText
+        gis_barangay_ms = params[1].valueAsText
+        rap_barangay_ms = params[2].valueAsText
+        gis_bakcup_dir = params[3].valueAsText
         lastupdate = params[4].valueAsText
 
         arcpy.env.overwriteOutput = True
@@ -937,14 +929,6 @@ class UpdatePier(object):
             direction = "Input"
         )
 
-        gis_bakcup_dir = arcpy.Parameter(
-            displayName = "GIS Masterlist Backup Directory",
-            name = "GIS Masterlist Backup Directory",
-            datatype = "DEWorkspace",
-            parameterType = "Optional",
-            direction = "Input"
-        )
-
         gis_pier_ms = arcpy.Parameter(
             displayName = "GIS Pier Number List ML (Excel)",
             name = "GIS Pier Number List ML (Excel)",
@@ -961,15 +945,23 @@ class UpdatePier(object):
             direction = "Input"
         )
 
+        gis_bakcup_dir = arcpy.Parameter(
+            displayName = "GIS Masterlist Backup Directory",
+            name = "GIS Masterlist Backup Directory",
+            datatype = "DEWorkspace",
+            parameterType = "Optional",
+            direction = "Input"
+        )
+
         lastupdate = arcpy.Parameter(
-            displayName = "Date of last update (yyyymmdd) e.g., 20240101 for backup",
-            name = "Date of last update (yyyymmdd) e.g., 20240101",
+            displayName = "Date for Backup: use 'yyyymmdd' format. eg. 20240101",
+            name = "Date for Backup: use 'yyyymmdd' format. eg. 20240101",
             datatype = "GPString",
             parameterType = "Optional",
             direction = "Input"
         )
 
-        params = [proj, gis_dir, gis_bakcup_dir, gis_pier_ms, rap_pier_ms, lastupdate]
+        params = [proj, gis_dir, gis_pier_ms, rap_pier_ms, gis_bakcup_dir, lastupdate]
         return params
 
     def updateMessages(self, params):
@@ -978,9 +970,9 @@ class UpdatePier(object):
     def execute(self, params, messages):
         proj = params[0].valueAsText
         gis_dir = params[1].valueAsText
-        gis_bakcup_dir = params[2].valueAsText
-        gis_pier_ms = params[3].valueAsText
-        rap_pier_ms = params[4].valueAsText
+        gis_pier_ms = params[2].valueAsText
+        rap_pier_ms = params[3].valueAsText
+        gis_bakcup_dir = params[4].valueAsText
         lastupdate = params[5].valueAsText
 
         arcpy.env.overwriteOutput = True
@@ -1409,7 +1401,7 @@ class UpdateStructureGIS(object):
         arcpy.Append_management(outLayerISF, inISF, schema_type = 'NO_TEST')
 
         # Delete the copied feature layer
-        deleteTempLayers = [copyStruc, pointStruc, outLayerISF, MasterListISF]
+        deleteTempLayers = [gis_copied, pointStruc, outLayerISF, MasterListISF]
         arcpy.Delete_management(deleteTempLayers)
 
 class UpdatePierGIS(object):

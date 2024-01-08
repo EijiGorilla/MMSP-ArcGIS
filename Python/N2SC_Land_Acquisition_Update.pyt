@@ -742,7 +742,6 @@ class UpdateStructure(object):
             rap_table.loc[id, status_field] = None
             
             # Join the number of families to table
-            rap_relo_table.dtypes
             rap_relo_table.head()
             toString(rap_relo_table, [joinField])
             rap_relo_table['FamilyNumber'] = 0
@@ -1131,6 +1130,10 @@ class UpdateLotGIS(object):
         inLot = params[0].valueAsText
         mlLot = params[1].valueAsText
 
+        def unique_values(table, field):  ##uses list comprehension
+            with arcpy.da.SearchCursor(table, [field]) as cursor:
+                return sorted({row[0] for row in cursor if row[0] is not None})
+
         arcpy.env.overwriteOutput = True
         ### Remove temporary date added
         try:
@@ -1185,14 +1188,27 @@ class UpdateLotGIS(object):
             # 3. Join Field
             ## 3.1. Convert Excel tables to feature table
             lot_ml = arcpy.conversion.ExportTable(mlLot, 'lot_ml')
+
+            # Check if LotID match between ML and GIS
+            lotid_field = 'LotID'
+            lotid_gis = unique_values(gis_copied, lotid_field)
+            lotid_ml = unique_values(lot_ml, lotid_field)
+            
+            lotid_miss_gis = [e for e in lotid_gis if e not in lotid_ml]
+            lotid_miss_ml = [e for e in lotid_ml if e not in lotid_gis]
+
+            if lotid_miss_ml or lotid_miss_gis:
+                arcpy.AddMessage('The following Lot IDs do not match between ML and GIS.')
+                arcpy.AddMessage('Missing LotIDs in GIS table: {}'.format(lotid_miss_gis))
+                arcpy.AddMessage('Missing LotIDs in ML Excel table: {}'.format(lotid_miss_ml))
                 
             ## 3.2. Get Join Field from MasterList gdb table: Gain all fields except 'Id'
             lot_ml_fields = [f.name for f in arcpy.ListFields(lot_ml)]
-            lot_ml_transfer_fields = [e for e in lot_ml_fields if e not in ('LotId', 'LotID','OBJECTID')]
+            lot_ml_transfer_fields = [e for e in lot_ml_fields if e not in ('LotId', lotid_field,'OBJECTID')]
                 
             ## 3.3. Extract a Field from MasterList and Feature Layer to be used to join two tables
-            gis_join_field = ' '.join(map(str, [f for f in gis_fields if f in ('LotId', 'LotID')]))                      
-            lot_ml_join_field =' '.join(map(str, [f for f in lot_ml_fields if f in ('LotId', 'LotID')]))
+            gis_join_field = ' '.join(map(str, [f for f in gis_fields if f in ('LotId', lotid_field)]))                      
+            lot_ml_join_field =' '.join(map(str, [f for f in lot_ml_fields if f in ('LotId', lotid_field)]))
                 
             ## 3.4 Join
             arcpy.JoinField_management(in_data=gis_copied, in_field=gis_join_field, join_table=lot_ml, join_field=lot_ml_join_field, fields=lot_ml_transfer_fields)
@@ -1265,6 +1281,10 @@ class UpdateStructureGIS(object):
         mlStruct = params[3].valueAsText
         mlISF = params[4].valueAsText
 
+        def unique_values(table, field):  ##uses list comprehension
+            with arcpy.da.SearchCursor(table, [field]) as cursor:
+                return sorted({row[0] for row in cursor if row[0] is not None})
+
         arcpy.env.overwriteOutput = True
 
         # 1. Copy Original Feature Layers
@@ -1296,14 +1316,27 @@ class UpdateStructureGIS(object):
         # 3. Join Field
         ## 3.1. Convert Excel tables to feature table
         struc_ml = arcpy.conversion.ExportTable(mlStruct, 'structure_ml')
+
+        # Check if StrucID match between ML and GIS
+        strucid_field = 'StrucID'
+        strucid_gis = unique_values(gis_copied, strucid_field)
+        strucid_ml = unique_values(struc_ml, strucid_field)
+        
+        strucid_miss_gis = [e for e in strucid_gis if e not in strucid_ml]
+        strucid_miss_ml = [e for e in strucid_ml if e not in strucid_gis]
+
+        if strucid_miss_ml or strucid_miss_gis:
+            arcpy.AddMessage('The following Structure IDs do not match between ML and GIS.')
+            arcpy.AddMessage('Missing StrucIDs in GIS table: {}'.format(strucid_miss_gis))
+            arcpy.AddMessage('Missing StrucIDs in ML Excel table: {}'.format(strucid_miss_ml))
             
         ## 3.2. Get Join Field from MasterList gdb table: Gain all fields except 'Id'
         struc_ml_fields = [f.name for f in arcpy.ListFields(struc_ml)]
-        struc_ml_transfer_fields = [e for e in struc_ml_fields if e not in ('StrucID', 'strucID','OBJECTID')]
+        struc_ml_transfer_fields = [e for e in struc_ml_fields if e not in (strucid_field, 'strucID','OBJECTID')]
             
         ## 3.3. Extract a Field from MasterList and Feature Layer to be used to join two tables
-        gis_join_field = ' '.join(map(str, [f for f in gis_fields if f in ('StrucID', 'strucID')]))
-        struc_ml_join_field = ' '.join(map(str, [f for f in struc_ml_fields if f in ('StrucID', 'strucID')]))
+        gis_join_field = ' '.join(map(str, [f for f in gis_fields if f in (strucid_field, 'strucID')]))
+        struc_ml_join_field = ' '.join(map(str, [f for f in struc_ml_fields if f in (strucid_field, 'strucID')]))
             
         ## 3.4 Join
         arcpy.JoinField_management(in_data=gis_copied, in_field=gis_join_field, join_table=struc_ml, join_field=struc_ml_join_field, fields=struc_ml_transfer_fields)
@@ -1451,10 +1484,10 @@ class UpdatePierGIS(object):
             piers_miss_gis = [e for e in piers_gis if e not in piers_ml] # missing in gis
             piers_miss_ml = [e for e in piers_ml if e not in piers_gis] # missing in ML
 
-            if piers_miss_ml:
+            if piers_miss_ml or piers_miss_gis:
                 arcpy.AddMessage('The following pier numbers do not match between ML and GIS.')
-                arcpy.AddMessage('Subject piers for GIS: {}'.format(piers_miss_gis))
-                arcpy.AddMessage('Subject piers for ML: {}'.format(piers_miss_ml))
+                arcpy.AddMessage('Missing Pier Numbers in GIS table: {}'.format(piers_miss_gis))
+                arcpy.AddMessage('Missing Pier Numbers in ML Excel table: {}'.format(piers_miss_ml))
             
             ## 3.2. Get Join Field from MasterList gdb table: Gain all fields except 'Id'
             pier_ml_fields = [f.name for f in arcpy.ListFields(pier_ml_table)]

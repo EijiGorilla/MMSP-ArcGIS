@@ -992,6 +992,7 @@ class UpdateBarangay(object):
             first_letter_capital(rap_table, [renamed_brgy])
 
             # Remove 'Barangay'
+            # rap_table['Barangay'] = rap_table['Barangay'].apply(lambda x: x.replace(regex="^Barangay", value=""))
             rap_table = rap_table.replace(regex="^Barangay", value="")
             whitespace_removal(rap_table)
 
@@ -1321,6 +1322,10 @@ class UpdateLotGIS(object):
             # 5. Append
             arcpy.Append_management(gis_copied, inLot, schema_type = 'NO_TEST')
 
+            # Delete the copied feature layer
+            deleteTempLayers = [gis_copied, lot_ml]
+            arcpy.Delete_management(deleteTempLayers)
+
         except:
             pass
 
@@ -1390,7 +1395,9 @@ class UpdateStructureGIS(object):
         arcpy.env.overwriteOutput = True
 
         # 1. Copy Original Feature Layers
+        strucid_field = 'StrucID'
         copied_name = 'Struc_Temp'
+
         gis_copied = arcpy.CopyFeatures_management(inStruc, copied_name)
             
         arcpy.AddMessage("Stage 1: Copy feature layer was success")
@@ -1399,7 +1406,7 @@ class UpdateStructureGIS(object):
         gis_fields = [f.name for f in arcpy.ListFields(gis_copied)]
             
         ## 2.1. Identify fields to be dropped
-        gis_drop_fields_check = [e for e in gis_fields if e not in ('StrucID', 'strucID','Shape','Shape_Length','Shape_Area','Shape.STArea()','Shape.STLength()','OBJECTID','GlobalID')]
+        gis_drop_fields_check = [e for e in gis_fields if e not in (strucid_field, 'strucID','Shape','Shape_Length','Shape_Area','Shape.STArea()','Shape.STLength()','OBJECTID','GlobalID')]
                         
         ## 2.3. Check if there are fields to be dropped
         gis_drop_fields = [f for f in gis_fields if f in tuple(gis_drop_fields_check)]
@@ -1410,17 +1417,15 @@ class UpdateStructureGIS(object):
         if len(gis_drop_fields) == 0:
             arcpy.AddMessage("There is no field that can be dropped from the feature layer")
         else:
-            arcpy.DeleteField_management(gis_copied, gis_drop_fields)
-                
-        arcpy.AddMessage("Stage 1: Dropping Fields was success")
-        arcpy.AddMessage("Section 2 of Stage 1 was successfully implemented")
+            arcpy.DeleteField_management(gis_copied, gis_drop_fields)   
+            arcpy.AddMessage("Stage 1: Dropping Fields was success")
+            arcpy.AddMessage("Section 2 of Stage 1 was successfully implemented")
 
         # 3. Join Field
         ## 3.1. Convert Excel tables to feature table
         struc_ml = arcpy.conversion.ExportTable(mlStruct, 'structure_ml')
 
         # Check if StrucID match between ML and GIS
-        strucid_field = 'StrucID'
         strucid_gis = unique_values(gis_copied, strucid_field)
         strucid_ml = unique_values(struc_ml, strucid_field)
         
@@ -1511,7 +1516,7 @@ class UpdateStructureGIS(object):
         arcpy.Append_management(outLayerISF, inISF, schema_type = 'NO_TEST')
 
         # Delete the copied feature layer
-        deleteTempLayers = [gis_copied, pointStruc, outLayerISF, MasterListISF]
+        deleteTempLayers = [gis_copied, struc_ml, pointStruc, outLayerISF, MasterListISF]
         arcpy.Delete_management(deleteTempLayers)
 
 class UpdatePierGIS(object):
@@ -1607,6 +1612,10 @@ class UpdatePierGIS(object):
             
             # 5. Append
             arcpy.Append_management(pier_copied_gis, inPier, schema_type = 'NO_TEST')
+                    
+            # Delete the copied feature layer
+            deleteTempLayers = [pier_copied_gis, pier_ml_table]
+            arcpy.Delete_management(deleteTempLayers)
             
         except:
             pass
@@ -1705,6 +1714,10 @@ class UpdateBarangayGIS(object):
             
             # 5. Append
             arcpy.Append_management(barangay_copied_gis, inPier, schema_type = 'NO_TEST')
+
+            # Delete the copied feature layer
+            deleteTempLayers = [barangay_copied_gis, barangay_ml_table]
+            arcpy.Delete_management(deleteTempLayers)
             
         except:
             pass

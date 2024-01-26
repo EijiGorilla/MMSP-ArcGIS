@@ -1,15 +1,103 @@
 import arcpy
 from datetime import date, datetime
+import pandas as pd
+import numpy as np
+import os
 
 class Toolbox(object):
     def __init__(self):
         self.label = "IdentifyTBMLocation"
         self.alias = "IdentifyTBMLocation"
-        self.tools = [UpdateUsingMasterList, IdentifyTBM, DelayedSegment]
+        self.tools = [UpdateExceMasterList, UpdateGISLayer, IdentifyTBM, DelayedSegment]
 
-class UpdateUsingMasterList(object):
+class UpdateExceMasterList(object):
     def __init__(self):
-        self.label = "1.Update Feature Layer using Excel Master List"
+        self.label = "0. Update Excel Master List"
+        self.description = "Update Excel master list based on Google sheet provided by Civil Team"
+
+    def getParameterInfo(self):
+        gis_dir = arcpy.Parameter(
+            displayName = "GIS Masterlist Storage Directory",
+            name = "GIS master-list directory",
+            datatype = "DEWorkspace",
+            parameterType = "Required",
+            direction = "Input"
+        )
+
+        civil_ml = arcpy.Parameter(
+            displayName = "Civil TBM Master List (Input Table)",
+            name = "Civil TBM Master List (Input Table)",
+            datatype = "DEFile",
+            parameterType = "Required",
+            direction = "Input"
+        )
+
+        gis_ml = arcpy.Parameter(
+            displayName = "GIS Excel Master List (Target Table)",
+            name = "GIS Excel Master List (Target Table)",
+            datatype = "DEFile",
+            parameterType = "Required",
+            direction = "Input"
+        )
+
+        gis_bakcup_dir = arcpy.Parameter(
+            displayName = "GIS Masterlist Backup Directory",
+            name = "GIS Masterlist Backup Directory",
+            datatype = "DEWorkspace",
+            parameterType = "Optional",
+            direction = "Input"
+        )
+
+        lastupdate = arcpy.Parameter(
+            displayName = "Date for Backup: use 'yyyymmdd' format. eg. 20240101",
+            name = "Date for Backup: use 'yyyymmdd' format. eg. 20240101",
+            datatype = "GPString",
+            parameterType = "Optional",
+            direction = "Input"
+        )
+
+        params = [gis_dir, civil_ml, gis_ml, gis_bakcup_dir, lastupdate]
+        return params
+
+    def updateMessages(self, params):
+        return
+
+    def execute(self, params, messages):
+        gis_dir = params[0].valueAsText
+        civil_ml = params[1].valueAsText
+        gis_ml = params[2].valueAsText
+        gis_bakcup_dir = params[3].valueAsText
+        lastupdate = params[4].valueAsText
+
+        def change_str_to_datetime(table, fields):
+            for field in fields:
+                table[field] = pd.to_datetime(table[field], errors='coerce').dt.date
+
+        # Read as xlsx
+        gis_table = pd.read_excel(gis_ml)
+        civil_table = pd.read_excel(civil_ml)
+
+        # Create bakcup files
+        try:
+            gis_table.to_excel(os.path.join(gis_bakcup_dir, lastupdate + "_" + "GIS_TBM_Masterlist.xlsx"), index=False)
+        except:
+            pass
+       
+        date_fields = ['startdate', 'enddate', 'Start_Exc', 'Finish_Exc', 'TargetDate']
+        change_str_to_datetime(civil_table, date_fields)
+
+        # Drop unnamed columns
+        drop_fields = [f for f in civil_table.columns[civil_table.columns.str.contains('^Unnamed.*',regex=True)]]
+        civil_table = civil_table.drop(columns = drop_fields)
+
+        ## Export to excel
+        export_file_name = os.path.splitext(os.path.basename(gis_ml))[0]
+        to_excel_file = os.path.join(gis_dir, export_file_name + ".xlsx")
+        civil_table.to_excel(to_excel_file, index=False)
+
+class UpdateGISLayer(object):
+    def __init__(self):
+        self.label = "1. Update Feature Layer using Excel Master List"
         self.description = "Update any type of feature layers using excel master list table"
 
     def getParameterInfo(self):
@@ -58,6 +146,10 @@ class UpdateUsingMasterList(object):
         ml = params[2].valueAsText
         joinField = params[3].valueAsText
 
+        def unique_values(table, field):  ##uses list comprehension
+            with arcpy.da.SearchCursor(table, [field]) as cursor:
+                return sorted({row[0] for row in cursor if row[0] is not None})
+
         arcpy.env.overwriteOutput = True
 
         # 1. Copy feature layer
@@ -97,6 +189,18 @@ class UpdateUsingMasterList(object):
         ## 3.1. Convert Excel tables to feature table
         MasterList = arcpy.TableToTable_conversion(ml, workspace, 'MasterList')
 
+        # Check
+        gis_layer = unique_values(copyLayer, joinField)
+        excel_ml = unique_values(MasterList, joinField)
+        
+        miss_gis = [e for e in gis_layer if e not in excel_ml]
+        miss_ml = [e for e in excel_ml if e not in gis_layer]
+
+        if miss_gis or miss_ml:
+            arcpy.AddMessage('The following IDs do not match between ML and GIS.')
+            arcpy.AddMessage('Missing LotIDs in GIS layer: {}'.format(miss_gis))
+            arcpy.AddMessage('Missing LotIDs in ML Excel table: {}'.format(miss_ml))
+
         ## 3.2. Get Join Field from MasterList gdb table: Gain all fields except 'Id'
         inputField = [f.name for f in arcpy.ListFields(MasterList)]
 
@@ -126,7 +230,7 @@ class UpdateUsingMasterList(object):
 
 class IdentifyTBM(object):
     def __init__(self):
-        self.label = "2.Identify TBM Location"
+        self.label = "2. Identify TBM Location"
         self.description = "Identify the location of TBM cutter head"
 
     def getParameterInfo(self):
@@ -458,7 +562,7 @@ class IdentifyTBM(object):
 
 class DelayedSegment(object):
     def __init__(self):
-        self.label = "3.Identify Delayed Segment in TBM tunnel"
+        self.label = "3. Identify Delayed Segment in TBM tunnel"
         self.description = "Identify the location of TBM segment being delayed"
     
     def getParameterInfo(self):
@@ -471,7 +575,16 @@ class DelayedSegment(object):
             direction = "Input"
         )
 
-        params = [in_layer]
+        target_date_field = arcpy.Parameter(
+            displayName = "Choose date field to identify delayed segment",
+            name = "target date field",
+            datatype = "Field",
+            parameterType = "Required",
+            direction = "Input"
+        )
+        target_date_field.parameterDependencies = [in_layer.name]
+
+        params = [in_layer, target_date_field]
         return params
 
     def updateMessages(self, params):
@@ -479,11 +592,13 @@ class DelayedSegment(object):
 
     def execute(self, params, messages):
         inFeature = params[0].valueAsText
+        target_date_field = params[1].valueAsText
+
         arcpy.env.overwriteOutput = True
 
         today = date.today()
 
-        with arcpy.da.UpdateCursor(inFeature, ["TargetDate", "delayed", "status"]) as cursor:
+        with arcpy.da.UpdateCursor(inFeature, [target_date_field, "delayed", "status"]) as cursor:
             for row in cursor:
                 if row[0] is None:
                     continue

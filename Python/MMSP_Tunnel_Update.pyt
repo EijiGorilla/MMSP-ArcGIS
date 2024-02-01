@@ -8,11 +8,11 @@ class Toolbox(object):
     def __init__(self):
         self.label = "IdentifyTBMLocation"
         self.alias = "IdentifyTBMLocation"
-        self.tools = [UpdateExceMasterList, UpdateGISLayer, IdentifyTBM, DelayedSegment]
+        self.tools = [UpdateExceMasterList, UpdateGISLayer]
 
 class UpdateExceMasterList(object):
     def __init__(self):
-        self.label = "0. Update Excel Master List"
+        self.label = "1. Update Excel Master List"
         self.description = "Update Excel master list based on Google sheet provided by Civil Team"
 
     def getParameterInfo(self):
@@ -73,9 +73,27 @@ class UpdateExceMasterList(object):
             for field in fields:
                 table[field] = pd.to_datetime(table[field], errors='coerce').dt.date
 
+        def unique(lists):
+            collect = []
+            unique_list = pd.Series(lists).drop_duplicates().tolist()
+            for x in unique_list:
+                collect.append(x)
+            return(collect)
+        
         # Read as xlsx
         gis_table = pd.read_excel(gis_ml)
         civil_table = pd.read_excel(civil_ml)
+
+        # Defin field names
+        start_date = 'startdate'
+        end_date = 'enddate'
+        target_date = 'TargetDate'
+        status_name = 'status'
+        line_id = 'line'
+        segment_no = 'segmentno'
+        tbm_spot = 'tbmSpot'
+        delayed_id = 'delayed'
+
 
         # Create bakcup files
         try:
@@ -83,12 +101,42 @@ class UpdateExceMasterList(object):
         except:
             pass
        
-        date_fields = ['startdate', 'enddate', 'Start_Exc', 'Finish_Exc', 'TargetDate']
+        date_fields = [start_date, end_date, 'Start_Exc', 'Finish_Exc', target_date]
         change_str_to_datetime(civil_table, date_fields)
 
         # Drop unnamed columns
         drop_fields = [f for f in civil_table.columns[civil_table.columns.str.contains('^Unnamed.*',regex=True)]]
         civil_table = civil_table.drop(columns = drop_fields)
+
+        # Identiy TBM Spot
+        ### identify tbm spot
+        line_list = [f for f in civil_table[line_id]]
+        lines = unique(line_list)
+
+        ## Reset 'tbmSpot'
+        civil_table[tbm_spot] = 0
+        cutter_head_pos = 5
+
+        for line in lines:
+            id = civil_table.index[(civil_table[line_id] == line) & (civil_table[status_name] == 3)]
+            if len(id) > 0:
+                spot = max(civil_table[segment_no].iloc[id]) + cutter_head_pos
+                id = civil_table.index[(civil_table[line_id] == line) & (civil_table[segment_no] == spot)]
+                civil_table[tbm_spot].iloc[id] = 1
+            else:
+                pass
+
+        ## Identify delayed segment
+        today = date.today()
+        civil_table[target_date] = pd.to_datetime(civil_table[target_date], errors='coerce').dt.date
+        civil_table[[target_date, line_id, segment_no, status_name]].head(20)
+        id = civil_table.index[(civil_table[target_date] < today) & (civil_table[status_name] < 3)]
+
+        civil_table[delayed_id] = 0
+        if len(id) > 0:
+            civil_table[delayed_id].iloc[id] = 1
+        else:
+            pass
 
         ## Export to excel
         export_file_name = os.path.splitext(os.path.basename(gis_ml))[0]
@@ -97,7 +145,7 @@ class UpdateExceMasterList(object):
 
 class UpdateGISLayer(object):
     def __init__(self):
-        self.label = "1. Update Feature Layer using Excel Master List"
+        self.label = "2. Update Feature Layer using Excel Master List"
         self.description = "Update any type of feature layers using excel master list table"
 
     def getParameterInfo(self):
@@ -227,385 +275,3 @@ class UpdateGISLayer(object):
         # Delete the copied feature layer
         deleteTempLayers = [copiedL, MasterList]
         arcpy.Delete_management(deleteTempLayers)
-
-class IdentifyTBM(object):
-    def __init__(self):
-        self.label = "2. Identify TBM Location"
-        self.description = "Identify the location of TBM cutter head"
-
-    def getParameterInfo(self):
-        # Input Feature Layer
-        in_layer = arcpy.Parameter(
-            displayName = "Input Feature layer",
-            name = "Input Feature layer",
-            datatype = "GPFeatureLayer",
-            parameterType = "Required",
-            direction = "Input"
-        )
-
-        params = [in_layer]
-        return params
-
-    def updateMessages(self, params):
-        return
-
-    def execute(self, params, messages):
-        inFeature = params[0].valueAsText
-        arcpy.env.overwriteOutput = True
-        # Empty array
-        SG1_NB = []
-        SG1_SB = []
-        SG2_NB = []
-        SG2_SB = []
-        SG3_NB = []
-        SG3_SB = []
-        SG4_NB = []
-        SG4_SB = []
-        SG5_NB = []
-        SG5_SB = []
-        SG6_NB = []
-        SG6_SB = []
-        SG7_NB = []
-        SG7_SB = []
-        SG8_NB = []
-        SG8_SB = []
-        SG9_NB = []
-        SG9_SB = []
-        SG10_NB = []
-        SG10_SB = []
-        SG11_NB = []
-        SG11_SB = []
-        SG12_NB = []
-        SG12_SB = []
-        SG13_NB = []
-        SG13_SB = []
-        SG14_NB = []
-        SG14_SB = []
-
-        segmentsAll = ['SG1']
-
-        # First collect segment Numbers for each TBM line where status is completed
-        fields = ["line","segmentno","status"]
-        with arcpy.da.SearchCursor(inFeature, fields) as cursor:
-            for row in cursor:
-                if row[0] == "SG1-NB" and row[2] == 3:
-                    SG1_NB.append(row[1])
-                elif row[0] == "SG1-SB" and row[2] == 3:
-                    SG1_SB.append(row[1])
-
-                elif row[0] == "SG2-NB" and row[2] == 3:
-                    SG2_NB.append(row[1])
-                elif row[0] == "SG2-SB" and row[2] == 3:
-                    SG2_SB.append(row[1])
-
-                elif row[0] == "SG3-NB" and row[2] == 3:
-                    SG3_NB.append(row[1])
-                elif row[0] == "SG3-SB" and row[2] == 3:
-                    SG3_SB.append(row[1])
-
-                elif row[0] == "SG4-NB" and row[2] == 3:
-                    SG4_NB.append(row[1])
-                elif row[0] == "SG4-SB" and row[2] == 3:
-                    SG4_SB.append(row[1])
-
-                elif row[0] == "SG5-NB" and row[2] == 3:
-                    SG5_NB.append(row[1])
-                elif row[0] == "SG5-SB" and row[2] == 3:
-                    SG5_SB.append(row[1])
-
-                elif row[0] == "SG6-NB" and row[2] == 3:
-                    SG6_NB.append(row[1])
-                elif row[0] == "SG6-SB" and row[2] == 3:
-                    SG6_SB.append(row[1])
-
-                elif row[0] == "SG7-NB" and row[2] == 3:
-                    SG7_NB.append(row[1])
-                elif row[0] == "SG7-SB" and row[2] == 3:
-                    SG7_SB.append(row[1])
-
-                elif row[0] == "SG8-NB" and row[2] == 3:
-                    SG8_NB.append(row[1])
-                elif row[0] == "SG8-SB" and row[2] == 3:
-                    SG8_SB.append(row[1])
-
-                elif row[0] == "SG9-NB" and row[2] == 3:
-                    SG9_NB.append(row[1])
-                elif row[0] == "SG9-SB" and row[2] == 3:
-                    SG9_SB.append(row[1])
-
-                elif row[0] == "SG10-NB" and row[2] == 3:
-                    SG10_NB.append(row[1])
-                elif row[0] == "SG10-SB" and row[2] == 3:
-                    SG10_SB.append(row[1])
-
-                elif row[0] == "SG11-NB" and row[2] == 3:
-                    SG11_NB.append(row[1])
-                elif row[0] == "SG11-SB" and row[2] == 3:
-                    SG11_SB.append(row[1])
-
-                elif row[0] == "SG12-NB" and row[2] == 3:
-                    SG12_NB.append(row[1])
-                elif row[0] == "SG12-SB" and row[2] == 3:
-                    SG12_SB.append(row[1])
-
-                elif row[0] == "SG13-NB" and row[2] == 3:
-                    SG13_NB.append(row[1])
-                elif row[0] == "SG13-SB" and row[2] == 3:
-                    SG13_SB.append(row[1])
-
-                elif row[0] == "SG14-NB" and row[2] == 3:
-                    SG14_NB.append(row[1])
-                elif row[0] == "SG14-SB" and row[2] == 3:
-                    SG14_SB.append(row[1])
-
-        # Now fill in tbmSpot
-        fields1 = ["line","segmentno","tbmSpot", "status"] 
-        with arcpy.da.UpdateCursor(inFeature, fields1) as cursor:
-            cutterHeadPos = 5
-            for row in cursor:
-                if row[0] == "SG1-NB":
-                    if len(SG1_NB) != 0 and row[1] == max(SG1_NB) + cutterHeadPos:
-                        row[2] = 1
-                        row[3] = 2
-                    else:
-                        continue
-
-                if row[0] == "SG1-SB":
-                    if len(SG1_SB) != 0 and row[1] == max(SG1_SB) + cutterHeadPos:
-                        row[2] = 1
-                        row[3] = 2
-                    else:
-                        continue
-
-                if row[0] == "SG2-NB":
-                    if len(SG2_NB) != 0 and row[1] == max(SG2_NB) + cutterHeadPos:
-                        row[2] = 1
-                        row[3] = 2
-                    else:
-                        continue
-
-                if row[0] == "SG2-SB":
-                    if len(SG2_SB) != 0 and row[1] == max(SG2_SB) + cutterHeadPos:
-                        row[2] = 1
-                        row[3] = 2
-                    else:
-                        continue
-
-                if row[0] == "SG3-NB":
-                    if len(SG3_NB) != 0 and row[1] == max(SG3_NB) + cutterHeadPos:
-                        row[2] = 1
-                        row[3] = 2
-                    else:
-                        continue
-
-                if row[0] == "SG3-SB":
-                    if len(SG3_SB) != 0 and row[1] == max(SG3_SB) + cutterHeadPos:
-                        row[2] = 1
-                        row[3] = 2
-                    else:
-                        continue
-
-                if row[0] == "SG4-NB":
-                    if len(SG4_NB) != 0 and row[1] == max(SG4_NB) + cutterHeadPos:
-                        row[2] = 1
-                        row[3] = 2
-                    else:
-                        continue
-
-                if row[0] == "SG4-SB":
-                    if len(SG4_SB) != 0 and row[1] == max(SG4_SB) + cutterHeadPos:
-                        row[2] = 1
-                        row[3] = 2
-                    else:
-                        continue
-
-                if row[0] == "SG5-NB":
-                    if len(SG5_NB) != 0 and row[1] == max(SG5_NB) + cutterHeadPos:
-                        row[2] = 1
-                        row[3] = 2
-                    else:
-                        continue
-
-                if row[0] == "SG5-SB":
-                    if len(SG5_SB) != 0 and row[1] == max(SG5_SB) + cutterHeadPos:
-                        row[2] = 1
-                        row[3] = 2
-                    else:
-                        continue
-
-                if row[0] == "SG6-NB":
-                    if len(SG6_NB) != 0 and row[1] == max(SG6_NB) + cutterHeadPos:
-                        row[2] = 1
-                        row[3] = 2
-                    else:
-                        continue
-
-                if row[0] == "SG6-SB":
-                    if len(SG6_SB) != 0 and row[1] == max(SG6_SB) + cutterHeadPos:
-                        row[2] = 1
-                        row[3] = 2
-                    else:
-                        continue
-
-                if row[0] == "SG7-NB":
-                    if len(SG7_NB) != 0 and row[1] == max(SG7_NB) + cutterHeadPos:
-                        row[2] = 1
-                        row[3] = 2
-                    else:
-                        continue
-
-                if row[0] == "SG7-SB":
-                    if len(SG7_SB) != 0 and row[1] == max(SG7_SB) + cutterHeadPos:
-                        row[2] = 1
-                        row[3] = 2
-                    else:
-                        continue
-
-                if row[0] == "SG8-NB":
-                    if len(SG8_NB) != 0 and row[1] == max(SG8_NB) + cutterHeadPos:
-                        row[2] = 1
-                        row[3] = 2
-                    else:
-                        continue
-
-                if row[0] == "SG8-SB":
-                    if len(SG8_SB) != 0 and row[1] == max(SG8_SB) + cutterHeadPos:
-                        row[2] = 1
-                        row[3] = 2
-                    else:
-                        continue
-
-                if row[0] == "SG9-NB":
-                    if len(SG9_NB) != 0 and row[1] == max(SG9_NB) + cutterHeadPos:
-                        row[2] = 1
-                        row[3] = 2
-                    else:
-                        continue
-
-                if row[0] == "SG9-SB":
-                    if len(SG9_SB) != 0 and row[1] == max(SG9_SB) + cutterHeadPos:
-                        row[2] = 1
-                        row[3] = 2
-                    else:
-                        continue
-
-                if row[0] == "SG10-NB":
-                    if len(SG10_NB) != 0 and row[1] == max(SG10_NB) + cutterHeadPos:
-                        row[2] = 1
-                        row[3] = 2
-                    else:
-                        continue
-
-                if row[0] == "SG10-SB":
-                    if len(SG10_SB) != 0 and row[1] == max(SG10_SB) + cutterHeadPos:
-                        row[2] = 1
-                        row[3] = 2
-                    else:
-                        continue
-
-                if row[0] == "SG11-NB":
-                    if len(SG11_NB) != 0 and row[1] == max(SG11_NB) + cutterHeadPos:
-                        row[2] = 1
-                        row[3] = 2
-                    else:
-                        continue
-
-                if row[0] == "SG11-SB":
-                    if len(SG11_SB) != 0 and row[1] == max(SG11_SB) + cutterHeadPos:
-                        row[2] = 1
-                        row[3] = 2
-                    else:
-                        continue
-
-                if row[0] == "SG12-NB":
-                    if len(SG12_NB) != 0 and row[1] == max(SG12_NB) + cutterHeadPos:
-                        row[2] = 1
-                        row[3] = 2
-                    else:
-                        continue
-
-                if row[0] == "SG12-SB":
-                    if len(SG12_SB) != 0 and row[1] == max(SG12_SB) + cutterHeadPos:
-                        row[2] = 1
-                        row[3] = 2
-                    else:
-                        continue
-
-                if row[0] == "SG13-NB":
-                    if len(SG13_NB) != 0 and row[1] == max(SG13_NB) + cutterHeadPos:
-                        row[2] = 1
-                        row[3] = 2
-                    else:
-                        continue
-
-                if row[0] == "SG13-SB":
-                    if len(SG13_SB) != 0 and row[1] == max(SG13_SB) + cutterHeadPos:
-                        row[2] = 1
-                        row[3] = 2
-                    else:
-                        continue
-
-                if row[0] == "SG14-NB":
-                    if len(SG14_NB) != 0 and row[1] == max(SG14_NB) + cutterHeadPos:
-                        row[2] = 1
-                        row[3] = 2
-                    else:
-                        continue
-
-                if row[0] == "SG14-SB":
-                    if len(SG14_SB) != 0 and row[1] == max(SG14_SB) + cutterHeadPos:
-                        row[2] = 1
-                        row[3] = 2
-                    else:
-                        continue
-                cursor.updateRow(row)
-
-class DelayedSegment(object):
-    def __init__(self):
-        self.label = "3. Identify Delayed Segment in TBM tunnel"
-        self.description = "Identify the location of TBM segment being delayed"
-    
-    def getParameterInfo(self):
-        # Input Feature Layer
-        in_layer = arcpy.Parameter(
-            displayName = "Input Feature layer",
-            name = "Input Feature layer",
-            datatype = "GPFeatureLayer",
-            parameterType = "Required",
-            direction = "Input"
-        )
-
-        target_date_field = arcpy.Parameter(
-            displayName = "Choose date field to identify delayed segment",
-            name = "target date field",
-            datatype = "Field",
-            parameterType = "Required",
-            direction = "Input"
-        )
-        target_date_field.parameterDependencies = [in_layer.name]
-
-        params = [in_layer, target_date_field]
-        return params
-
-    def updateMessages(self, params):
-        return
-
-    def execute(self, params, messages):
-        inFeature = params[0].valueAsText
-        target_date_field = params[1].valueAsText
-
-        arcpy.env.overwriteOutput = True
-
-        today = date.today()
-
-        with arcpy.da.UpdateCursor(inFeature, [target_date_field, "delayed", "status"]) as cursor:
-            for row in cursor:
-                if row[0] is None:
-                    continue
-                else:
-                    d2 = row[0].date()
-                    if d2 < today and row[2] < 3: # 3 = completed [when status is not completed]
-                        row[1] = 1
-                    else:
-                        row[1] = None
-                cursor.updateRow(row)

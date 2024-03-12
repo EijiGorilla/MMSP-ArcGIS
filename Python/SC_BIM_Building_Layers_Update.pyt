@@ -156,19 +156,25 @@ class AddFieldsToBuildingLayers(object):
         # 1. Add fields
         add_fields = ['Station', 'Types', 'CP', 'Status']
 
-        for layer in layers:
-            for field in add_fields:
-                if field in ('CP', 'Station'):
-                    arcpy.AddField_management(layer, field, "TEXT", "", "", "", field, "NULLABLE", "")
-                else:
-                    arcpy.AddField_management(layer, field, "SHORT", "", "", "", field, "NULLABLE", "")
+        arcpy.AddMessage("Add Fields start...")
+        try:
+            for layer in layers:
+                for field in add_fields:
+                    if field in ('CP', 'Station'):
+                        arcpy.AddField_management(layer, field, "TEXT", "", "", "", field, "NULLABLE", "")
+                    else:
+                        arcpy.AddField_management(layer, field, "SHORT", "", "", "", field, "NULLABLE", "")
+        except:
+            arcpy.AddMessage("Fields already exist.")
+            pass
 
         # 2. Initial set for Status
+        arcpy.AddMessage("Convert 'Status' = 1.")
         for layer in layers:
             with arcpy.da.UpdateCursor(layer, ['Status']) as cursor:
                 for row in cursor:
                     row[0] = 1
-                    cursor.updatedRow(row)
+                    cursor.updateRow(row)
 
         # 3. Types of categories
         for layer in layers:
@@ -218,9 +224,14 @@ class AddFieldsToBuildingLayers(object):
         for layer in layers:
             with arcpy.da.UpdateCursor(layer, ['DocName', 'CP', 'Station']) as cursor:
                 for row in cursor:
+
+                    try:
+                        cp_all = re.search(r'[S]0\d+?[abcABC]|[S]0\d+',row[0]).group()
+                    except AttributeError:
+                        cp_all = re.search(r'[S]0\d+?[abcABC]|[S]0\d+',row[0])
+                    
                     st_name = re.search(r'\w+STN',row[0]).group()
-                    cp_all = re.search(r'[NS]0\d?[abcABC]',row[0]).group()
-                    cp_name = re.sub(r'0','-0',cp_all)
+                    cp_name = re.sub(r'0','-0',str(cp_all))
 
                     row[2] = stations[st_name]
                     row[1] = cp_name
@@ -228,13 +239,13 @@ class AddFieldsToBuildingLayers(object):
 
 class DeleteAddNewBuildingLayers(object):
     def __init__(self):
-        self.label = "2.2. Update Existing Building Layers using New Ones (Station Structures ONLY)"
-        self.description = "2.2. Update Existing Building Layers using New Ones (Station Structures ONLY)"
+        self.label = "2.2. Update Building Layers (Station Structures ONLY)"
+        self.description = "2.2. Update Building Layers (Station Structures ONLY)"
 
     def getParameterInfo(self):
         station_update = arcpy.Parameter(
-            displayName = "Project Extension: N2 or SC",
-            name = "Project Extension: N2 or SC",
+            displayName = "Removed (Replaced) Stations",
+            name = "Removed (Replaced) Stations",
             datatype = "GPString",
             parameterType = "Required",
             direction = "Input",
@@ -264,8 +275,8 @@ class DeleteAddNewBuildingLayers(object):
         ]
 
         delete_fc = arcpy.Parameter(
-            displayName = "Select Building Sublayers To Be Deleted",
-            name = "Select Building Sublayers To Be Deleted ",
+            displayName = "Target Building Sublayers (To Be Deleted)",
+            name = "Target Building Sublayers (To Be Deleted)",
             datatype = "GPFeatureLayer",
             parameterType = "Required",
             direction = "Input",
@@ -273,8 +284,8 @@ class DeleteAddNewBuildingLayers(object):
         )
 
         new_fc = arcpy.Parameter(
-            displayName = "Select New Building Sublayers",
-            name = "Select Sublayers in Building Layers ",
+            displayName = "Input Building Sublayers (New)",
+            name = "Input Building Sublayers (New)",
             datatype = "GPFeatureLayer",
             parameterType = "Required",
             direction = "Input",
@@ -294,8 +305,36 @@ class DeleteAddNewBuildingLayers(object):
 
         arcpy.env.overwriteOutput = True
 
+        # Stations domains
+        stations = {
+            "BLUSTN": 11,
+            "ESPSTN": 12,
+            "STMSTN": 13,
+            "PACSTN": 14,
+            "BUESTN": 15,
+            "EDSA": 16,
+            "EDSB": 31,
+            "FTISTN": 18,
+            "BCTSTN": 19,
+            "SCTSTN": 20,
+            "ALASTN": 21,
+            "MTNSTN": 22,
+            "SPDSTN": 23,
+            "PCTSTN": 24,
+            "BINSTN": '25',
+            "STRSTN": 26,
+            "CBYSTN": 27,
+            "BANSTN": '29',
+            "CMBSTN": 30
+            }
+        
         del_layers = list(delete_bim.split(";"))
         new_layers = list(new_bim.split(";"))
+        new_stations = list(station_update.split(";"))
+        
+        arcpy.AddMessage(new_layers)
+        # Convert station names to station domain numbers
+        station_numbers = tuple([stations[e] for e in new_stations])
 
         # 1. Check names are matched between deleted layers and new layers
         del_basenames = []
@@ -313,16 +352,21 @@ class DeleteAddNewBuildingLayers(object):
             # 2.1. Delete layers from existing
             for layer in del_layers:
                 del_basename = os.path.basename(layer)
-                with arcpy.da.UpdateCursor(layer, ['Station']) as cursor:
-                    for row in cursor:
-                        if row[0] in station_update:
-                            cursor.deleteRow()
 
-                # 2.2. Add new layers
-                id = new_basenames.index(del_basename)
+                # Select layer by attribute
+                where_clause = '"Station" IN {}'.format(station_numbers)
+                arcpy.management.SelectLayerByAttribute(layer, 'SUBSET_SELECTION',where_clause)
+
+                # Truncate
+                arcpy.TruncateTable_management(layer)
+            
+                # 2.2. Add new layer
+                new_layers_series = pd.Series(new_layers)
+                id = new_layers_series.index[new_layers_series.str.contains(del_basename,regex=True)][0]
+                arcpy.AddMessage(del_basename + "; " + new_layers[id])
                 arcpy.Append_management(new_layers[id], layer, schema_type = 'NO_TEST')
         else:
-            arcpy.AddMessage("ERROR. Please makesure that you selected matching sublayers.")
+            arcpy.AddError("Matching Errors.. Select corresponding building sublayers for input and target.")
             pass
 
 class ExportToExcel(object):
@@ -431,7 +475,16 @@ class UpdateGISExcel(object):
                 direction = "Input"
             )
 
-            params = [gis_dir, target_ms, input_ms, gis_bakcup_dir, lastupdate]
+            join_field = arcpy.Parameter(
+                displayName = "Join Field",
+                name = "Join Field",
+                datatype = "Field",
+                parameterType = "Required",
+                direction = "Input"
+            )
+            join_field.parameterDependencies = [target_ms.name]
+
+            params = [gis_dir, target_ms, input_ms, gis_bakcup_dir, lastupdate,join_field]
             return params
 
         def updateMessage(self, params):
@@ -443,6 +496,7 @@ class UpdateGISExcel(object):
             input_ms = params[2].valueAsText
             gis_bakcup_dir = params[3].valueAsText
             lastupdate = params[4].valueAsText
+            join_field = params[5].valueAsText
 
             arcpy.env.overwriteOutput = True
 
@@ -460,9 +514,6 @@ class UpdateGISExcel(object):
                     table[field] = table[field].astype(str)
                     table[field] = table[field].apply(lambda x: x.replace(r'\s+', ''))
                     table[field] = table[field].astype(str)
-
-            # 0. Define unique ID
-            join_field = 'ObjectId'
 
             # 1. Read excel files
             input_table = pd.read_excel(input_ms)

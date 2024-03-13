@@ -37,8 +37,8 @@ class Toolbox(object):
     def __init__(self):
         self.label = "UpdateN2StationStructures"
         self.alias = "pdateN2StationStructures"
-        self.tools = [CreateBIMtoGeodatabase, CreateBuildingLayers, AddFieldsToBuildingLayers,
-                      DeleteAddNewBuildingLayers ,ExportToExcel, UpdateGISExcel, UpdateBuildingLayer]
+        self.tools = [CreateBIMtoGeodatabase, CreateBuildingLayers, AddFieldsToBuildingLayerStation, AddFieldsToBuildingLayerDepot,
+                      EditBuildingLayerStation, EditBuildingLayerDepot, ExportToExcel, UpdateGISExcel, UpdateBuildingLayer]
 
 class CreateBIMtoGeodatabase(object):
     def __init__(self):
@@ -126,7 +126,7 @@ class CreateBuildingLayers(object):
 
     #     arcpy.AddMessage("Make Building Layer was successful.")
 
-class AddFieldsToBuildingLayers(object):
+class AddFieldsToBuildingLayerStation(object):
     def __init__(self):
         self.label = "2.1. Add Fields to New Building Layers (Station Structures ONLY)"
         self.description = "2.1. Add Fields to New Building Layers (Station Structures ONLY)"
@@ -165,7 +165,7 @@ class AddFieldsToBuildingLayers(object):
                     else:
                         arcpy.AddField_management(layer, field, "SHORT", "", "", "", field, "NULLABLE", "")
         except:
-            arcpy.AddMessage("Fields already exist.")
+            arcpy.AddError("Fields already exist.")
             pass
 
         # 2. Initial set for Status
@@ -237,10 +237,88 @@ class AddFieldsToBuildingLayers(object):
                     row[1] = cp_name
                     cursor.updateRow(row)
 
-class DeleteAddNewBuildingLayers(object):
+class AddFieldsToBuildingLayerDepot(object):
     def __init__(self):
-        self.label = "2.2. Update Building Layers (Station Structures ONLY)"
-        self.description = "2.2. Update Building Layers (Station Structures ONLY)"
+        self.label = "3.1. Add Fields to New Building Layers (Depot Buildings ONLY)"
+        self.description = "3.1. Add Fields to New Building Layers (Depot Buildings ONLY)"
+
+    def getParameterInfo(self):
+        in_replaced_fc = arcpy.Parameter(
+            displayName = "Select Sublayers in Building Layers (e.g., StructuralColumns)",
+            name = "Select Sublayers in Building Layers", 
+            datatype = "GPFeatureLayer",
+            parameterType = "Required",
+            direction = "Input",
+            multiValue = True
+        )
+
+        params = [in_replaced_fc]
+        return params
+
+    def updateMessage(self, params):
+        return
+    
+    def execute(self, params, messages):
+        input_layers = params[0].valueAsText
+        arcpy.env.overwriteOutput = True
+
+        layers = list(input_layers.split(";"))
+
+        # 1. Add fields
+        add_fields = ['Name', 'Status']
+
+        arcpy.AddMessage("Add Fields start...")
+        try:
+            for layer in layers:
+                for field in add_fields:
+                    arcpy.AddField_management(layer, field, "TEXT", "", "", "", field, "NULLABLE", "")
+
+        except:
+            arcpy.AddError("Fields already exist.")
+            pass
+
+        # 2. Initial set for Status
+        arcpy.AddMessage("Convert 'Status' = 1.")
+        for layer in layers:
+            with arcpy.da.UpdateCursor(layer, ['Status']) as cursor:
+                for row in cursor:
+                    row[0] = 1
+                    cursor.updateRow(row)
+                    
+        ## Use 'DocName' field to extract CP and Station
+        stations = {
+            "BLUSTN": 11,
+            "ESPSTN": 12,
+            "STMSTN": 13,
+            "PACSTN": 14,
+            "BUESTN": 15,
+            "EDSA": 16,
+            "EDSB": 31,
+            "FTISTN": 18,
+            "BCTSTN": 19,
+            "SCTSTN": 20,
+            "ALASTN": 21,
+            "MTNSTN": 22,
+            "SPDSTN": 23,
+            "PCTSTN": 24,
+            "BINSTN": 25,
+            "STRSTN": 26,
+            "CBYSTN": 27,
+            "BANSTN": 29,
+            "CMBSTN": 30
+        }
+
+        for layer in layers:
+            with arcpy.da.UpdateCursor(layer, ['DocName', 'CP', 'Name']) as cursor:
+                for row in cursor:                    
+                    building_name = re.search(r'BAN+\w',row[0]).group()
+                    row[2] = building_name
+                    cursor.updateRow(row)
+
+class EditBuildingLayerStation(object):
+    def __init__(self):
+        self.label = "2.2 Update Building Layers (Station Structures ONLY)"
+        self.description = "2.2 Update Building Layers (Station Structures ONLY)"
 
     def getParameterInfo(self):
         station_update = arcpy.Parameter(
@@ -307,25 +385,25 @@ class DeleteAddNewBuildingLayers(object):
 
         # Stations domains
         stations = {
-            "BLUSTN": 11,
-            "ESPSTN": 12,
-            "STMSTN": 13,
-            "PACSTN": 14,
-            "BUESTN": 15,
-            "EDSA": 16,
-            "EDSB": 31,
-            "FTISTN": 18,
-            "BCTSTN": 19,
-            "SCTSTN": 20,
-            "ALASTN": 21,
-            "MTNSTN": 22,
-            "SPDSTN": 23,
-            "PCTSTN": 24,
+            "BLUSTN": '11',
+            "ESPSTN": '12',
+            "STMSTN": '13',
+            "PACSTN": '14',
+            "BUESTN": '15',
+            "EDSA": '16',
+            "EDSB": '31',
+            "FTISTN": '18',
+            "BCTSTN": '19',
+            "SCTSTN": '20',
+            "ALASTN": '21',
+            "MTNSTN": '22',
+            "SPDSTN": '23',
+            "PCTSTN": '24',
             "BINSTN": '25',
-            "STRSTN": 26,
-            "CBYSTN": 27,
+            "STRSTN": '26',
+            "CBYSTN": '27',
             "BANSTN": '29',
-            "CMBSTN": 30
+            "CMBSTN": '30'
             }
         
         del_layers = list(delete_bim.split(";"))
@@ -355,6 +433,119 @@ class DeleteAddNewBuildingLayers(object):
 
                 # Select layer by attribute
                 where_clause = '"Station" IN {}'.format(station_numbers)
+                arcpy.management.SelectLayerByAttribute(layer, 'SUBSET_SELECTION',where_clause)
+
+                # Truncate
+                arcpy.TruncateTable_management(layer)
+            
+                # 2.2. Add new layer
+                new_layers_series = pd.Series(new_layers)
+                id = new_layers_series.index[new_layers_series.str.contains(del_basename,regex=True)][0]
+                arcpy.AddMessage(del_basename + "; " + new_layers[id])
+                arcpy.Append_management(new_layers[id], layer, schema_type = 'NO_TEST')
+        else:
+            arcpy.AddError("Matching Errors.. Select corresponding building sublayers for input and target.")
+            pass
+
+class EditBuildingLayerDepot(object):
+    def __init__(self):
+        self.label = "3.2 Update Building Layers (Depot Buildings ONLY)"
+        self.description = "3.2 Update Building Layers (Depot Buildings ONLY)"
+
+    def getParameterInfo(self):
+        station_update = arcpy.Parameter(
+            displayName = "Removed (Replaced) Depot Buildings",
+            name = "Removed (Replaced) Depot Buildings",
+            datatype = "GPString",
+            parameterType = "Required",
+            direction = "Input",
+            multiValue = True
+        )
+        station_update.filter.type = "ValueList"
+        station_update.filter.list = [
+            "OCC",
+            "LRS",
+            "URS",
+            "WRS",
+            "CMV",
+            "LOS",
+            "DHS",
+            "LGS",
+            "TGB",
+            "TMO",
+            "MCS",
+            "DBS1",
+            "WPH1",
+            "WPH2",
+            "SH1",
+            "BPS",
+            "MPS",
+            "CPS",
+            "CNT",
+            "CWT",
+            "FP1",
+            "DB1",
+            "DB2"
+            "DSP"
+        ]
+
+        delete_fc = arcpy.Parameter(
+            displayName = "Target Building Sublayers (To Be Deleted)",
+            name = "Target Building Sublayers (To Be Deleted)",
+            datatype = "GPFeatureLayer",
+            parameterType = "Required",
+            direction = "Input",
+            multiValue = True
+        )
+
+        new_fc = arcpy.Parameter(
+            displayName = "Input Building Sublayers (New)",
+            name = "Input Building Sublayers (New)",
+            datatype = "GPFeatureLayer",
+            parameterType = "Required",
+            direction = "Input",
+            multiValue = True
+        )
+
+        params = [station_update, delete_fc, new_fc]
+        return params
+
+    def updateMessage(self, params):
+        return
+    
+    def execute(self, params, messages):
+        station_update = params[0].valueAsText
+        delete_bim = params[1].valueAsText
+        new_bim = params[2].valueAsText
+
+        arcpy.env.overwriteOutput = True
+
+        # Building names = domain names       
+        del_layers = list(delete_bim.split(";"))
+        new_layers = list(new_bim.split(";"))
+        new_buildings = list(station_update.split(";"))
+        
+        arcpy.AddMessage(new_layers)
+
+        # 1. Check names are matched between deleted layers and new layers
+        del_basenames = []
+        new_basenames = []
+
+        for layer in del_layers:
+            del_basenames.append(os.path.basename(layer))
+
+        for layer in new_layers:
+            new_basenames.append(os.path.basename(layer))
+
+        # 2. Add and Delete
+        if sorted(del_basenames) == sorted(new_basenames):
+
+            # 2.1. Delete layers from existing
+            for layer in del_layers:
+                del_basename = os.path.basename(layer)
+
+                # Select layer by attribute
+                where_clause = '"Name" IN {}'.format(new_buildings)
                 arcpy.management.SelectLayerByAttribute(layer, 'SUBSET_SELECTION',where_clause)
 
                 # Truncate

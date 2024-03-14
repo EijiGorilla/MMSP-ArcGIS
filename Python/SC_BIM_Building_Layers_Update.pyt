@@ -37,8 +37,9 @@ class Toolbox(object):
     def __init__(self):
         self.label = "UpdateN2StationStructures"
         self.alias = "pdateN2StationStructures"
-        self.tools = [CreateBIMtoGeodatabase, CreateBuildingLayers, AddFieldsToBuildingLayerStation, AddFieldsToBuildingLayerDepot,
-                      EditBuildingLayerStation, EditBuildingLayerDepot, ExportToExcel, UpdateGISExcel, UpdateBuildingLayer]
+        self.tools = [CreateBIMtoGeodatabase, CreateBuildingLayers,
+                      StationStructureMessage, DepotBuildingMessage, AddFieldsToBuildingLayerStation, AddFieldsToBuildingLayerDepot,
+                      EditBuildingLayerStation, EditBuildingLayerDepot, UseExcelForUpdate, ExportToExcel, UpdateGISExcel, UpdateBuildingLayer]
 
 class CreateBIMtoGeodatabase(object):
     def __init__(self):
@@ -47,8 +48,8 @@ class CreateBIMtoGeodatabase(object):
 
     def getParameterInfo(self):
         fgdb_dir = arcpy.Parameter(
-            displayName = "File Geodatabase Directory",
-            name = "File Geodatabase Directory",
+            displayName = "File Geodatabase",
+            name = "File Geodatabase",
             datatype = "DEWorkspace",
             parameterType = "Required",
             direction = "Input"
@@ -125,6 +126,16 @@ class CreateBuildingLayers(object):
     #     arcpy.MakeBuildingLayer_management(bim_fd,buildingLayerName)
 
     #     arcpy.AddMessage("Make Building Layer was successful.")
+
+class StationStructureMessage(object):
+    def __init__(self):
+        self.label = "2.0. ---------- Station Structures ------------"
+        self.description = "2.0. ---------- Station Structures ------------"
+
+class DepotBuildingMessage(object):
+    def __init__(self):
+        self.label = "3.0. ---------- Depot Buildings ------------"
+        self.description = "3.0. ---------- Depot Buildings ------------"
 
 class AddFieldsToBuildingLayerStation(object):
     def __init__(self):
@@ -286,33 +297,16 @@ class AddFieldsToBuildingLayerDepot(object):
                     cursor.updateRow(row)
                     
         ## Use 'DocName' field to extract CP and Station
-        stations = {
-            "BLUSTN": 11,
-            "ESPSTN": 12,
-            "STMSTN": 13,
-            "PACSTN": 14,
-            "BUESTN": 15,
-            "EDSA": 16,
-            "EDSB": 31,
-            "FTISTN": 18,
-            "BCTSTN": 19,
-            "SCTSTN": 20,
-            "ALASTN": 21,
-            "MTNSTN": 22,
-            "SPDSTN": 23,
-            "PCTSTN": 24,
-            "BINSTN": 25,
-            "STRSTN": 26,
-            "CBYSTN": 27,
-            "BANSTN": 29,
-            "CMBSTN": 30
-        }
-
         for layer in layers:
-            with arcpy.da.UpdateCursor(layer, ['DocName', 'CP', 'Name']) as cursor:
+            with arcpy.da.UpdateCursor(layer, ['DocName', 'Name']) as cursor:
                 for row in cursor:                    
-                    building_name = re.search(r'BAN+\w',row[0]).group()
-                    row[2] = building_name
+                    try:
+                        building_name = re.search(r'BAN\w+|BAN\w+[12]',row[0]).group()
+                    except AttributeError:
+                        building_name = re.search(r'BAN\w+|BAN\w+[12]',row[0])
+                    
+                    final_name = re.sub(r'BAN','',building_name)
+                    row[1] = final_name
                     cursor.updateRow(row)
 
 class EditBuildingLayerStation(object):
@@ -353,8 +347,8 @@ class EditBuildingLayerStation(object):
         ]
 
         delete_fc = arcpy.Parameter(
-            displayName = "Target Building Sublayers (To Be Deleted)",
-            name = "Target Building Sublayers (To Be Deleted)",
+            displayName = "Target Building Sublayers (To Be Updated)",
+            name = "Target Building Sublayers (To Be Updated)",
             datatype = "GPFeatureLayer",
             parameterType = "Required",
             direction = "Input",
@@ -432,7 +426,11 @@ class EditBuildingLayerStation(object):
                 del_basename = os.path.basename(layer)
 
                 # Select layer by attribute
-                where_clause = '"Station" IN {}'.format(station_numbers)
+                if len(new_stations) == 1:
+                    where_clause = "Station = '{}'".format(station_numbers[0])
+                else:
+                    where_clause = "Station IN {}".format(station_numbers)
+
                 arcpy.management.SelectLayerByAttribute(layer, 'SUBSET_SELECTION',where_clause)
 
                 # Truncate
@@ -453,7 +451,7 @@ class EditBuildingLayerDepot(object):
         self.description = "3.2 Update Building Layers (Depot Buildings ONLY)"
 
     def getParameterInfo(self):
-        station_update = arcpy.Parameter(
+        building_update = arcpy.Parameter(
             displayName = "Removed (Replaced) Depot Buildings",
             name = "Removed (Replaced) Depot Buildings",
             datatype = "GPString",
@@ -461,8 +459,8 @@ class EditBuildingLayerDepot(object):
             direction = "Input",
             multiValue = True
         )
-        station_update.filter.type = "ValueList"
-        station_update.filter.list = [
+        building_update.filter.type = "ValueList"
+        building_update.filter.list = [
             "OCC",
             "LRS",
             "URS",
@@ -490,8 +488,8 @@ class EditBuildingLayerDepot(object):
         ]
 
         delete_fc = arcpy.Parameter(
-            displayName = "Target Building Sublayers (To Be Deleted)",
-            name = "Target Building Sublayers (To Be Deleted)",
+            displayName = "Target Building Sublayers (To Be Updated)",
+            name = "Target Building Sublayers (To Be Updated)",
             datatype = "GPFeatureLayer",
             parameterType = "Required",
             direction = "Input",
@@ -507,25 +505,25 @@ class EditBuildingLayerDepot(object):
             multiValue = True
         )
 
-        params = [station_update, delete_fc, new_fc]
+        params = [building_update, delete_fc, new_fc]
         return params
 
     def updateMessage(self, params):
         return
     
     def execute(self, params, messages):
-        station_update = params[0].valueAsText
+        building_update = params[0].valueAsText
         delete_bim = params[1].valueAsText
         new_bim = params[2].valueAsText
 
         arcpy.env.overwriteOutput = True
+        arcpy.AddMessage("0.")
 
-        # Building names = domain names       
+        # Building names = domain names for depot building layers    
         del_layers = list(delete_bim.split(";"))
         new_layers = list(new_bim.split(";"))
-        new_buildings = list(station_update.split(";"))
-        
-        arcpy.AddMessage(new_layers)
+        new_list_buildings = list(building_update.split(";"))
+        new_buildings = tuple([e for e in new_list_buildings])
 
         # 1. Check names are matched between deleted layers and new layers
         del_basenames = []
@@ -537,15 +535,22 @@ class EditBuildingLayerDepot(object):
         for layer in new_layers:
             new_basenames.append(os.path.basename(layer))
 
+        arcpy.AddMessage(del_basenames)
+        arcpy.AddMessage(new_basenames)
+
         # 2. Add and Delete
         if sorted(del_basenames) == sorted(new_basenames):
-
-            # 2.1. Delete layers from existing
+            # # 2.1. Delete layers from existing
             for layer in del_layers:
                 del_basename = os.path.basename(layer)
 
                 # Select layer by attribute
-                where_clause = '"Name" IN {}'.format(new_buildings)
+                if len(new_list_buildings) == 1:
+                    where_clause = "Name = '{}'".format(new_list_buildings[0])
+                else:
+                    where_clause = "Name IN {}".format(new_buildings)
+                
+                arcpy.AddMessage(where_clause)
                 arcpy.management.SelectLayerByAttribute(layer, 'SUBSET_SELECTION',where_clause)
 
                 # Truncate
@@ -554,16 +559,24 @@ class EditBuildingLayerDepot(object):
                 # 2.2. Add new layer
                 new_layers_series = pd.Series(new_layers)
                 id = new_layers_series.index[new_layers_series.str.contains(del_basename,regex=True)][0]
-                arcpy.AddMessage(del_basename + "; " + new_layers[id])
+                arcpy.AddMessage("Checking Match: ")
+                arcpy.AddMessage("Updated Subylayer: " + del_basename + "; " + "New Sublayer: " + new_layers[id])
+                
                 arcpy.Append_management(new_layers[id], layer, schema_type = 'NO_TEST')
+                arcpy.AddMessage(del_basename + " was successfully updated.")
         else:
             arcpy.AddError("Matching Errors.. Select corresponding building sublayers for input and target.")
             pass
 
+class UseExcelForUpdate(object):
+    def __init__(self):
+        self.label = "4.0. ---------- Update Excel Master List ------------"
+        self.description = "4.0. ---------- Update Excel Master List ------------"
+
 class ExportToExcel(object):
     def __init__(self):
-        self.label = "3. Export Building Layers to Excel"
-        self.description = "Export each building layer to excel and compile into one sheet"
+        self.label = "4.1. Export Building Layers to Excel"
+        self.description = "4.1. Export each building layer to excel and compile into one sheet"
 
     def getParameterInfo(self):
         in_replaced_fc = arcpy.Parameter(
@@ -622,8 +635,8 @@ class ExportToExcel(object):
 
 class UpdateGISExcel(object):
         def __init__(self):
-            self.label = "4. Update Master Excel File"
-            self.description = "Update Master Excel File for GIS"
+            self.label = "4.2. Update Master Excel File"
+            self.description = "4.2. Update Master Excel File for GIS"
 
         def getParameterInfo(self):
             gis_dir = arcpy.Parameter(
@@ -752,8 +765,8 @@ class UpdateGISExcel(object):
 
 class UpdateBuildingLayer(object):
     def __init__(self):
-        self.label = "5. Update Building Layers using ML"
-        self.description = "Update building layers using excel ML"
+        self.label = "4.3. Update Building Layers using ML"
+        self.description = "4.3. Update building layers using excel ML"
 
     def getParameterInfo(self):
         in_replaced_fc = arcpy.Parameter(

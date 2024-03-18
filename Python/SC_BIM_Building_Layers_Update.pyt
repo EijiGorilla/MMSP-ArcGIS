@@ -37,7 +37,7 @@ class Toolbox(object):
     def __init__(self):
         self.label = "UpdateN2StationStructures"
         self.alias = "pdateN2StationStructures"
-        self.tools = [CreateBIMtoGeodatabase, CreateBuildingLayers,
+        self.tools = [CreateBIMtoGeodatabase, CreateBuildingLayers, DomainSettingStationStructure, DomainSettingDepotBuilding,
                       StationStructureMessage, DepotBuildingMessage, AddFieldsToBuildingLayerStation, AddFieldsToBuildingLayerDepot,
                       EditBuildingLayerStation, EditBuildingLayerDepot, UseExcelForUpdate, ExportToExcel, UpdateGISExcel, UpdateBuildingLayer]
 
@@ -171,7 +171,7 @@ class AddFieldsToBuildingLayerStation(object):
         try:
             for layer in layers:
                 for field in add_fields:
-                    if field in ('CP', 'Station'):
+                    if field == 'CP':
                         arcpy.AddField_management(layer, field, "TEXT", "", "", "", field, "NULLABLE", "")
                     else:
                         arcpy.AddField_management(layer, field, "SHORT", "", "", "", field, "NULLABLE", "")
@@ -379,25 +379,25 @@ class EditBuildingLayerStation(object):
 
         # Stations domains
         stations = {
-            "BLUSTN": '11',
-            "ESPSTN": '12',
-            "STMSTN": '13',
-            "PACSTN": '14',
-            "BUESTN": '15',
-            "EDSA": '16',
-            "EDSB": '31',
-            "FTISTN": '18',
-            "BCTSTN": '19',
-            "SCTSTN": '20',
-            "ALASTN": '21',
-            "MTNSTN": '22',
-            "SPDSTN": '23',
-            "PCTSTN": '24',
-            "BINSTN": '25',
-            "STRSTN": '26',
-            "CBYSTN": '27',
-            "BANSTN": '29',
-            "CMBSTN": '30'
+            "BLUSTN": 11,
+            "ESPSTN": 12,
+            "STMSTN": 13,
+            "PACSTN": 14,
+            "BUESTN": 15,
+            "EDSA": 16,
+            "EDSB": 31,
+            "FTISTN": 18,
+            "BCTSTN": 19,
+            "SCTSTN": 20,
+            "ALASTN": 21,
+            "MTNSTN": 22,
+            "SPDSTN": 23,
+            "PCTSTN": 24,
+            "BINSTN": 25,
+            "STRSTN": 26,
+            "CBYSTN": 27,
+            "BANSTN": 29,
+            "CMBSTN": 30
             }
         
         del_layers = list(delete_bim.split(";"))
@@ -427,7 +427,7 @@ class EditBuildingLayerStation(object):
 
                 # Select layer by attribute
                 if len(new_stations) == 1:
-                    where_clause = "Station = '{}'".format(station_numbers[0])
+                    where_clause = "Station = {}".format(station_numbers[0])
                 else:
                     where_clause = "Station IN {}".format(station_numbers)
 
@@ -865,3 +865,119 @@ class UpdateBuildingLayer(object):
 
             # 6. Delete copied files
             arcpy.management.Delete(output_name)
+
+class DomainSettingStationStructure(object):
+    def __init__(self):
+        self.label = "2.3. Apply Domain to Fields in SDE (Station Structure ONLY)"
+        self.description = "2.3. Apply Domain to Fields in SDE (Station Structure ONLY)"
+
+    def getParameterInfo(self):
+        gis_layers = arcpy.Parameter(
+            displayName = "Building Layers (e.g., StructuralColumns)",
+            name = "Building Layers (e.g., StructuralColumns)", 
+            datatype = "GPFeatureLayer",
+            parameterType = "Required",
+            direction = "Input",
+            multiValue = True
+        )
+
+        domain_field = arcpy.Parameter(
+            displayName = "Domain Field Name",
+            name = "Domain Field Name", 
+            datatype = "GPString",
+            parameterType = "Required",
+            direction = "Input"
+        )
+
+        domain_field.filter.type = "ValueList"
+        domain_field.filter.list = ['Types','Status','Station']
+
+        params = [gis_layers, domain_field]
+        return params
+
+    def updateMessage(self, params):
+        return
+    
+    def execute(self, params, messages):
+        gis_layers = params[0].valueAsText
+        domain_field = params[1].valueAsText
+        arcpy.env.overwriteOutput = True
+
+        layers = list(gis_layers.split(";"))
+
+        # # Apply symbology changes to lyr, which will create a new finalLayer:
+        # finalLayer = arcpy.management.ApplySymbologyFromLayer(lyr, "Q:\GIS_Data\Symbology_Layers\TypeSymbology.lyr")
+        # # Remove the original lyr from aprxMap
+        # aprxMap.removeLayer(lyr)
+        # # Add the new layer that has the symbology applied
+        # aprxMap.addLayer(finalLayer[0])
+        
+        domainList = ['Station Structures_TYPE', 'Station Structures_STATUS', 'Station_nscrex']
+        
+        for layer in layers:
+            if domain_field == 'Status':
+                arcpy.AssignDomainToField_management(layer, domain_field, domainList[1])
+            elif domain_field == 'Types':
+                arcpy.AssignDomainToField_management(layer, domain_field, domainList[0])
+            elif domain_field == 'Station':
+                arcpy.AssignDomainToField_management(layer, domain_field, domainList[2])
+            else:
+                arcpy.AddError("Your specified field was not found in doman lists...please check.")
+
+class DomainSettingDepotBuilding(object):
+    def __init__(self):
+        self.label = "3.3. Apply Domain to Fields in SDE (Depot Building ONLY)"
+        self.description = "3.3. Apply Domain to Fields in SDE (Depot Building ONLY)"
+
+    def getParameterInfo(self):
+        gis_layers = arcpy.Parameter(
+            displayName = "Building Layers (e.g., StructuralColumns)",
+            name = "Building Layers (e.g., StructuralColumns)", 
+            datatype = "GPFeatureLayer",
+            parameterType = "Required",
+            direction = "Input",
+            multiValue = True
+        )
+
+        domain_field = arcpy.Parameter(
+            displayName = "Domain Field Name",
+            name = "Domain Field Name", 
+            datatype = "GPString",
+            parameterType = "Required",
+            direction = "Input"
+        )
+
+        domain_field.filter.type = "ValueList"
+        domain_field.filter.list = ['Type','Status','Name']
+
+        params = [gis_layers, domain_field]
+        return params
+
+    def updateMessage(self, params):
+        return
+    
+    def execute(self, params, messages):
+        gis_layers = params[0].valueAsText
+        domain_field = params[1].valueAsText
+        arcpy.env.overwriteOutput = True
+
+        layers = list(gis_layers.split(";"))
+
+        # # Apply symbology changes to lyr, which will create a new finalLayer:
+        # finalLayer = arcpy.management.ApplySymbologyFromLayer(lyr, "Q:\GIS_Data\Symbology_Layers\TypeSymbology.lyr")
+        # # Remove the original lyr from aprxMap
+        # aprxMap.removeLayer(lyr)
+        # # Add the new layer that has the symbology applied
+        # aprxMap.addLayer(finalLayer[0])
+        
+        domainList = ['Station Structures_TYPE', 'Station Structures_STATUS', 'SC_Depot_Building_NAME']
+        
+        for layer in layers:
+            if domain_field == 'Status':
+                arcpy.AssignDomainToField_management(layer, domain_field, domainList[1])
+            elif domain_field == 'Type':
+                arcpy.AssignDomainToField_management(layer, domain_field, domainList[0])
+            elif domain_field == 'Name':
+                arcpy.AssignDomainToField_management(layer, domain_field, domainList[2])
+            else:
+                arcpy.AddError("Your specified field was not found in doman lists...please check.")        

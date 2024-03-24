@@ -167,30 +167,31 @@ class UpdateLotExcel(object):
             # Status parameters for High Level Operations
             status_hl = [
                 # High Level
-                {"Ready for Handover / Handed Over": 1, "Pending Delivery": 2, "For Appraisal/Offer to Buy": 3},
+                {"Ready for Handover/Handed Over": 1, "Pending Delivery": 2, "For Appraisal/Offer to Buy": 3},
                 
                 # Land Acquisition
                 {
-                    "On-going validation": 1,
+                    "On-going Validation": 1,
                     "Pending Appraisal": 2,
-                    "Pending compilation of documents": 3,
-                    "OTB for serving": 4,
-                    "Pending OTB reply (within 30 days)": 5,
-                    "Pending OTB reply beyond 30 days (uncooperative)": 6,
-                    "Pending OTB reply beyond 30 days (cooperative)": 7,
-                    "OTB Accepted with Pending Documents from PO or other agencies": 8,
+                    "Pending Compilation of Documents": 3,
+                    "OTB for Serving": 4,
+                    "Pending OTB Reply (Within 30 Days)": 5,
+                    "Pending OTB Reply Beyond 30 Days (Uncooperative)": 6,
+                    "Pending OTB Reply Beyond 30 Days (Cooperative)": 7,
+                    "OTB Accepted with Pending Documents From PO or Other Agencies": 8,
                     "OTB Accepted": 9,
                     "Expropriation": 10,
-                    "ROWUA / TUA": 11
+                    "ROWUA/TUA": 11
                 },
                 
                 # Land Acquisition1
                 {
-                    "For Submission to Legal": 1,
-                    "Pending Legal Pass": 2,
-                    "Ongoing Payment Processing": 3,
-                    "Paid": 4,
-                    "N/A": 5
+                    "On-going Validation": 1,
+                    "For Submission to Legal": 2,
+                    "Pending Legal Pass": 3,
+                    "On-going Payment Processing": 4,
+                    "Paid": 5,
+                    "N/A": 6
                 },
                 
                 # Payment Processing
@@ -199,17 +200,17 @@ class UpdateLotExcel(object):
                     "For Signing of ORS, DV and RFPP": 2,
                     "With Budget for Obligation": 3,
                     "With Accounting for CAF Issuance": 4,
-                    "For DOTr signing": 5,
+                    "For DOTr Signing": 5,
                     "For Notarization": 6,
                     "For Submission to CS": 7,
                     "DV with CS": 8,
-                    "Paid / Checks Issued": 9,
+                    "Paid/Checks Issued": 9,
                     "N/A": 10
                 },
                 
                 # Expro
                 {
-                    "With PMO / RRE": 1,
+                    "With PMO/RRE": 1,
                     "With OSG": 2,
                     "With Court": 3,
                     "Issuance of WOP": 4,
@@ -219,7 +220,7 @@ class UpdateLotExcel(object):
                 
                 # ROWUA
                 {
-                    "On-going finalization": 1,
+                    "On-going Finalization": 1,
                     "Signed ROWUA": 2,
                     "N/A": 3
                 }
@@ -240,7 +241,6 @@ class UpdateLotExcel(object):
             ######################################################################################
             # Field definitions
             join_field = 'Id'
-            status_nvs_field = 'Status NVS'
             pte_field = 'PTE'
             h_level_field = 'H_Level'
             la_field = 'LA'
@@ -255,10 +255,6 @@ class UpdateLotExcel(object):
             handover_date_field = 'HandOverDate'
             handover_2_field = 'Handover2'
             not_yet_field = 'not_yet'
-            package_field = 'Package'
-            package1_field = 'Package1'
-            station_field = 'STATION'
-            station1_field = 'Station1'
             moa_field = 'MOA'
             target_date_field = 'Target_Date'
             
@@ -419,95 +415,222 @@ class CheckLotUpdatedStatusEnvGIS(object):
         def MMSP_Land_Update():
             def remove_all_space(table,field):
                 table[field] = table[field].str.replace(r's\+','')
+
+            def rename_columns_title(table, search_names, renamed_word): # one by one
+                colname_change = table.columns[table.columns.str.contains(search_names,regex=True)]
+                try:
+                    table = table.rename(columns={str(colname_change[0]): renamed_word})
+                except:
+                    pass
+                return table
            
+            def convert_status_to_numeric(table, dic, input_field):
+                for i in range(len(dic)):
+                    id = table.index[table[input_field] == list(dic.keys())[i]]
+                    table.loc[id, input_field] = list(dic.values())[i]
+
             # Read as xlsx
             gis_table = pd.read_excel(gis_lot_ms)
-            env_table = pd.read_excel(env_lot_ms, skiprows=1, keep_default_na=False) # keep_default=False for High_Level Columns
-            env_table_check = pd.read_excel(env_lot_ms, skiprows=1) # Do not use 'keep_default_na=False'. this is used for only checking 'StatusNVS3'
+            env_table_ol = pd.read_excel(env_lot_ms, skiprows=1, keep_default_na=False) # keep_default=False for Operations Level Columns
+            env_table_nvs = pd.read_excel(env_lot_ms, skiprows=1) # Do not use 'keep_default_na=False'. this is used for only checking 'StatusNVS3'
             
             ###################  Check and Print Statuses between Envi excel ML and GIS excel ML ##############################
             # 0. Define field names
+            ## Existing Env table
             nvs3_field_env = 'StatusNVS'
             nvs3_field_gis = 'StatusNVS3'
+            package_field = 'Package'
+            station_field = 'STATION'
+            station1_field = 'Station1'
+            type_field = 'Type'
+            id_field = 'Id'
             count_name = 'counts'
             lsuffix_env = '_ENV'
             rsuffix_gis = '_GIS'
             counts_env = count_name + '_ENV'
             counts_gis = count_name + '_GIS'
 
-            # 1. StatusNVS3 -----------------
-            #### remove space from columns
-            env_table_check.columns = env_table_check.columns.str.replace(r'\s+','',regex=True)
+            export_file_name = 'LA_Summary_Statistics_Envi_and_GIS_ML.xlsx'
+            to_excel_file = os.path.join(gis_dir, export_file_name)
 
-            fields = ['Package','Id']
-            for field in fields:
-                remove_all_space(env_table_check, field)
+            ######################################
+            ############ 'StatusNVS3' ############
+            ######################################
+
+            ## remove space from columns
+            env_table_nvs.columns = env_table_nvs.columns.str.replace(r'\s+','',regex=True)
+            for field in [package_field,id_field]:
+                remove_all_space(env_table_nvs, field)
                 
             #### remove empty StatusNVS
-            id = env_table_check.index[env_table_check[nvs3_field_env].isna()]
-            env_table_check = env_table_check.drop(id)
+            id = env_table_nvs.index[env_table_nvs[nvs3_field_env].isna()]
+            env_table_nvs = env_table_nvs.drop(id)
 
             #### Add 'Type': Station or Subterranean
-            id = env_table_check.index[env_table_check['Id'].str.contains(r'Sub|SUB',regex=True)]
-            env_table_check['Type'] = 'Station'
-            env_table_check.loc[id,'Type'] = 'Subterranean'
+            id = env_table_nvs.index[env_table_nvs['Id'].str.contains(r'Sub|SUB',regex=True)]
+            env_table_nvs[type_field] = 'Station'
+            env_table_nvs.loc[id,type_field] = 'Subterranean'
 
-            keep_fields = ['Package', 'STATION', 'Type', nvs3_field_env]
-            nvs3_env = env_table_check.groupby(keep_fields)[nvs3_field_env].count().reset_index(name=count_name)
-            nvs3_env = nvs3_env.sort_values(by=['Package','STATION','Type'])
+            groupby_fields = [package_field, station_field, type_field, nvs3_field_env]
+            nvs3_env = env_table_nvs.groupby(groupby_fields)[nvs3_field_env].count().reset_index(name=count_name)
+            nvs3_env = nvs3_env.sort_values(by=[package_field, station_field, type_field])
 
             # 2. GIS table
-            arcpy.AddMessage(gis_table.dtypes)
-            keep_fields = ['Package','Station1','Type',nvs3_field_gis]
-            nvs3_gis = gis_table.groupby(keep_fields)[nvs3_field_gis].count().reset_index(name=count_name)
-            nvs3_gis = nvs3_gis.sort_values(by=['Package','Station1','Type']) 
+            groupby_fields = [package_field, station1_field, type_field, nvs3_field_gis]
+            nvs3_gis = gis_table.groupby(groupby_fields)[nvs3_field_gis].count().reset_index(name=count_name)
+            nvs3_gis = nvs3_gis.sort_values(by=[package_field, station1_field, type_field]) 
 
             # Merge
-            table = nvs3_env.join(nvs3_gis,lsuffix=lsuffix_env,rsuffix=rsuffix_gis)
-            table['count_diff'] = np.NAN
-            table['count_diff'] = table[counts_env] - table[counts_gis]
+            table_nvs3 = nvs3_env.join(nvs3_gis,lsuffix=lsuffix_env,rsuffix=rsuffix_gis)
+            table_nvs3['count_diff'] = np.NAN
+            table_nvs3['count_diff'] = table_nvs3[counts_env] - table_nvs3[counts_gis]
 
-            to_excel_file = os.path.join(gis_dir,'Summary_Statistics_StatusNVS3_GIS_and_Envi_ML.xlsx')
-            table.to_excel(to_excel_file)
+            ############################################
+            ############ 'Operations Level' ############
+            ############################################
+            ## 2.1. Data Preparation
+            ## Existing fields (Env)
+            hl_field = 'High_Level'
+            la_field = 'Land_Acquisition'
+            la2_field = 'Land_Acquisition.1'
+            payp_field = 'Payment_Processing'
+            expro_field = 'Expro.1'
+            rowua_field = 'ROWUA'
+
+            ## rename fields for status
+            h_level_rename = 'H_Level'
+            la_field_rename = 'LA'
+            la2_field_rename = 'LA2'
+            pp_field_rename = 'PP'
+            expro_field_rename = 'Expro'
+
+            ## remove space from column names
+            env_table_ol.columns = env_table_ol.columns.str.replace(r'\s+','',regex=True)
+
+            ### 2.1.0. Keep fields
+            env_table_ol = env_table_ol[[package_field, id_field, station_field, hl_field, la_field, la2_field, payp_field, expro_field, rowua_field]]
+
+            ### 2.1.1. Rename status fields
+            status_fields_old = [hl_field, la_field, la2_field, payp_field, expro_field]
+            status_fields_new = [h_level_rename, la_field_rename, la2_field_rename, pp_field_rename, expro_field_rename]
+
+            for i in range(len(status_fields_old)):
+                env_table_ol = rename_columns_title(env_table_ol, status_fields_old[i], status_fields_new[i])
+
+            ### 2.1.2. Remove empty space
+            ## No space for 'Package' and 'Id'
+            for field in [package_field, id_field]:
+                remove_all_space(env_table_ol, field)
+
+            ### 2.1.4. Convert status
+            # Status parameters for High Level Operations
+            status_ol = [
+                # High Level
+                {"Ready for Handover/Handed Over": 1, "Pending Delivery": 2, "For Appraisal/Offer to Buy": 3},
+                
+                # Land Acquisition
+                {
+                    "On-going Validation": 1,
+                    "Pending Appraisal": 2,
+                    "Pending Delivery": 3,
+                    "Pending Compilation of Documents": 4,
+                    "OTB for Serving": 5,
+                    "Pending OTB Reply (Within 30 Days)": 6,
+                    "Pending OTB Reply Beyond 30 Days (Uncooperative)": 7,
+                    "Pending OTB Reply Beyond 30 Days (Cooperative)": 8,
+                    "OTB Accepted with Pending Documents From PO or Other Agencies": 9,
+                    "OTB Accepted": 10,
+                    "Expropriation": 11,
+                    "ROWUA/TUA": 12
+                },
+                
+                # Land Acquisition1
+                {
+                    "On-going Validation": 1,
+                    "For Submission to Legal": 2,
+                    "Pending Legal Pass": 3,
+                    "On-going Payment Processing": 4,
+                    "Paid": 5,
+                    "N/A": 6
+                },
+                
+                # Payment Processing
+                {
+                    "For Submission to Budget": 1,
+                    "For Signing of ORS, DV and RFPP": 2,
+                    "With Budget for Obligation": 3,
+                    "With Accounting for CAF Issuance": 4,
+                    "For DOTr Signing": 5,
+                    "For Notarization": 6,
+                    "For Submission to CS": 7,
+                    "DV with CS": 8,
+                    "Paid/Checks Issued": 9,
+                    "N/A": 10
+                },
+                
+                # Expro
+                {
+                    "With PMO/RRE": 1,
+                    "With OSG": 2,
+                    "With Court": 3,
+                    "Issuance of WOP": 4,
+                    "WOP with COT": 5,
+                    "N/A": 6
+                },
+                
+                # ROWUA
+                {
+                    "On-going Finalization": 1,
+                    "Signed ROWUA": 2,
+                    "N/A": 3
+                }
+                ]
             
-            arcpy.AddMessage('-- 0.1. Summary Statistics for "StatusNVS3" between Envi ML and GIS ML')
-            arcpy.AddMessage(table)
+            for i in range(len(status_fields_new)):
+                convert_status_to_numeric(env_table_ol, status_ol[i], status_fields_new[i])
+                # env_table_ol[status_fields_new[i]] = env_table_ol[status_fields_new[i]].astype(int)
 
+            ### 2.1.5. Add 'Type': Station or Subterranean
+            id = env_table_ol.index[env_table_ol['Id'].str.contains(r'Sub|SUB',regex=True)]
+            env_table_ol['Type'] = 'Station'
+            env_table_ol.loc[id,'Type'] = 'Subterranean'
+            
+            data_store = {}
+            n_step = -1
+            ## 2.2. Calculate Summary Statistics for Status Fields
+            for field in status_fields_new:
+                n_step = n_step + 1
 
-            # 2. High Level Status ----------------
-            hl_status_field_env = 'High_Level'
-            hl_status_field_gis = 'H_Level'
-            #### remove space from columns
-            env_table.columns = env_table.columns.str.replace(r'\s+','',regex=True)
+                ### 2.2.1. Env Table
+                groupby_fields = [package_field,station_field,type_field,field]
+                env_sum = env_table_ol.groupby(groupby_fields)[field].count().reset_index(name=count_name)
+                env_sum = env_sum.sort_values(by=[package_field,station_field,type_field])
 
-            fields = ['Package','Id']
-            for field in fields:
-                remove_all_space(env_table, field)
-                
-            #### remove empty StatusNVS
-            id = env_table.index[env_table[hl_status_field_env].isna()]
-            env_table = env_table.drop(id)
+                ### Remove empty status
+                id = env_sum.index[env_sum[field] == '']
+                env_sum = env_sum.drop(id)
+                env_sum = env_sum.reset_index(drop=True)
 
-            #### Add 'Type': Station or Subterranean
-            id = env_table.index[env_table['Id'].str.contains(r'Sub|SUB',regex=True)]
-            env_table['Type'] = 'Station'
-            env_table.loc[id,'Type'] = 'Subterranean'
+                ### 2.2.2. GIS table
+                groupby_fields = [package_field, station1_field, type_field, field]
+                gis_sum = gis_table.groupby(groupby_fields)[field].count().reset_index(name=count_name)
+                gis_sum = gis_sum.sort_values(by=[package_field, station1_field, type_field]) 
 
-            keep_fields = ['Package', 'STATION', 'Type', hl_status_field_env]
-            hl_env = env_table.groupby(keep_fields)[hl_status_field_env].count().reset_index(name=count_name)
-            hl_env = hl_env.sort_values(by=['Package','STATION','Type'])
+                # Merge
+                table_ol = env_sum.join(gis_sum, lsuffix=lsuffix_env, rsuffix=rsuffix_gis)
+                table_ol['count_diff'] = np.NAN
+                table_ol['count_diff'] = table_ol[counts_env] - table_ol[counts_gis]
 
-            # 2. GIS table
-            keep_fields = ['Package','Station1','Type',hl_status_field_gis]
-            hl_gis = gis_table.groupby(keep_fields)[hl_status_field_gis].count().reset_index(name=count_name)
-            hl_gis = hl_gis.sort_values(by=['Package','Station1','Type']) 
+                data_store[n_step] = table_ol
 
-            # Merge
-            table = hl_env.join(hl_gis,lsuffix=lsuffix_env,rsuffix=rsuffix_gis)
-            table['count_diff'] = np.NAN
-            table['count_diff'] = table[counts_env] - table[counts_gis]
-            arcpy.AddMessage('-- 0.1. Summary Statistics for "High_Level" status between Envi ML and GIS ML')
-            arcpy.AddMessage(table)
+            # Export
+            with pd.ExcelWriter(to_excel_file) as writer:
+                table_nvs3.to_excel(writer, sheet_name=nvs3_field_gis)
+                data_store[0].to_excel(writer, sheet_name=status_fields_new[0])
+                data_store[1].to_excel(writer, sheet_name=status_fields_new[1])
+                data_store[2].to_excel(writer, sheet_name=status_fields_new[2])
+                data_store[3].to_excel(writer, sheet_name=status_fields_new[3])
+                data_store[4].to_excel(writer, sheet_name=status_fields_new[4])
 
         MMSP_Land_Update()
 
@@ -1242,7 +1365,18 @@ class CheckLotUpdatedStatusGIS(object):
         # Read table
         gis_table = pd.read_excel(gis_ml)
 
+        # Define field names
+        ## StatusNVS3
         nvs3_field_gis = 'StatusNVS3'
+        
+        ## Operations Level Status
+        hl_field = 'H_Level'
+        la_field = 'LA'
+        la2_field = 'LA2'
+        pp_field = 'PP'
+        expro_field = 'Expro'
+        rowua_field = "ROWUA"
+        
         package_field = 'Package'
         station_field = 'Station1'
         type_field = 'Type'
@@ -1252,6 +1386,11 @@ class CheckLotUpdatedStatusGIS(object):
         counts_portal = count_name + lsuffix_portal
         counts_excel = count_name + rsuffix_excel
 
+        to_excel_file = os.path.join(gis_dir,'LA_Summary_Statistics_GIS_Portal_and_GIS_ML.xlsx')
+
+        ######################################
+        ############ StatusNVS3 ##############
+        ######################################
         # 1. GIS Attribute Table
         testTable = arcpy.analysis.Statistics(gis_portal, 'sumStatsTable', [[nvs3_field_gis,'COUNT']], [package_field,station_field,type_field,nvs3_field_gis])
         columns = [f.name for f in arcpy.ListFields(testTable)]
@@ -1273,23 +1412,76 @@ class CheckLotUpdatedStatusGIS(object):
         ### Reset index
         nvs3_gis_portal = nvs3_gis_portal.reset_index()
         
-        nvs3_gis_portal.to_excel(os.path.join(gis_dir,'gis_portal_summary.xlsx'))
-        
         # 2. GIS Excel ML
         keep_fields = [package_field,station_field,type_field,nvs3_field_gis]
         nvs3_gis_ml = gis_table.groupby(keep_fields)[nvs3_field_gis].count().reset_index(name=count_name)
         nvs3_gis_ml = nvs3_gis_ml.sort_values(by=[package_field,station_field,type_field])
 
-        nvs3_gis_ml.to_excel(os.path.join(gis_dir,'gis_excel_summary.xlsx'))
-
         # Merge
-        table = nvs3_gis_portal.join(nvs3_gis_ml,lsuffix=lsuffix_portal,rsuffix=rsuffix_excel)
-        table['count_diff'] = np.NAN
-        table['count_diff'] = table[counts_portal] - table[counts_excel]
+        table_nvs3 = nvs3_gis_portal.join(nvs3_gis_ml,lsuffix=lsuffix_portal,rsuffix=rsuffix_excel)
+        table_nvs3['count_diff'] = np.NAN
+        table_nvs3['count_diff'] = table_nvs3[counts_portal] - table_nvs3[counts_excel]
 
-        to_excel_file = os.path.join(gis_dir,'Summary_Statistics_StatusNVS3_GIS_Portal_and_GIS_ML.xlsx')
-        table.to_excel(to_excel_file)
-        
-        arcpy.AddMessage('-- 0.1. Summary Statistics for "StatusNVS3" between GIS Portal and GIS ML')
-        # arcpy.AddMessage(table)
+        arcpy.AddMessage('Merge completed..')
+
         arcpy.Delete_management(testTable)
+        arcpy.AddMessage('The summary statistics table for StatusNVS3 field is successfully produced.')
+        
+        ###########################################
+        ############ Operations Level #############
+        ###########################################
+        status_fields_ol = [hl_field, la_field, la2_field, pp_field, expro_field, rowua_field]
+        data_store = {}
+        n_step = -1
+
+        for field in status_fields_ol:
+            n_step = n_step + 1
+
+            # 1. GIS Attribute Table
+            tempTable = arcpy.analysis.Statistics(gis_portal, 'tempTable', [[field,'COUNT']], [package_field,station_field,type_field,field])
+            columns = [f.name for f in arcpy.ListFields(tempTable)]
+            gis_portal_sum = pd.DataFrame(data=arcpy.da.SearchCursor(tempTable, columns),columns=columns)
+            drop_fields = ['OBJECTID','FREQUENCY']
+            gis_portal_ol = gis_portal_sum.drop(columns=drop_fields)
+
+            ### rename 
+            rename_field = 'COUNT_' + field
+            gis_portal_ol = gis_portal_ol.rename(columns={rename_field: count_name})
+
+            ### Sort
+            gis_portal_ol = gis_portal_ol.sort_values(by=[package_field,station_field,type_field])
+
+            ### remove rows with na in 'StatusNVS3'
+            id = gis_portal_ol.index[gis_portal_ol[field].isnull()]
+            gis_portal_ol = gis_portal_ol.drop(id)
+
+            ### Reset index
+            gis_portal_ol = gis_portal_ol.reset_index()
+            
+            # 2. GIS Excel ML
+            keep_fields = [package_field,station_field,type_field,field]
+            gis_ml = gis_table.groupby(keep_fields)[field].count().reset_index(name=count_name)
+            gis_ml = gis_ml.sort_values(by=[package_field,station_field,type_field])
+
+            # Merge
+            table_ol = gis_portal_ol.join(gis_ml,lsuffix=lsuffix_portal,rsuffix=rsuffix_excel)
+            table_ol['count_diff'] = np.NAN
+            table_ol['count_diff'] = table_ol[counts_portal] - table_ol[counts_excel]
+
+            data_store[n_step] = table_ol
+            arcpy.Delete_management(tempTable)
+
+            arcpy.AddMessage("The summary statistics for '{}' is successfully produced..".format(field))
+
+        # Export
+        arcpy.AddMessage('Compile all summary statistics for StatusNVS3 and Operation Level status..')
+        with pd.ExcelWriter(to_excel_file) as writer:
+            table_nvs3.to_excel(writer, sheet_name=nvs3_field_gis)
+            data_store[0].to_excel(writer, sheet_name=status_fields_ol[0])
+            data_store[1].to_excel(writer, sheet_name=status_fields_ol[1])
+            data_store[2].to_excel(writer, sheet_name=status_fields_ol[2])
+            data_store[3].to_excel(writer, sheet_name=status_fields_ol[3])
+            data_store[4].to_excel(writer, sheet_name=status_fields_ol[4])
+        
+        arcpy.AddMessage('The compilation is successful and the table is exported to your directory..')
+  

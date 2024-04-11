@@ -231,12 +231,12 @@ class UpdateLotExcel(object):
 
             # Remove head and tail space
             for field in env_status_fields:
-                whitespace_removal(env_table,field)
+                whitespace_removal(env_table,field) 
 
             # Run 
-            arcpy.AddMessage('-- 0.0. Unmatched Status Parameters between GIS and Envi')
-            for i in range(len(status_hl)):
-                check_status_hl(env_table,status_hl[i],env_status_fields[i])
+            # arcpy.AddMessage('-- 0.0. Unmatched Status Parameters between GIS and Envi')
+            # for i in range(len(status_hl)):
+            #     check_status_hl(env_table,status_hl[i],env_status_fields[i])
             
             ######################################################################################
             # Field definitions
@@ -258,8 +258,14 @@ class UpdateLotExcel(object):
             moa_field = 'MOA'
             target_date_field = 'Target_Date'
             
+            # Remove empty rows in STATION field
+            id = env_table.index[env_table['STATION'] == ''] # Do not use isna() as 'keep_default_na = False'
+            env_table = env_table.drop(id)
+            env_table = env_table.reset_index(drop=True)
+
             # if there are duplicated observations in Envi's table, stop the process and exit
             duplicated_Ids = env_table[env_table.duplicated([join_field]) == True][join_field]
+            arcpy.AddMessage(duplicated_Ids)
 
             # check status parameters defined above = status parameters in Envi.
             ## High Level
@@ -362,8 +368,9 @@ class UpdateLotExcel(object):
                 gis_table_updated.to_excel(to_excel_file, index=False)
             
             else:
+                arcpy.AddMessage('---------------- Duplicated Ids -----------------')
                 arcpy.AddMessage(duplicated_Ids)
-                arcpy.AddError('There are duplicated Ids as below in Envi table. The Process stopped. Please correct the duplicated rows.')
+                arcpy.AddError('There are duplicated Ids as above in Envi table. The Process stopped. Please correct the duplicated rows.')
                 pass
 
         MMSP_Land_Update()

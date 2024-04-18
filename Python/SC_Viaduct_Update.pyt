@@ -284,7 +284,7 @@ class UpdateExcelML(object):
                    
                     ## Status = 1:
                     ### start_actual & finish_plan are both empty -> Delete. Default status is entered with '1' in GIS ML = no need
-                    id = civil_table.index[(civil_table[start_actual_field].isnull()) & (civil_table[finish_plan_field].isnull())]
+                    id = civil_table.index[(civil_table[start_actual_field].isnull()) & (civil_table[finish_plan_field].isnull()) & (civil_table[finish_actual_field].notna())]
                     civil_table = civil_table.drop(id)
 
                     ### start_actual is empty & finish_plan > today (construction has not started but target date is future)

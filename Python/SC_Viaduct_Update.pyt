@@ -5,14 +5,13 @@ from pathlib import Path
 from datetime import date, datetime
 import re
 import string
-import openpyxl
 import numpy as np
 
 class Toolbox(object):
     def __init__(self):
         self.label = "UpdateSCViaduct"
         self.alias = "UpdateSCViaduct"
-        self.tools = [UpdateExcelML, UpdateGISTable]
+        self.tools = [UpdateExcelML ,UpdateGISTable]
 
 class UpdateExcelML(object):
     def __init__(self):
@@ -146,18 +145,20 @@ class UpdateExcelML(object):
             # 4. Append the split GIS tables into one table (final table)
             # 5. Export the final table as a new GIS ML table.
 
-            ## Create backup file for GIS master list
-            export_file_name = os.path.splitext(os.path.basename(gis_ml))[0]
-            try:
-                backup_file = os.path.join(gis_backup_dir, lastupdate + "_" + export_file_name + ".xlsx")
-                gis_table.to_excel(backup_file)
-            except:
-                pass
-
             ## Read table
             gis_table = pd.read_excel(gis_ml, keep_default_na=False)
 
+            ## Create backup file for GIS master list
+            export_file_name = os.path.splitext(os.path.basename(gis_ml))[0]
+            try:
+                arcpy.AddMessage('Backup start..')
+                backup_file = os.path.join(gis_backup_dir, lastupdate + "_" + export_file_name + ".xlsx")
+                gis_table.to_excel(backup_file, index=False)
+            except:
+                pass
+
             ## Define field names
+            unique_id = 'uniqueID'
             status_field = 'Status'
             status1_field = 'Status1'
             type_field = 'Type'
@@ -173,7 +174,7 @@ class UpdateExcelML(object):
             remarks_field = 'Remarks'
             dummy_date = '1990-01-01'
 
-            join_fields = [pier_field, status_field, start_actual_field, finish_plan_field, finish_actual_field, npierno_field]
+            join_fields = [pier_field, status_field, start_actual_field, finish_plan_field, finish_actual_field]
             date_fields = [start_actual_field, finish_plan_field, finish_actual_field]
             delete_fields = [package_field, remarks_field]
 
@@ -203,11 +204,24 @@ class UpdateExcelML(object):
             dup_compile = []
             for sheet in sheet_names:
                 table = pd.read_excel(civil_dir, sheet_name=sheet)
+
+                # Civil table often misses boref pile no, in this case, drop these piers
                 table[id_field] = np.nan
 
-                if via_type[sheet] == 1: # only for bored piles       
+                if via_type[sheet] == 1: # only for bored piles
+                    # Remove the first row with 'SAMPLE' in Remarks column
+                    id = table.index[table['Remarks'] == 'SAMPLE']
+                    table = table.drop(id)
+
+                    # Drop rows with empty 'No'
+                    id = table.index[table[No_field].isnull()]
+                    table = table.drop(id)
+                    
+                    # Create ID ('Pier" + '-' + 'No')
                     table[No_field] = table[No_field].astype(str)
-                    table[id_field] =  table[civil_pier_field].str.cat(table[No_field], sep = "-")
+                    table[id_field] = table[civil_pier_field].str.cat(table[No_field], sep = "-")
+
+                    # Check duplicated ID
                     ids = table[id_field].duplicated()
                     idx = ids.index[ids == True]
                     dup_pier = table[civil_pier_field].iloc[idx]
@@ -254,9 +268,7 @@ class UpdateExcelML(object):
 
                     # Re-format 'P-' to 'P'
                     civil_table[civil_pier_field] = civil_table[civil_pier_field].apply(lambda x: x.replace(r'P-','P'))
-
                     arcpy.AddMessage("5.")
-                    arcpy.AddMessage(civil_table.dtypes)
 
                     # 1. Convert to date
                     for field in date_fields:
@@ -265,16 +277,17 @@ class UpdateExcelML(object):
                     # 2. add viaduct type
                     civil_table[type_field] = via_type[sheet]
                     civil_table[type_field] = civil_table[type_field].astype(str)
+                    civil_table[type_field] = civil_table[type_field].apply(lambda x: re.sub('.0','',x)) # need to remove '.0' in '3.0'
                     
                     # 3. Update and add status
                     civil_table[status1_field] = np.nan
                    
                     ## Status = 1:
-                    ### start_actual is empty -> Status = 1 (to be constructed)
-                    id = civil_table.index[civil_table[start_actual_field].isnull()]
-                    civil_table.loc[id,status1_field] = 1
+                    ### start_actual & finish_plan are both empty -> Delete. Default status is entered with '1' in GIS ML = no need
+                    id = civil_table.index[(civil_table[start_actual_field].isnull()) & (civil_table[finish_plan_field].isnull())]
+                    civil_table = civil_table.drop(id)
 
-                    ### start_actual is empty & finish_plan > today
+                    ### start_actual is empty & finish_plan > today (construction has not started but target date is future)
                     id = civil_table.index[civil_table[start_actual_field].isnull() & (civil_table[finish_plan_field] > today)]
                     civil_table.loc[id, status1_field] = 1
                     
@@ -289,21 +302,23 @@ class UpdateExcelML(object):
                     ### (finish_plan < date of updat) & finish_actual is empty -> 3 (delayed)
                     id = civil_table.index[(civil_table[finish_actual_field].isnull()) & (civil_table[finish_plan_field].notna()) & (civil_table[finish_plan_field] < today)]
                     civil_table.loc[id,status1_field] = 3
-
-                    # Re-format Pier No
-                    civil_table[npierno_field] = np.nan
                     
                     if via_type[sheet] == 1: # only for bored piles
+                         # Drop rows with empty 'No'
+                        id = civil_table.index[civil_table[No_field].isnull()]
+                        civil_table = civil_table.drop(id)
+
                         # To string before concatenating column names
                         civil_table[No_field] = civil_table[No_field].astype(str)
+                        civil_table[No_field] = civil_table[No_field].apply(lambda x: re.sub('.0','',x)) # need to remove '.0' in '3.0'
                         
-                        # Concatenate: 'Pier' + "-" + 'No' + "-" + 'Package'
+                        # Concatenate: 'Pier' + "-" + 'No' + "-" + 'Type'
                         arcpy.AddMessage("6.")
+    
                         civil_table[id_field] = civil_table[civil_pier_field] + "-" + civil_table[No_field] + "-" + civil_table[type_field]
                         civil_table = civil_table.drop(columns=[No_field,type_field])
                         arcpy.AddMessage("7.")
                     else:
-                        civil_table[npierno_field] = civil_table[civil_pier_field]
                         civil_table[id_field] = civil_table[civil_pier_field] + "-" + civil_table[type_field]
                         civil_table = civil_table.drop(columns=type_field)
                         arcpy.AddMessage("8.")
@@ -347,12 +362,16 @@ class UpdateExcelML(object):
                 ## 2.5. Append the merged table to the GIS table
                 final_table = pd.concat([g_table2, merged_table], ignore_index=True)
 
+                ## 2.6. Sort by uniqueID
+                final_table = final_table.sort_values(by=[unique_id])
+
                 ## Final tweak:
                 ## 2.6. Status = 1 when Status is empty
                 id = final_table.index[final_table[status_field].isnull()]
                 final_table.loc[id, status_field] = 1
 
                 ## 2.7. The 1st rows of date_fiels are empty -> enter dummy dates
+                final_table = final_table.reset_index(drop=True)
                 for field in date_fields:
                     date_item = final_table[field].iloc[:1].item()
                     if date_item is None or pd.isnull(date_item):
@@ -366,11 +385,10 @@ class UpdateExcelML(object):
                 final_table.to_excel(to_excel_file, index=False)
 
             else:
-                arcpy.AddMessage("Duplicated IDs were detected in Civil Team's Excel. This process stopped.")
-                arcpy.AddMessage("Check pier numbers above...and run again.")
+                arcpy.AddError("Duplicated IDs were detected in Civil Team's Excel. This process stopped.")
                 pass
         SC_Viaduct_Update()
-   
+
 class UpdateGISTable(object):
     def __init__(self):
         self.label = "2. Update GIS Attribute Table (SC Viaduct)"

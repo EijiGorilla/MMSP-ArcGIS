@@ -7,6 +7,7 @@ import string
 import openpyxl
 import numpy as np
 import arcpy
+# V1.0.1
 
 class Toolbox(object):
     def __init__(self):
@@ -153,6 +154,13 @@ class UpdateLotExcel(object):
                     table[field] = table[field].astype(str)
                     table[field] = table[field].apply(lambda x: x.replace(r'\s+', ''))
                     table[field] = table[field].astype(str)
+
+            
+            def drop_empty_rows(table, field):
+                id = table.index[(table[field] == '') | (table[field].isna()) | (table[field].isnull())] # Do not use isna() as 'keep_default_na = False'
+                table = table.drop(id)
+                table = table.reset_index(drop=True)
+                return table
             
             # Read as xlsx
             gis_table = pd.read_excel(gis_lot_ms)
@@ -258,10 +266,14 @@ class UpdateLotExcel(object):
             moa_field = 'MOA'
             target_date_field = 'Target_Date'
             
-            # Remove empty rows in STATION field
-            id = env_table.index[env_table['STATION'] == ''] # Do not use isna() as 'keep_default_na = False'
-            env_table = env_table.drop(id)
-            env_table = env_table.reset_index(drop=True)
+            # Remove any empty rows outside the main table
+            try:
+                env_table = drop_empty_rows(env_table, 'STATION')
+                # id = env_table.index[env_table['STATION'] == ''] # Do not use isna() as 'keep_default_na = False'
+                # env_table = env_table.drop(id)
+                # env_table = env_table.reset_index(drop=True)
+            except:
+                pass
 
             # if there are duplicated observations in Envi's table, stop the process and exit
             duplicated_Ids = env_table[env_table.duplicated([join_field]) == True][join_field]
@@ -286,7 +298,7 @@ class UpdateLotExcel(object):
                 ### 'Handed over to JV'        -> 'HandedOver'
                 ### 'Handed_Date'              -> HandOverDate'
                 ### 'Mode of Acquisition'      -> 'MOA'
-                ### 'PTE'                      -> 'Lots with PTE'
+                ### 'Lot with PTE'             -> 'PTE'
                 ### 'Handed over (DOTr to GC)' -> 'Handover2'
                 ### 'To be handed over to JV'  -> 'not_yet'
 
@@ -436,6 +448,12 @@ class CheckLotUpdatedStatusEnvGIS(object):
                     id = table.index[table[input_field] == list(dic.keys())[i]]
                     table.loc[id, input_field] = list(dic.values())[i]
 
+            def drop_empty_rows(table, field):
+                id = table.index[(table[field] == '') | (table[field].isna()) | (table[field].isnull())] # Do not use isna() as 'keep_default_na = False'
+                table = table.drop(id)
+                table = table.reset_index(drop=True)
+                return table
+
             # Read as xlsx
             gis_table = pd.read_excel(gis_lot_ms)
             env_table_ol = pd.read_excel(env_lot_ms, skiprows=1, keep_default_na=False) # keep_default=False for Operations Level Columns
@@ -468,12 +486,19 @@ class CheckLotUpdatedStatusEnvGIS(object):
             env_table_nvs.columns = env_table_nvs.columns.str.replace(r'\s+','',regex=True)
             for field in [package_field,id_field]:
                 remove_all_space(env_table_nvs, field)
-                
+
             #### remove empty StatusNVS
             id = env_table_nvs.index[env_table_nvs[nvs3_field_env].isna()]
             env_table_nvs = env_table_nvs.drop(id)
 
+            # Remove any empty rows outside the main table
+            try:
+                env_table_nvs = drop_empty_rows(env_table_nvs, station_field)
+            except:
+                pass
+
             #### Add 'Type': Station or Subterranean
+            arcpy.AddMessage(env_table_nvs.tail())
             id = env_table_nvs.index[env_table_nvs['Id'].str.contains(r'Sub|SUB',regex=True)]
             env_table_nvs[type_field] = 'Station'
             env_table_nvs.loc[id,type_field] = 'Subterranean'
@@ -482,10 +507,14 @@ class CheckLotUpdatedStatusEnvGIS(object):
             nvs3_env = env_table_nvs.groupby(groupby_fields)[nvs3_field_env].count().reset_index(name=count_name)
             nvs3_env = nvs3_env.sort_values(by=[package_field, station_field, type_field])
 
+            arcpy.AddMessage('03.')
+
             # 2. GIS table
             groupby_fields = [package_field, station1_field, type_field, nvs3_field_gis]
             nvs3_gis = gis_table.groupby(groupby_fields)[nvs3_field_gis].count().reset_index(name=count_name)
             nvs3_gis = nvs3_gis.sort_values(by=[package_field, station1_field, type_field]) 
+
+            arcpy.AddMessage('04.')
 
             # Merge
             table_nvs3 = nvs3_env.join(nvs3_gis,lsuffix=lsuffix_env,rsuffix=rsuffix_gis)
@@ -604,6 +633,7 @@ class CheckLotUpdatedStatusEnvGIS(object):
             
             data_store = {}
             n_step = -1
+
             ## 2.2. Calculate Summary Statistics for Status Fields
             for field in status_fields_new:
                 n_step = n_step + 1
@@ -638,7 +668,7 @@ class CheckLotUpdatedStatusEnvGIS(object):
                 data_store[2].to_excel(writer, sheet_name=status_fields_new[2])
                 data_store[3].to_excel(writer, sheet_name=status_fields_new[3])
                 data_store[4].to_excel(writer, sheet_name=status_fields_new[4])
-
+    
         MMSP_Land_Update()
 
 class UpdateLotMPRExcel(object):

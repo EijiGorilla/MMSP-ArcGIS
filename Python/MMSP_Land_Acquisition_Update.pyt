@@ -13,7 +13,7 @@ class Toolbox(object):
     def __init__(self):
         self.label = "UpdateLandAcquisition"
         self.alias = "UpdateLandAcquisition"
-        self.tools = [UpdateLotExcel, UpdateLotMPRExcel, CheckLotUpdatedStatusEnvGIS, CheckLotUpdatedStatusGIS, UpdateStructureExcel, UpdateISFExcel, UpdateGISLayers]
+        self.tools = [UpdateLotExcel, UpdateLotMPRExcel, CheckLotUpdatedStatusEnvGIS, CheckLotUpdatedStatusGIS, UpdateStructureExcel, UpdateISFExcel, UpdateGISLayers, CheckMissingLotIDs]
 
 class UpdateLotExcel(object):
     def __init__(self):
@@ -389,8 +389,8 @@ class UpdateLotExcel(object):
 
 class CheckLotUpdatedStatusEnvGIS(object):
     def __init__(self):
-        self.label = "1.1 Check Status between Envi ML and GIS ML (Lot)"
-        self.description = "1.1 Check Status between Envi ML and GIS ML (Lot)"
+        self.label = "1.1 Summary Stats for Lot Status (Envi ML and GIS ML)"
+        self.description = "1.1 Summary Stats for Lot Status (Envi ML and GIS ML)"
 
     def getParameterInfo(self):
         gis_dir = arcpy.Parameter(
@@ -656,7 +656,7 @@ class CheckLotUpdatedStatusEnvGIS(object):
                 # Merge
                 table_ol = env_sum.join(gis_sum, lsuffix=lsuffix_env, rsuffix=rsuffix_gis)
                 table_ol['count_diff'] = np.NAN
-                table_ol['count_diff'] = table_ol[counts_env] - table_ol[counts_gis]
+                table_ol['count_diff'] = table_ol[counts_gis] - table_ol[counts_env]
 
                 data_store[n_step] = table_ol
 
@@ -1242,6 +1242,14 @@ class UpdateGISLayers(object):
         self.description = "Update feature layer for land acquisition"
 
     def getParameterInfo(self):
+        gis_dir = arcpy.Parameter(
+            displayName = "GIS Masterlist Storage Directory",
+            name = "GIS master-list directory",
+            datatype = "DEWorkspace",
+            parameterType = "Required",
+            direction = "Input"
+        )
+
         # Input Feature Layers
         gis_layer = arcpy.Parameter(
             displayName = "GIS Feature Layer (Target Layer)",
@@ -1270,16 +1278,17 @@ class UpdateGISLayers(object):
         )
         join_field.parameterDependencies = [gis_layer.name]
 
-        params = [gis_layer, input_table, join_field]
+        params = [gis_dir, gis_layer, input_table, join_field]
         return params
 
     def updateMessages(self, params):
         return
 
     def execute(self, params, messages):
-        gis_portal = params[0].valueAsText
-        gis_ml = params[1].valueAsText
-        join_field = params[2].valueAsText
+        gis_dir = params[0].valueAsText
+        gis_portal = params[1].valueAsText
+        gis_ml = params[2].valueAsText
+        join_field = params[3].valueAsText
 
         def unique_values(table, field):  ##uses list comprehension
             with arcpy.da.SearchCursor(table, [field]) as cursor:
@@ -1353,10 +1362,13 @@ class UpdateGISLayers(object):
         deleteTempLayers = [gis_copied, lot_ml]
         arcpy.Delete_management(deleteTempLayers)
 
+        # Export the updated GIS portal to excel sheet for checking lot IDs
+        arcpy.conversion.TableToExcel(gis_portal, os.path.join(gis_dir, 'GIS_Land_Portal.xlsx'))
+
 class CheckLotUpdatedStatusGIS(object):
     def __init__(self):
-        self.label = "4.1. Check Status Between GIS Attribute Tables and GIS Excel ML"
-        self.description = "Update feature layer for land acquisition"
+        self.label = "4.1. Summary Stats for Lot Status (GIS Layer and GIS ML)"
+        self.description = "Summary Stats for Lot Status (GIS Layer and GIS ML)"
 
     def getParameterInfo(self):
         gis_dir = arcpy.Parameter(
@@ -1522,3 +1534,154 @@ class CheckLotUpdatedStatusGIS(object):
         
         arcpy.AddMessage('The compilation is successful and the table is exported to your directory..')
   
+class CheckMissingLotIDs(object):
+    def __init__(self):
+        self.label = "4.2. Check Missing Lot IDs (Envi. ML, GIS ML, and GIS Layer)"
+        self.description = "Check Missing Lot IDs (Envi. ML, GIS ML, and GIS Layer)"
+
+    def getParameterInfo(self):
+        gis_dir = arcpy.Parameter(
+            displayName = "GIS Masterlist Storage Directory",
+            name = "GIS master-list directory",
+            datatype = "DEWorkspace",
+            parameterType = "Required",
+            direction = "Input"
+        )
+
+        # Input Feature Layers
+        gis_table_ml = arcpy.Parameter(
+            displayName = "GIS ML (Excel)",
+            name = "GIS ML (Excel)",
+            datatype = "DEFile",
+            parameterType = "Required",
+            direction = "Input"
+        )
+
+        gis_portal_ml = arcpy.Parameter(
+            displayName = "GIS Portal (Excel)",
+            name = "GIS Portal (Excel)",
+            datatype = "DEFile",
+            parameterType = "Required",
+            direction = "Input"
+        )
+
+        envi_table_ml = arcpy.Parameter(
+            displayName = "Envi ML (Excel)",
+            name = "Envi ML (Excel)",
+            datatype = "DEFile",
+            parameterType = "Required",
+            direction = "Input"
+        )
+
+        params = [gis_dir, gis_table_ml, gis_portal_ml, envi_table_ml]
+        return params
+
+    def updateMessages(self, params):
+        return
+
+    def execute(self, params, messages):
+        gis_dir = params[0].valueAsText
+        gis_table_ml = params[1].valueAsText
+        gis_portal_ml = params[2].valueAsText
+        env_table_ml = params[3].valueAsText
+
+        def drop_empty_rows(table, field):
+            id = table.index[(table[field] == '') | (table[field].isna()) | (table[field].isnull())] # Do not use isna() as 'keep_default_na = False'
+            table = table.drop(id)
+            table = table.reset_index(drop=True)
+            return table
+
+        def rename_columns_title(table, search_names, renamed_word): # one by one
+            colname_change = table.columns[table.columns.str.contains(search_names,regex=True)]
+            try:
+                table = table.rename(columns={str(colname_change[0]): renamed_word})
+            except:
+                pass
+            return table
+        
+        env_table = pd.read_excel(env_table_ml, skiprows=1, keep_default_na=False) # for checking NVS3, do not use default_na = false
+        gis_table = pd.read_excel(gis_table_ml)
+        gis_portal = pd.read_excel(gis_portal_ml)
+
+        join_field = 'Id'
+        env_status_field = 'Status NVS'
+        env_status_new_field = 'Envi_Status'
+        package_field = 'Package'
+        package_x_field = 'Package_x'
+        package_y_field = 'Package_y'
+        env_field = 'Env_ML'
+        gis_field = 'GIS_ML'
+        gis_portal_field = 'GIS_Portal'
+        need_to_check_field = 'Need_to_Check'
+
+        try:
+            env_table = drop_empty_rows(env_table, join_field)
+        except:
+            pass
+
+        ## 1. Envi Table <-- GIS ML table
+        bool_list = [e for e in env_table.columns.str.contains(r'Id|Package|Status NVS',regex=True)]
+        ind_id = [i for i, val in enumerate(bool_list) if val]
+        env_table = env_table.iloc[:, ind_id]
+
+        search_fields_gis = 'Id|Package'
+        bool_list = [e for e in gis_table.columns.str.contains(search_fields_gis,regex=True)]
+        ind_id = [i for i, val in enumerate(bool_list) if val]
+        gis_table = gis_table.iloc[:, ind_id]
+
+        table = pd.merge(left=env_table, right=gis_table, how='left', left_on=join_field, right_on=join_field)
+        id = table.index[table[package_y_field].isna()]
+        env_gis = table.iloc[id,]
+        env_gis = rename_columns_title(env_gis, env_status_field, env_status_new_field)
+        env_gis = rename_columns_title(env_gis, package_x_field, package_field)
+        env_gis = rename_columns_title(env_gis, package_y_field, gis_field)
+        env_gis[env_field] = 'Yes'
+
+        ## 2. Envi Table <-- GIS Portal
+        bool_list = [e for e in gis_portal.columns.str.contains(search_fields_gis, regex=True)]
+        ind_id = [i for i, val in enumerate(bool_list) if val]
+        gis_portal = gis_portal.iloc[:, ind_id]
+
+        table = pd.merge(left=env_table, right=gis_portal, how='left', left_on=join_field, right_on=join_field)
+        id = table.index[table[package_y_field].isna()]
+        env_gis_portal = table.iloc[id,]
+        env_gis_portal = rename_columns_title(env_gis_portal, env_status_field, env_status_new_field)
+        env_gis_portal = rename_columns_title(env_gis_portal, package_x_field, package_field)
+        env_gis_portal = rename_columns_title(env_gis_portal, package_y_field, gis_portal_field)
+        env_gis_portal[env_field] = 'Yes'
+
+        ## 3. GIS Table <-- GIS Portal
+        bool_list = [e for e in gis_portal.columns.str.contains(search_fields_gis, regex=True)]
+        ind_id = [i for i, val in enumerate(bool_list) if val]
+        gis_portal = gis_portal.iloc[:, ind_id]
+
+        table = pd.merge(left=gis_table, right=gis_portal, how='left', left_on=join_field, right_on=join_field)
+        id = table.index[table[package_y_field].isna()]
+        gis_gis_portal = table.iloc[id,]
+        gis_gis_portal= rename_columns_title(gis_gis_portal, package_x_field, package_field)
+        gis_gis_portal = rename_columns_title(gis_gis_portal, package_y_field, gis_portal_field)
+        gis_gis_portal[gis_field] = 'Yes'
+        gis_gis_portal = rename_columns_title(gis_gis_portal, package_y_field, gis_field)
+        gis_gis_portal = gis_gis_portal.drop(columns = [gis_portal_field, package_field])
+
+        ## 4. envi_gis_portal <-- gis_gis_portal
+        ## you do not need to merge with env_gis, because missing lots in GIS ML compared to Env ML are also missing in GIS Portal
+        table = pd.merge(left=env_gis_portal, right=gis_gis_portal, how='left', left_on=join_field, right_on=join_field)
+        table[env_status_new_field] = pd.to_numeric(table[env_status_new_field], errors='coerce')
+        table[need_to_check_field] = 'No?'
+        id = table.index[table[env_status_new_field].notna()]
+        table.loc[id,need_to_check_field] = 'Yes'
+
+        # Add 'No' to empty cells for 'GIS_Portal' and 'GIS_ML' fields
+        id = table.index[table[gis_field].isna()]
+        table.loc[id, gis_field] = 'No'
+        id = table.index[table[gis_portal_field].isna()]
+        table.loc[id, gis_portal_field] = 'No'
+
+        ## This table shows lot ids which are missing in either GIS ML or GIS Portal or both.
+        ## Check the following lots with Envi Team: lots with status in Envi Table but not reflected in GIS ML or GIS Portal or both.
+        file_name = os.path.join(gis_dir, 'LA_Missing_Lot_IDs.xlsx')
+        table.to_excel(file_name, index=False)
+
+
+

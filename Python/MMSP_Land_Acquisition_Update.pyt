@@ -475,7 +475,7 @@ class CheckLotUpdatedStatusEnvGIS(object):
             counts_env = count_name + '_ENV'
             counts_gis = count_name + '_GIS'
 
-            export_file_name = 'LA_Summary_Statistics_Envi_and_GIS_ML.xlsx'
+            export_file_name = 'CHECK-LA_Summary_Statistics_Envi_and_GIS_ML.xlsx'
             to_excel_file = os.path.join(gis_dir, export_file_name)
 
             ######################################
@@ -494,6 +494,7 @@ class CheckLotUpdatedStatusEnvGIS(object):
             # Remove any empty rows outside the main table
             try:
                 env_table_nvs = drop_empty_rows(env_table_nvs, station_field)
+                env_table_ol = drop_empty_rows(env_table_ol, station_field)
             except:
                 pass
 
@@ -519,7 +520,7 @@ class CheckLotUpdatedStatusEnvGIS(object):
             # Merge
             table_nvs3 = nvs3_env.join(nvs3_gis,lsuffix=lsuffix_env,rsuffix=rsuffix_gis)
             table_nvs3['count_diff'] = np.NAN
-            table_nvs3['count_diff'] = table_nvs3[counts_env] - table_nvs3[counts_gis]
+            table_nvs3['count_diff'] = table_nvs3[counts_gis] - table_nvs3[counts_env]
 
             ############################################
             ############ 'Operations Level' ############
@@ -927,7 +928,7 @@ class UpdateLotMPRExcel(object):
 
 class UpdateStructureExcel(object):
     def __init__(self):
-        self.label = "2. Update Excel Master List (Structure)"
+        self.label = "2.0. Update Excel Master List (Structure)"
         self.description = "Update Excel Master List (Structure)"
 
     def getParameterInfo(self):
@@ -1079,7 +1080,7 @@ class UpdateStructureExcel(object):
 
 class UpdateISFExcel(object):
     def __init__(self):
-        self.label = "3. Update Excel Master List (ISF)"
+        self.label = "3.0. Update Excel Master List (ISF)"
         self.description = "Update Excel Master List (ISF)"
 
     def getParameterInfo(self):
@@ -1367,8 +1368,8 @@ class UpdateGISLayers(object):
 
 class CheckLotUpdatedStatusGIS(object):
     def __init__(self):
-        self.label = "4.1. Summary Stats for Lot Status (GIS Layer and GIS ML)"
-        self.description = "Summary Stats for Lot Status (GIS Layer and GIS ML)"
+        self.label = "4.1. Summary Stats for Lot Status (GIS Portal and GIS ML)"
+        self.description = "Summary Stats for Lot Status (GIS Portal and GIS ML)"
 
     def getParameterInfo(self):
         gis_dir = arcpy.Parameter(
@@ -1381,22 +1382,22 @@ class CheckLotUpdatedStatusGIS(object):
 
         # Input Feature Layers
         gis_layer = arcpy.Parameter(
-            displayName = "GIS Feature Layer (Target Layer)",
-            name = "GIS Feature Layer (Target Layer)",
-            datatype = "GPFeatureLayer",
-            parameterType = "Required",
-            direction = "Input"
-        )
-
-        gis_lot_file = arcpy.Parameter(
-            displayName = "GIS ML File (choose file)",
-            name = "GIS ML File (choose file)",
+            displayName = "GIS Portal File (Excel)",
+            name = "GIS Portal File (Excel)",
             datatype = "DEFile",
             parameterType = "Required",
             direction = "Input"
         )
 
-        params = [gis_dir, gis_layer, gis_lot_file]
+        gis_ml = arcpy.Parameter(
+            displayName = "GIS ML File (Excel)",
+            name = "GIS ML File (Excel)",
+            datatype = "DEFile",
+            parameterType = "Required",
+            direction = "Input"
+        )
+
+        params = [gis_dir, gis_layer, gis_ml]
         return params
 
     def updateMessages(self, params):
@@ -1404,20 +1405,16 @@ class CheckLotUpdatedStatusGIS(object):
 
     def execute(self, params, messages):
         gis_dir = params[0].valueAsText
-        gis_portal = params[1].valueAsText
+        gis_layer = params[1].valueAsText
         gis_ml = params[2].valueAsText
-
-        def unique_values(table, field):  ##uses list comprehension
-            with arcpy.da.SearchCursor(table, [field]) as cursor:
-                return sorted({row[0] for row in cursor if row[0] is not None})
 
         # Read table
         gis_table = pd.read_excel(gis_ml)
+        gis_portal = pd.read_excel(gis_layer)
 
-        # Define field names
-        ## StatusNVS3
+        # 0. Defin field names
         nvs3_field_gis = 'StatusNVS3'
-        
+
         ## Operations Level Status
         hl_field = 'H_Level'
         la_field = 'LA'
@@ -1425,7 +1422,7 @@ class CheckLotUpdatedStatusGIS(object):
         pp_field = 'PP'
         expro_field = 'Expro'
         rowua_field = "ROWUA"
-        
+
         package_field = 'Package'
         station_field = 'Station1'
         type_field = 'Type'
@@ -1435,95 +1432,59 @@ class CheckLotUpdatedStatusGIS(object):
         counts_portal = count_name + lsuffix_portal
         counts_excel = count_name + rsuffix_excel
 
-        to_excel_file = os.path.join(gis_dir,'LA_Summary_Statistics_GIS_Portal_and_GIS_ML.xlsx')
+        to_excel_file = os.path.join(gis_dir,'CHECK-LA_Summary_Statistics_GIS_Portal_and_GIS_ML.xlsx')
 
-        ######################################
-        ############ StatusNVS3 ##############
-        ######################################
-        # 1. GIS Attribute Table
-        testTable = arcpy.analysis.Statistics(gis_portal, 'sumStatsTable', [[nvs3_field_gis,'COUNT']], [package_field,station_field,type_field,nvs3_field_gis])
-        columns = [f.name for f in arcpy.ListFields(testTable)]
-        gis_portal_sum = pd.DataFrame(data=arcpy.da.SearchCursor(testTable, columns),columns=columns)
-        drop_fields = ['OBJECTID','FREQUENCY']
-        nvs3_gis_portal = gis_portal_sum.drop(columns=drop_fields)
+        #####################
+        #### Main Status ####
+        #####################
+        keep_fields = [package_field,station_field,type_field,nvs3_field_gis]
 
-        ### rename 
-        rename_field = 'COUNT_' + nvs3_field_gis
-        nvs3_gis_portal = nvs3_gis_portal.rename(columns={rename_field: count_name})
-
-        ### Sort
+        ## GIS Portal
+        nvs3_gis_portal = gis_portal.groupby(keep_fields)[nvs3_field_gis].count().reset_index(name=count_name)
         nvs3_gis_portal = nvs3_gis_portal.sort_values(by=[package_field,station_field,type_field])
 
-        ### remove rows with na in 'StatusNVS3'
-        id = nvs3_gis_portal.index[nvs3_gis_portal[nvs3_field_gis].isnull()]
-        nvs3_gis_portal = nvs3_gis_portal.drop(id)
-
-        ### Reset index
-        nvs3_gis_portal = nvs3_gis_portal.reset_index()
-        
-        # 2. GIS Excel ML
-        keep_fields = [package_field,station_field,type_field,nvs3_field_gis]
+        ## GIS ML
         nvs3_gis_ml = gis_table.groupby(keep_fields)[nvs3_field_gis].count().reset_index(name=count_name)
         nvs3_gis_ml = nvs3_gis_ml.sort_values(by=[package_field,station_field,type_field])
 
-        # Merge
+        ## Merge
         table_nvs3 = nvs3_gis_portal.join(nvs3_gis_ml,lsuffix=lsuffix_portal,rsuffix=rsuffix_excel)
         table_nvs3['count_diff'] = np.NAN
         table_nvs3['count_diff'] = table_nvs3[counts_portal] - table_nvs3[counts_excel]
 
         arcpy.AddMessage('Merge completed..')
-
-        arcpy.Delete_management(testTable)
         arcpy.AddMessage('The summary statistics table for StatusNVS3 field is successfully produced.')
-        
-        ###########################################
-        ############ Operations Level #############
-        ###########################################
+
+        ##########################
+        #### Operations Level ####
+        ##########################
         status_fields_ol = [hl_field, la_field, la2_field, pp_field, expro_field, rowua_field]
         data_store = {}
         n_step = -1
 
         for field in status_fields_ol:
-            n_step = n_step + 1
-
-            # 1. GIS Attribute Table
-            tempTable = arcpy.analysis.Statistics(gis_portal, 'tempTable', [[field,'COUNT']], [package_field,station_field,type_field,field])
-            columns = [f.name for f in arcpy.ListFields(tempTable)]
-            gis_portal_sum = pd.DataFrame(data=arcpy.da.SearchCursor(tempTable, columns),columns=columns)
-            drop_fields = ['OBJECTID','FREQUENCY']
-            gis_portal_ol = gis_portal_sum.drop(columns=drop_fields)
-
-            ### rename 
-            rename_field = 'COUNT_' + field
-            gis_portal_ol = gis_portal_ol.rename(columns={rename_field: count_name})
-
-            ### Sort
-            gis_portal_ol = gis_portal_ol.sort_values(by=[package_field,station_field,type_field])
-
-            ### remove rows with na in 'StatusNVS3'
-            id = gis_portal_ol.index[gis_portal_ol[field].isnull()]
-            gis_portal_ol = gis_portal_ol.drop(id)
-
-            ### Reset index
-            gis_portal_ol = gis_portal_ol.reset_index()
-            
-            # 2. GIS Excel ML
             keep_fields = [package_field,station_field,type_field,field]
+            n_step = n_step + 1
+            
+            # 1. GIS Portal
+            gis_p = gis_portal.groupby(keep_fields)[field].count().reset_index(name=count_name)
+            gis_p = gis_p.sort_values(by=[package_field,station_field,type_field])
+            
+            # 2. GIS ML
             gis_ml = gis_table.groupby(keep_fields)[field].count().reset_index(name=count_name)
             gis_ml = gis_ml.sort_values(by=[package_field,station_field,type_field])
 
             # Merge
-            table_ol = gis_portal_ol.join(gis_ml,lsuffix=lsuffix_portal,rsuffix=rsuffix_excel)
+            table_ol = gis_p.join(gis_ml,lsuffix=lsuffix_portal,rsuffix=rsuffix_excel)
             table_ol['count_diff'] = np.NAN
             table_ol['count_diff'] = table_ol[counts_portal] - table_ol[counts_excel]
-
+            
+            # store data
             data_store[n_step] = table_ol
-            arcpy.Delete_management(tempTable)
-
             arcpy.AddMessage("The summary statistics for '{}' is successfully produced..".format(field))
-
-        # Export
-        arcpy.AddMessage('Compile all summary statistics for StatusNVS3 and Operation Level status..')
+            
+        # Compile and Export
+        arcpy.AddMessage("Compile all summary statistics for StatusNVS3 and Operation Level status..")
         with pd.ExcelWriter(to_excel_file) as writer:
             table_nvs3.to_excel(writer, sheet_name=nvs3_field_gis)
             data_store[0].to_excel(writer, sheet_name=status_fields_ol[0])
@@ -1531,13 +1492,13 @@ class CheckLotUpdatedStatusGIS(object):
             data_store[2].to_excel(writer, sheet_name=status_fields_ol[2])
             data_store[3].to_excel(writer, sheet_name=status_fields_ol[3])
             data_store[4].to_excel(writer, sheet_name=status_fields_ol[4])
-        
+
         arcpy.AddMessage('The compilation is successful and the table is exported to your directory..')
   
 class CheckMissingLotIDs(object):
     def __init__(self):
-        self.label = "4.2. Check Missing Lot IDs (Envi. ML, GIS ML, and GIS Layer)"
-        self.description = "Check Missing Lot IDs (Envi. ML, GIS ML, and GIS Layer)"
+        self.label = "4.2. Check Missing Lot IDs (Envi. ML, GIS ML, and GIS Portal)"
+        self.description = "Check Missing Lot IDs (Envi. ML, GIS ML, and GIS Portal)"
 
     def getParameterInfo(self):
         gis_dir = arcpy.Parameter(
@@ -1599,6 +1560,13 @@ class CheckMissingLotIDs(object):
                 pass
             return table
         
+        def unique(lists):
+            collect = []
+            unique_list = pd.Series(lists).drop_duplicates().tolist()
+            for x in unique_list:
+                collect.append(x)
+            return(collect)
+        
         env_table = pd.read_excel(env_table_ml, skiprows=1, keep_default_na=False) # for checking NVS3, do not use default_na = false
         gis_table = pd.read_excel(gis_table_ml)
         gis_portal = pd.read_excel(gis_portal_ml)
@@ -1619,68 +1587,62 @@ class CheckMissingLotIDs(object):
         except:
             pass
 
-        ## 1. Envi Table <-- GIS ML table
+        ## Drop fields
         bool_list = [e for e in env_table.columns.str.contains(r'Id|Package|Status NVS',regex=True)]
         ind_id = [i for i, val in enumerate(bool_list) if val]
         env_table = env_table.iloc[:, ind_id]
 
-        search_fields_gis = 'Id|Package'
-        bool_list = [e for e in gis_table.columns.str.contains(search_fields_gis,regex=True)]
+        bool_list = [e for e in gis_table.columns.str.contains(r'Id|Package',regex=True)]
         ind_id = [i for i, val in enumerate(bool_list) if val]
         gis_table = gis_table.iloc[:, ind_id]
 
-        table = pd.merge(left=env_table, right=gis_table, how='left', left_on=join_field, right_on=join_field)
-        id = table.index[table[package_y_field].isna()]
-        env_gis = table.iloc[id,]
-        env_gis = rename_columns_title(env_gis, env_status_field, env_status_new_field)
-        env_gis = rename_columns_title(env_gis, package_x_field, package_field)
-        env_gis = rename_columns_title(env_gis, package_y_field, gis_field)
-        env_gis[env_field] = 'Yes'
-
-        ## 2. Envi Table <-- GIS Portal
-        bool_list = [e for e in gis_portal.columns.str.contains(search_fields_gis, regex=True)]
+        bool_list = [e for e in gis_portal.columns.str.contains(r'Id|Package',regex=True)]
         ind_id = [i for i, val in enumerate(bool_list) if val]
         gis_portal = gis_portal.iloc[:, ind_id]
 
-        table = pd.merge(left=env_table, right=gis_portal, how='left', left_on=join_field, right_on=join_field)
-        id = table.index[table[package_y_field].isna()]
-        env_gis_portal = table.iloc[id,]
-        env_gis_portal = rename_columns_title(env_gis_portal, env_status_field, env_status_new_field)
-        env_gis_portal = rename_columns_title(env_gis_portal, package_x_field, package_field)
-        env_gis_portal = rename_columns_title(env_gis_portal, package_y_field, gis_portal_field)
-        env_gis_portal[env_field] = 'Yes'
+        ## Filter
+        env_lot_ids = unique(env_table[join_field])
+        gis_lot_ids = unique(gis_table[join_field])
+        gis_portal_lot_ids = unique(gis_portal[join_field])
 
-        ## 3. GIS Table <-- GIS Portal
-        bool_list = [e for e in gis_portal.columns.str.contains(search_fields_gis, regex=True)]
-        ind_id = [i for i, val in enumerate(bool_list) if val]
-        gis_portal = gis_portal.iloc[:, ind_id]
+        env_gis_no_ids = [e for e in env_lot_ids if e not in gis_lot_ids]
+        env_gis_portal_no_ids = [e for e in env_lot_ids if e not in gis_portal_lot_ids]
 
-        table = pd.merge(left=gis_table, right=gis_portal, how='left', left_on=join_field, right_on=join_field)
-        id = table.index[table[package_y_field].isna()]
-        gis_gis_portal = table.iloc[id,]
-        gis_gis_portal= rename_columns_title(gis_gis_portal, package_x_field, package_field)
-        gis_gis_portal = rename_columns_title(gis_gis_portal, package_y_field, gis_portal_field)
-        gis_gis_portal[gis_field] = 'Yes'
-        gis_gis_portal = rename_columns_title(gis_gis_portal, package_y_field, gis_field)
-        gis_gis_portal = gis_gis_portal.drop(columns = [gis_portal_field, package_field])
+        ## compare env_gis_no_ids with env_gis_portal_no_ids
+        ## Lot ids not commonly observed between these two table => 'GIS ML' = 1
+        gis_add_lot_ids = [e for e in env_gis_portal_no_ids if e not in env_gis_no_ids]
 
-        ## 4. envi_gis_portal <-- gis_gis_portal
-        ## you do not need to merge with env_gis, because missing lots in GIS ML compared to Env ML are also missing in GIS Portal
-        table = pd.merge(left=env_gis_portal, right=gis_gis_portal, how='left', left_on=join_field, right_on=join_field)
+        ###
+        gis_no_ids = env_table[env_table[join_field].isin(env_gis_no_ids)]
+        gis_no_ids[gis_field] = 'No'
+
+        gis_portal_no_ids = env_table[env_table[join_field].isin(env_gis_portal_no_ids)]
+        gis_portal_no_ids[gis_portal_field] = 'No'
+
+        ## Concatenate two tables (rbind)
+        dataframes = [gis_no_ids,gis_portal_no_ids]
+        table = pd.concat(dataframes)
+        table = table.reset_index(drop=True)
+        duplicated_ids = table.index[table.duplicated([join_field]) == True]
+        table = table.drop(duplicated_ids)
+        table[gis_portal_field] = 'No'
+
+        ## Update 'GIS_ML' and 'Env_ML'
+        id = table.index[table[join_field].isin(gis_add_lot_ids)]
+        table.loc[id, gis_field] = 'Yes'
+        table[env_field] = 'Yes'
+
+        ## Add check field
+        table = rename_columns_title(table, env_status_field, env_status_new_field)
         table[env_status_new_field] = pd.to_numeric(table[env_status_new_field], errors='coerce')
-        table[need_to_check_field] = 'No?'
+        table['Need_to_Check'] = 'No?'
         id = table.index[table[env_status_new_field].notna()]
-        table.loc[id,need_to_check_field] = 'Yes'
 
-        # Add 'No' to empty cells for 'GIS_Portal' and 'GIS_ML' fields
-        id = table.index[table[gis_field].isna()]
-        table.loc[id, gis_field] = 'No'
-        id = table.index[table[gis_portal_field].isna()]
-        table.loc[id, gis_portal_field] = 'No'
+        table.loc[id,'Need_to_Check'] = 'Yes'
 
         ## This table shows lot ids which are missing in either GIS ML or GIS Portal or both.
         ## Check the following lots with Envi Team: lots with status in Envi Table but not reflected in GIS ML or GIS Portal or both.
-        file_name = os.path.join(gis_dir, 'LA_Missing_Lot_IDs.xlsx')
+        file_name = os.path.join(gis_dir, 'CHECK-LA_Missing_Lot_IDs.xlsx')
         table.to_excel(file_name, index=False)
 
 

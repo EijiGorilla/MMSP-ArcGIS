@@ -458,9 +458,17 @@ class UpdateLot(object):
                 # Calculate percent handed-over
                 rap_table[percent_handedover_area_field] = round((rap_table[handedover_area_field] / rap_table[affected_area_field])*100,0)
 
-                # Create summary statistics between original rap_table and updated rap_table               
-                ## Original rap_table (before updating)
-                ### StatusLA = 0 -> NA
+                # Export
+                export_file_name = os.path.splitext(os.path.basename(gis_lot_ms))[0]
+                to_excel_file = os.path.join(gis_dir, export_file_name + ".xlsx")
+                rap_table.to_excel(to_excel_file, index=False)
+
+                arcpy.AddMessage("The master list was successfully exported.")
+
+                ##############################################################################
+                # Create summary statistics between original rap_table and updated rap_table
+                ### 1.0. StatusLA = 0 -> NA          
+                ## 1.0.1. Original rap_table (before updating)
                 id = rap_table_stats.index[rap_table_stats[statusla_field] == 0]
                 rap_table_stats.loc[id, statusla_field] = np.NAN
 
@@ -468,26 +476,38 @@ class UpdateLot(object):
                 rap_table0_stats = rap_table_stats.groupby(groupby_fields)[statusla_field].count().reset_index(name=count_name)
                 rap_table0_stats = rap_table0_stats.sort_values(by=groupby_fields)
 
-                ## Updated rap_table (After updating)
+                ## 1.0.2. Updated rap_table (After updating)
                 rap_table1_stats = rap_table.groupby(groupby_fields)[statusla_field].count().reset_index(name=count_name)
                 rap_table1_stats = rap_table1_stats.sort_values(by=groupby_fields)
 
-                ## Merge
+                ## 1.0.3. Merge
                 table_stats = rap_table0_stats.join(rap_table1_stats, lsuffix=lsuffix_rap, rsuffix=rsuffix_gis)
                 table_stats['count_diff'] = np.NAN
                 table_stats['count_diff'] = table_stats[counts_gis] - table_stats[counts_rap]
 
-                ## Export summary statistics table
+                ### 2.0. HandedOver = 1
+                ## 2.0.1. Original rap_table (before updating)
+                id = rap_table_stats.index[rap_table_stats[handedover_field] == 1]
+                groupby_fields = [package_field, handedover_field]
+                rap_table0_stats = rap_table_stats.groupby(groupby_fields)[handedover_field].count().reset_index(name=count_name)
+                rap_table0_stats = rap_table0_stats.sort_values(by=groupby_fields)
+
+                ## 2.0.2. Updated rap_table (After updating)
+                rap_table1_stats = rap_table.groupby(groupby_fields)[handedover_field].count().reset_index(name=count_name)
+                rap_table1_stats = rap_table1_stats.sort_values(by=groupby_fields)
+
+                ## 2.0.3. Merge
+                table_stats_handedover = rap_table0_stats.join(rap_table1_stats, lsuffix=lsuffix_rap, rsuffix=rsuffix_gis)
+                table_stats_handedover['count_diff'] = np.NAN
+                table_stats_handedover["count_diff"] = table_stats_handedover[counts_gis] - table_stats_handedover[counts_rap]
+
+                ### 3.0. Export summary statistics table
                 file_name_stats = 'CHECK-' + proj + '_LA_Summary_Statistics_Rap_and_GIS_ML.xlsx'
                 to_excel_file0 = os.path.join(gis_dir, file_name_stats)
-                table_stats.to_excel(to_excel_file0, index=False)
 
-                # Export
-                export_file_name = os.path.splitext(os.path.basename(gis_lot_ms))[0]
-                to_excel_file = os.path.join(gis_dir, export_file_name + ".xlsx")
-                rap_table.to_excel(to_excel_file, index=False)
-
-                arcpy.AddMessage("The master list was successfully exported.")
+                with pd.ExcelWriter(to_excel_file0) as writer:
+                    table_stats.to_excel(writer, sheet_name=statusla_field, index=False)
+                    table_stats_handedover.to_excel(writer, sheet_name=handedover_field, index=False)
 
             else:
                 arcpy.AddMessage(duplicated_Ids)
@@ -1880,6 +1900,7 @@ class CheckLotUpdatedStatusGIS(object):
 
         # 0. Defin field names
         statusla_field = 'StatusLA'
+        handedover_field = 'HandedOver'
         package_field = 'CP'
         count_name = 'counts'
         lsuffix_portal = '_Portal'
@@ -1887,23 +1908,43 @@ class CheckLotUpdatedStatusGIS(object):
         counts_portal = count_name + lsuffix_portal
         counts_excel = count_name + rsuffix_excel
 
+        # 1.0 Status LA
         keep_fields = [package_field, statusla_field]
 
-        ## GIS Portal
-        gis_portal = gis_portal.groupby(keep_fields)[statusla_field].count().reset_index(name=count_name)
-        gis_portal = gis_portal.sort_values(by=keep_fields)
+        ## 1.0.1. GIS Portal
+        gis_portal_statusla = gis_portal.groupby(keep_fields)[statusla_field].count().reset_index(name=count_name)
+        gis_portal_statusla = gis_portal_statusla.sort_values(by=keep_fields)
 
-        ## GIS ML
-        gis_ml = gis_table.groupby(keep_fields)[statusla_field].count().reset_index(name=count_name)
-        gis_ml = gis_ml.sort_values(by=keep_fields)
+        ## 1.0.2. GIS ML
+        gis_ml_statusla = gis_table.groupby(keep_fields)[statusla_field].count().reset_index(name=count_name)
+        gis_ml_statusla = gis_ml_statusla.sort_values(by=keep_fields)
 
-        ## Merge
-        table = gis_portal.join(gis_ml,lsuffix=lsuffix_portal,rsuffix=rsuffix_excel)
+        ## 1.0.3. Merge
+        table = gis_portal_statusla.join(gis_ml_statusla,lsuffix=lsuffix_portal,rsuffix=rsuffix_excel)
         table['count_diff'] = np.NAN
         table['count_diff'] = table[counts_portal] - table[counts_excel]
 
         arcpy.AddMessage('Merge completed..')
         arcpy.AddMessage('The summary statistics table for StatusLA field is successfully produced.')
+
+        # 2.0. HandedOver
+        keep_fields = [package_field, handedover_field]
+
+        ## 2.0.1. GIS Portal
+        gis_portal_handedover = gis_portal.groupby(keep_fields)[handedover_field].count().reset_index(name=count_name)
+        gis_portal_handedover = gis_portal_handedover.sort_values(by=keep_fields)
+
+        ## 2.0.2. GIS ML
+        gis_ml_handedover = gis_table.groupby(keep_fields)[handedover_field].count().reset_index(name=count_name)
+        gis_ml_handedover = gis_ml_handedover.sort_values(by=keep_fields)
+
+        ## 2.0.3. Merge
+        table_handedover = gis_portal_handedover.join(gis_ml_handedover,lsuffix=lsuffix_portal,rsuffix=rsuffix_excel)
+        table_handedover['count_diff'] = np.NAN
+        table_handedover['count_diff'] = table_handedover[counts_portal] - table_handedover[counts_excel]
+
+        arcpy.AddMessage('Merge completed..')
+        arcpy.AddMessage('The summary statistics table for HandedOver field is successfully produced.')
         
         # Export the updated GIS portal to excel sheet for checking lot IDs
         try:
@@ -1911,9 +1952,11 @@ class CheckLotUpdatedStatusGIS(object):
             file_name = "CHECK-" + proj_name + "_" + "LA_Summary_Statistics_GIS_Portal_and_GIS_ML.xlsx"
         except:
             file_name = "CHECK-LA_Summary_Statistics_GIS_Portal_and_GIS_ML.xlsx"
-
+            
         to_excel_file = os.path.join(gis_dir, file_name)
-        table.to_excel(to_excel_file, index=False)
+        with pd.ExcelWriter(to_excel_file) as writer:
+            table.to_excel(writer, sheet_name=statusla_field, index=False)
+            table_handedover.to_excel(writer, sheet_name=handedover_field, index=False)
         
 class CheckMissingLotIDs(object):
     def __init__(self):
@@ -2003,6 +2046,8 @@ class CheckMissingLotIDs(object):
         rap_status_field = 'StatusLA'
         rap_status_new_field = 'Rap_Status'
         package_field = 'CP'
+        handedover_field = 'HandedOver'
+        handedover_new_field = 'Rap_HandedOver'
         package_x_field = 'Package_x'
         package_y_field = 'Package_y'
         rap_field = 'Rap_ML'
@@ -2020,41 +2065,46 @@ class CheckMissingLotIDs(object):
         id = rap_table.index[rap_table[rap_status_field] == 0]
         rap_table.loc[id, rap_status_field] = None
 
-        ## Drop fields
+        ### 1.0. Keep only 'LotID', 'CP', and 'StatusLA' fields
+        #### 1.0.1. RAP ML
         search_names = '|'.join([join_field, package_field, rap_status_field])
         bool_list = [e for e in rap_table.columns.str.contains(search_names, regex=True)]
         ind_id = [i for i, val in enumerate(bool_list) if val]
-        rap_table = rap_table.iloc[:, ind_id]
+        rap_table_statusla = rap_table.iloc[:, ind_id]
 
+        #### 1.0.2. GIS ML
         search_names = '|'.join([join_field, package_field])
         bool_list = [e for e in gis_table.columns.str.contains(search_names, regex=True)]
         ind_id = [i for i, val in enumerate(bool_list) if val]
-        gis_table = gis_table.iloc[:, ind_id]
+        gis_table_statusla = gis_table.iloc[:, ind_id]
 
+        #### 1.0.3. GIS Portal
         bool_list = [e for e in gis_portal.columns.str.contains(search_names, regex=True)]
         ind_id = [i for i, val in enumerate(bool_list) if val]
-        gis_portal = gis_portal.iloc[:, ind_id]
+        gis_portal_statusla = gis_portal.iloc[:, ind_id]
 
-        ## Filter
-        env_lot_ids = unique(rap_table[join_field])
-        gis_lot_ids = unique(gis_table[join_field])
-        gis_portal_lot_ids = unique(gis_portal[join_field])
+        ## 1.2. Filter
+        rap_lot_ids = unique(rap_table_statusla[join_field])
+        gis_lot_ids = unique(gis_table_statusla[join_field])
+        gis_portal_lot_ids = unique(gis_portal_statusla[join_field])
 
-        env_gis_no_ids = [e for e in env_lot_ids if e not in gis_lot_ids]
-        env_gis_portal_no_ids = [e for e in env_lot_ids if e not in gis_portal_lot_ids]
+        ### 1.3. Identify Lot IDs missing in GIS ML and GIS Portal Ids in reference to RAP ML
+        rap_gis_no_ids = [e for e in rap_lot_ids if e not in gis_lot_ids]
+        rap_gis_portal_no_ids = [e for e in rap_lot_ids if e not in gis_portal_lot_ids]
 
-        ## compare env_gis_no_ids with env_gis_portal_no_ids
-        ## Lot ids not commonly observed between these two table => 'GIS ML' = 1
-        gis_add_lot_ids = [e for e in env_gis_portal_no_ids if e not in env_gis_no_ids]
+        ## compare rap_gis_no_ids with rap_gis_portal_no_ids
+        ## Lot ids not commonly observed between these two GIS tables => 'GIS ML' = 'Yes'
+        gis_add_lot_ids = [e for e in rap_gis_portal_no_ids if e not in rap_gis_no_ids]
 
-        ###
-        gis_no_ids = rap_table[rap_table[join_field].isin(env_gis_no_ids)]
+        ## Lot ids from RAP ML missing in GIS ML
+        gis_no_ids = rap_table_statusla[rap_table_statusla[join_field].isin(rap_gis_no_ids)]
         gis_no_ids[gis_field] = 'No'
 
-        gis_portal_no_ids = rap_table[rap_table[join_field].isin(env_gis_portal_no_ids)]
+        ## Lot ids from RAP ML missing in GIS Portal
+        gis_portal_no_ids = rap_table_statusla[rap_table_statusla[join_field].isin(rap_gis_portal_no_ids)]
         gis_portal_no_ids[gis_portal_field] = 'No'
 
-        ## Concatenate two tables (rbind)
+        ## 1.4. Concatenate two tables (rbind)
         dataframes = [gis_no_ids,gis_portal_no_ids]
         table = pd.concat(dataframes)
         table = table.reset_index(drop=True)
@@ -2062,18 +2112,79 @@ class CheckMissingLotIDs(object):
         table = table.drop(duplicated_ids)
         table[gis_portal_field] = 'No'
 
-        ## Update 'GIS_ML' and 'Env_ML'
+        ## 1.5. Update 'GIS_ML' and 'Env_ML'
         id = table.index[table[join_field].isin(gis_add_lot_ids)]
         table.loc[id, gis_field] = 'Yes'
         table[rap_field] = 'Yes'
 
-        ## Add check field
+        ## 1.6. Add check field
         table = rename_columns_title(table, rap_status_field, rap_status_new_field)
         table[rap_status_new_field] = pd.to_numeric(table[rap_status_new_field], errors='coerce')
         table['Need_to_Check'] = 'No?'
         id = table.index[table[rap_status_new_field].notna()]
-
         table.loc[id,'Need_to_Check'] = 'Yes'
+
+        ## 1. HandedOver
+
+        ### 1.0. Keep only 'LotID', 'CP', and 'HandedOver' fields
+        #### 1.0.1. RAP ML
+        handedover_field_search = "^" + handedover_field + "$"
+        search_names = '|'.join([join_field, package_field, handedover_field_search])
+        bool_list = [e for e in rap_table.columns.str.contains(search_names, regex=True)]
+        ind_id = [i for i, val in enumerate(bool_list) if val]
+        rap_table_handedover = rap_table.iloc[:, ind_id]
+
+        #### 1.0.2. GIS ML
+        search_names = '|'.join([join_field, package_field])
+        bool_list = [e for e in gis_table.columns.str.contains(search_names, regex=True)]
+        ind_id = [i for i, val in enumerate(bool_list) if val]
+        gis_table_handedover = gis_table.iloc[:, ind_id]
+
+        #### 1.0.3. GIS Portal
+        bool_list = [e for e in gis_portal.columns.str.contains(search_names, regex=True)]
+        ind_id = [i for i, val in enumerate(bool_list) if val]
+        gis_portal_handedover = gis_portal.iloc[:, ind_id]
+
+        ## 1.2. Filter
+        rap_lot_ids = unique(rap_table_handedover[join_field])
+        gis_lot_ids = unique(gis_table_handedover[join_field])
+        gis_portal_lot_ids = unique(gis_portal_handedover[join_field])
+
+        ### 1.3. Identify Lot IDs missing in GIS ML and GIS Portal Ids in reference to RAP ML
+        rap_gis_no_ids = [e for e in rap_lot_ids if e not in gis_lot_ids]
+        rap_gis_portal_no_ids = [e for e in rap_lot_ids if e not in gis_portal_lot_ids]
+
+        ## compare rap_gis_no_ids with rap_gis_portal_no_ids
+        ## Lot ids not commonly observed between these two GIS tables => 'GIS ML' = 'Yes'
+        gis_add_lot_ids = [e for e in rap_gis_portal_no_ids if e not in rap_gis_no_ids]
+
+        ## Lot ids from RAP ML missing in GIS ML
+        gis_no_ids = rap_table_handedover[rap_table_handedover[join_field].isin(rap_gis_no_ids)]
+        gis_no_ids[gis_field] = 'No'
+
+        ## Lot ids from RAP ML missing in GIS Portal
+        gis_portal_no_ids = rap_table_handedover[rap_table_handedover[join_field].isin(rap_gis_portal_no_ids)]
+        gis_portal_no_ids[gis_portal_field] = 'No'
+
+        ## 1.4. Concatenate two tables (rbind)
+        dataframes = [gis_no_ids,gis_portal_no_ids]
+        table_handedover = pd.concat(dataframes)
+        table_handedover = table_handedover.reset_index(drop=True)
+        duplicated_ids = table_handedover.index[table_handedover.duplicated([join_field]) == True]
+        table_handedover = table_handedover.drop(duplicated_ids)
+        table_handedover[gis_portal_field] = 'No'
+
+        ## 1.5. Update 'GIS_ML' and 'Env_ML'
+        id = table_handedover.index[table_handedover[join_field].isin(gis_add_lot_ids)]
+        table_handedover.loc[id, gis_field] = 'Yes'
+        table_handedover[rap_field] = 'Yes'
+
+        ## 1.6. Add check field
+        table_handedover = rename_columns_title(table_handedover, handedover_field, handedover_new_field)
+        table_handedover[handedover_new_field] = pd.to_numeric(table_handedover[handedover_new_field], errors='coerce')
+        table_handedover['Need_to_Check'] = 'No?'
+        id = table_handedover.index[table_handedover[handedover_new_field].notna()]
+        table_handedover.loc[id,'Need_to_Check'] = 'Yes'
 
         ## This table shows lot ids which are missing in either GIS ML or GIS Portal or both.
         ## Check the following lots with Envi Team: lots with status in Envi Table but not reflected in GIS ML or GIS Portal or both.
@@ -2084,5 +2195,7 @@ class CheckMissingLotIDs(object):
             file_name = "_" + "LA_Missing_Lot_IDs.xlsx"
         
         to_excel_file = os.path.join(gis_dir, file_name)
-        table.to_excel(to_excel_file, index=False)
+        with pd.ExcelWriter(to_excel_file) as writer:
+            table.to_excel(writer, sheet_name=rap_status_field, index=False)
+            table_handedover.to_excel(writer, sheet_name=handedover_field, index=False)
 

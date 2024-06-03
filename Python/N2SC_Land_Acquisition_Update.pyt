@@ -30,30 +30,22 @@ class RestoreScaleForLot(object):
         )
 
         input_lot_ms = arcpy.Parameter(
-            displayName = "Input GIS Land Status Table (Excel)",
-            name = "Input GIS Land Status Table (Excel)",
+            displayName = "Input GIS Land ML (Excel)",
+            name = "Input GIS Land ML (Excel)",
             datatype = "DEFile",
             parameterType = "Required",
             direction = "Input"
         )
 
-        join_lot_ms = arcpy.Parameter(
-            displayName = "Join GIS Land Status Table (Excel)",
-            name = "Join GIS Land Status Table (Excel)",
+        target_lot_ms = arcpy.Parameter(
+            displayName = "Target GIS Land ML (Excel)",
+            name = "Target GIS Land ML (Excel)",
             datatype = "DEFile",
-            parameterType = "Optional",
+            parameterType = "Required",
             direction = "Input"
         )
 
-        join_lot_fl = arcpy.Parameter(
-            displayName = "Join GIS Land Status Table (GIS Feature Layer)",
-            name = "Join GIS Land Status Table (GIS Feature Layer)",
-            datatype = "GPFeatureLayer",
-            parameterType = "Optional",
-            direction = "Input"
-        )
-
-        params = [gis_dir, input_lot_ms, join_lot_ms, join_lot_fl]
+        params = [gis_dir, input_lot_ms, target_lot_ms]
         return params
 
     def updateMessages(self, params):
@@ -62,67 +54,33 @@ class RestoreScaleForLot(object):
     def execute(self, params, messages):
         gis_dir = params[0].valueAsText
         input_lot_ms = params[1].valueAsText
-        join_lot_ms = params[2].valueAsText
-        join_lot_fl = params[3].valueAsText
+        target_lot_ms = params[2].valueAsText
 
         arcpy.env.overwriteOutput = True
         #arcpy.env.addOutputsToMap = True
 
         def N2SC_Restore_Scale():           
             input_table = pd.read_excel(input_lot_ms)
+            target_table = pd.read_excel(target_lot_ms)
 
-            # Common query and definitions
             joinField = 'LotID'
-            
+
             # Convert to numeric
             transfer_field = "Scale"
 
-            # Exported file name and directory
-            export_file_name = os.path.splitext(os.path.basename(input_lot_ms))[0]
+            target_table.head()
+            # remove all spaces if any
+            target_table[transfer_field] = target_table[transfer_field].replace(r'\s+|[^\w\s]', '', regex=True)
+            target_table[transfer_field] = pd.to_numeric(target_table[transfer_field])
+
+            # Add scale from old master list
+            target_table = target_table.drop(transfer_field,axis=1)
+            lot_scale = input_table[[transfer_field, joinField]]
+            target_table_new = pd.merge(left=target_table, right=lot_scale, how='left', left_on=joinField, right_on=joinField)
+
+            export_file_name = os.path.splitext(os.path.basename(target_lot_ms))[0]
             to_excel_file = os.path.join(gis_dir, export_file_name + ".xlsx")
-
-            # When join table is excel:
-            try:
-                join_table = pd.read_excel(join_lot_ms)
-                join_table[transfer_field] = join_table[transfer_field].replace(r'\s+|[^\w\s]', '', regex=True)
-                join_table[transfer_field] = pd.to_numeric(join_table[transfer_field])
-                
-                # Add scale from old master list
-                input_table = input_table.drop(transfer_field,axis=1)
-                lot_scale = join_table[[transfer_field, joinField]]
-                input_table = pd.merge(left=input_table, right=lot_scale, how='left', left_on=joinField, right_on=joinField)
-
-                arcpy.AddMessage("Scale field was successfully joined to the input table.")
-
-                # Export
-                input_table.to_excel(to_excel_file, index=False)
-
-                arcpy.AddMessage("The master list was successfully exported.")
-            except:
-                arcpy.AddError("Something went wrong when scale field was joined to the input excel table...process stopped. Please check..")
-                pass
-
-            # When join table is GIS Feature layer:
-            try:
-                # export GIS FL to excel (join table)
-                temp_excel_file = os.path.join(gis_dir, "temp.xlsx")
-                arcpy.conversion.TableToExcel(join_lot_fl, temp_excel_file)
-                temp_excel = pd.read_excel(temp_excel_file)
-
-                # Add scale from old master list
-                input_table = input_table.drop(transfer_field,axis=1)
-                lot_scale = temp_excel[[transfer_field, joinField]]
-                input_table = pd.merge(left=input_table, right=lot_scale, how='left', left_on=joinField, right_on=joinField)
-
-                arcpy.AddMessage("Scale field was successfully joined to the input table.")
-
-                # Export
-                input_table.to_excel(to_excel_file, index=False)
-
-                arcpy.AddMessage("The master list was successfully exported.")
-            except:
-                arcpy.AddError("Something went wrong when scale field was joined to the GIS attribute table...process stopped. Please check..")
-                pass
+            target_table_new.to_excel(to_excel_file, index=False)
 
         N2SC_Restore_Scale()
 
@@ -376,14 +334,9 @@ class UpdateLot(object):
                         arcpy.AddMessage('You did not select {0} master list for updating contractors submission status.'.format('SC1_Land_Status '))
 
                 # Rename City for Municipality and upper case letter for the first letter
-                try:
-                    colname_change = rap_table.columns[rap_table.columns.str.contains('|'.join(search_names_city))]
-                    rap_table = rap_table.rename(columns={str(colname_change[0]): renamed_city})
-                except:
-                    pass
-
+                colname_change = rap_table.columns[rap_table.columns.str.contains('|'.join(search_names_city))]
+                rap_table = rap_table.rename(columns={str(colname_change[0]): renamed_city})
                 first_letter_capital(rap_table, [renamed_city])
-                # first_letter_capital(rap_table, ['Barangay'])
                 
                 # Convert to numeric
                 numeric_fields_common = [total_area_field, affected_area_field, remaining_area_field, handedover_area_field, handedover_field, priority_field, statusla_field, moa_field, pte_field]
@@ -469,10 +422,14 @@ class UpdateLot(object):
                 # Create summary statistics between original rap_table and updated rap_table
                 ### 1.0. StatusLA = 0 -> NA          
                 ## 1.0.1. Original rap_table (before updating)
+                colname_change = rap_table_stats.columns[rap_table_stats.columns.str.contains('|'.join(search_names_city))]
+                rap_table_stats = rap_table_stats.rename(columns={str(colname_change[0]): renamed_city})
+                first_letter_capital(rap_table_stats, [renamed_city])
+                
                 id = rap_table_stats.index[rap_table_stats[statusla_field] == 0]
                 rap_table_stats.loc[id, statusla_field] = np.NAN
 
-                groupby_fields = [package_field, statusla_field]
+                groupby_fields = [renamed_city, statusla_field]
                 rap_table0_stats = rap_table_stats.groupby(groupby_fields)[statusla_field].count().reset_index(name=count_name)
                 rap_table0_stats = rap_table0_stats.sort_values(by=groupby_fields)
 
@@ -481,14 +438,16 @@ class UpdateLot(object):
                 rap_table1_stats = rap_table1_stats.sort_values(by=groupby_fields)
 
                 ## 1.0.3. Merge
-                table_stats = rap_table0_stats.join(rap_table1_stats, lsuffix=lsuffix_rap, rsuffix=rsuffix_gis)
+                # table_stats = rap_table0_stats.join(rap_table1_stats, lsuffix=lsuffix_rap, rsuffix=rsuffix_gis)
+                table_stats = pd.merge(left=rap_table0_stats, right=rap_table1_stats, how='outer', left_on=[renamed_city, statusla_field], right_on=[renamed_city, statusla_field])
                 table_stats['count_diff'] = np.NAN
-                table_stats['count_diff'] = table_stats[counts_gis] - table_stats[counts_rap]
-
+                table_stats['count_diff'] = table_stats['counts_y'] - table_stats['counts_x']
+                table_stats = table_stats.rename(columns={"counts_x": str(counts_rap), "counts_y": str(counts_gis)})
+            
                 ### 2.0. HandedOver = 1
                 ## 2.0.1. Original rap_table (before updating)
                 id = rap_table_stats.index[rap_table_stats[handedover_field] == 1]
-                groupby_fields = [package_field, handedover_field]
+                groupby_fields = [renamed_city, handedover_field]
                 rap_table0_stats = rap_table_stats.groupby(groupby_fields)[handedover_field].count().reset_index(name=count_name)
                 rap_table0_stats = rap_table0_stats.sort_values(by=groupby_fields)
 
@@ -497,9 +456,11 @@ class UpdateLot(object):
                 rap_table1_stats = rap_table1_stats.sort_values(by=groupby_fields)
 
                 ## 2.0.3. Merge
-                table_stats_handedover = rap_table0_stats.join(rap_table1_stats, lsuffix=lsuffix_rap, rsuffix=rsuffix_gis)
+                # table_stats_handedover = rap_table0_stats.join(rap_table1_stats, lsuffix=lsuffix_rap, rsuffix=rsuffix_gis)
+                table_stats_handedover = pd.merge(left=rap_table0_stats, right=rap_table1_stats, how='outer', left_on=[renamed_city, handedover_field], right_on=[renamed_city, handedover_field])
                 table_stats_handedover['count_diff'] = np.NAN
-                table_stats_handedover["count_diff"] = table_stats_handedover[counts_gis] - table_stats_handedover[counts_rap]
+                table_stats_handedover["count_diff"] = table_stats_handedover['counts_y'] - table_stats_handedover['counts_x']
+                table_stats_handedover = table_stats_handedover.rename(columns={"counts_x": str(counts_rap), "counts_y": str(counts_gis)})
 
                 ### 3.0. Export summary statistics table
                 file_name_stats = 'CHECK-' + proj + '_LA_Summary_Statistics_Rap_and_GIS_ML.xlsx'
@@ -1304,6 +1265,15 @@ class UpdateLotGIS(object):
         self.description = "Update feature layer for land acquisition"
 
     def getParameterInfo(self):
+        proj = arcpy.Parameter(
+            displayName = "Project Extension: N2 or SC",
+            name = "Project Extension: N2 or SC",
+            datatype = "GPString",
+            parameterType = "Required",
+            direction = "Input"
+        )
+        proj.filter.type = "ValueList"
+        proj.filter.list = ['N2', 'SC']
 
         gis_dir = arcpy.Parameter(
             displayName = "GIS Masterlist Storage Directory",
@@ -1331,16 +1301,17 @@ class UpdateLotGIS(object):
             direction = "Input"
         )
 
-        params = [gis_dir, in_lot, ml_lot]
+        params = [proj, gis_dir, in_lot, ml_lot]
         return params
 
     def updateMessages(self, params):
         return
 
     def execute(self, params, messages):
-        gis_dir = params[0].valueAsText
-        inLot = params[1].valueAsText
-        mlLot = params[2].valueAsText
+        project = params[0].valueAsText
+        gis_dir = params[1].valueAsText
+        inLot = params[2].valueAsText
+        mlLot = params[3].valueAsText
 
         def unique_values(table, field):  ##uses list comprehension
             with arcpy.da.SearchCursor(table, [field]) as cursor:
@@ -1436,12 +1407,7 @@ class UpdateLotGIS(object):
             arcpy.Delete_management(deleteTempLayers)
 
             # Export the updated GIS portal to excel sheet for checking lot IDs
-            try:
-                proj_name = re.search('N2|SC', mlLot).group()
-                file_name = proj_name + "_" + "GIS_Land_Portal.xlsx"
-            except:
-                file_name = "_" + "GIS_Land_Portal.xlsx"
-
+            file_name = project + "_" + "GIS_Land_Portal.xlsx"
             arcpy.conversion.TableToExcel(inLot, os.path.join(gis_dir, file_name))
 
         except:
@@ -1858,6 +1824,16 @@ class CheckLotUpdatedStatusGIS(object):
         self.description = "Summary Stats for Lot Status (GIS Portal and GIS ML)"
 
     def getParameterInfo(self):
+        proj = arcpy.Parameter(
+            displayName = "Project Extension: N2 or SC",
+            name = "Project Extension: N2 or SC",
+            datatype = "GPString",
+            parameterType = "Required",
+            direction = "Input"
+        )
+        proj.filter.type = "ValueList"
+        proj.filter.list = ['N2', 'SC']
+    
         gis_dir = arcpy.Parameter(
             displayName = "GIS Masterlist Storage Directory",
             name = "GIS master-list directory",
@@ -1883,16 +1859,17 @@ class CheckLotUpdatedStatusGIS(object):
             direction = "Input"
         )
 
-        params = [gis_dir, gis_layer, gis_ml]
+        params = [proj, gis_dir, gis_layer, gis_ml]
         return params
 
     def updateMessages(self, params):
         return
 
     def execute(self, params, messages):
-        gis_dir = params[0].valueAsText
-        gis_layer = params[1].valueAsText
-        gis_ml = params[2].valueAsText
+        project = params[0].valueAsText
+        gis_dir = params[1].valueAsText
+        gis_layer = params[2].valueAsText
+        gis_ml = params[3].valueAsText
 
         # Read table
         gis_table = pd.read_excel(gis_ml)
@@ -1902,6 +1879,7 @@ class CheckLotUpdatedStatusGIS(object):
         statusla_field = 'StatusLA'
         handedover_field = 'HandedOver'
         package_field = 'CP'
+        municipality_field = 'Municipality'
         count_name = 'counts'
         lsuffix_portal = '_Portal'
         rsuffix_excel = '_Excel'
@@ -1909,7 +1887,7 @@ class CheckLotUpdatedStatusGIS(object):
         counts_excel = count_name + rsuffix_excel
 
         # 1.0 Status LA
-        keep_fields = [package_field, statusla_field]
+        keep_fields = [municipality_field, statusla_field]
 
         ## 1.0.1. GIS Portal
         gis_portal_statusla = gis_portal.groupby(keep_fields)[statusla_field].count().reset_index(name=count_name)
@@ -1920,15 +1898,20 @@ class CheckLotUpdatedStatusGIS(object):
         gis_ml_statusla = gis_ml_statusla.sort_values(by=keep_fields)
 
         ## 1.0.3. Merge
-        table = gis_portal_statusla.join(gis_ml_statusla,lsuffix=lsuffix_portal,rsuffix=rsuffix_excel)
+        table = pd.merge(left=gis_portal_statusla, right=gis_ml_statusla, how='outer', left_on=[municipality_field, statusla_field], right_on=[municipality_field, statusla_field])
         table['count_diff'] = np.NAN
-        table['count_diff'] = table[counts_portal] - table[counts_excel]
+        table['count_diff'] = table['counts_y'] - table['counts_x']
+        table = table.rename(columns={"counts_x": str(counts_portal), "counts_y": str(counts_excel)})
+        
+        # table = gis_portal_statusla.join(gis_ml_statusla,lsuffix=lsuffix_portal,rsuffix=rsuffix_excel)
+        # table['count_diff'] = np.NAN
+        # table['count_diff'] = table[counts_portal] - table[counts_excel]
 
         arcpy.AddMessage('Merge completed..')
         arcpy.AddMessage('The summary statistics table for StatusLA field is successfully produced.')
 
         # 2.0. HandedOver
-        keep_fields = [package_field, handedover_field]
+        keep_fields = [municipality_field, handedover_field]
 
         ## 2.0.1. GIS Portal
         gis_portal_handedover = gis_portal.groupby(keep_fields)[handedover_field].count().reset_index(name=count_name)
@@ -1939,17 +1922,21 @@ class CheckLotUpdatedStatusGIS(object):
         gis_ml_handedover = gis_ml_handedover.sort_values(by=keep_fields)
 
         ## 2.0.3. Merge
-        table_handedover = gis_portal_handedover.join(gis_ml_handedover,lsuffix=lsuffix_portal,rsuffix=rsuffix_excel)
+        # table_handedover = pd.merge(left=gis_portal_handedover, right=gis_ml_handedover, how='outer', left_on=[municipality_field, handedover_field], right_on=[municipality_field, handedover_field])
         table_handedover['count_diff'] = np.NAN
-        table_handedover['count_diff'] = table_handedover[counts_portal] - table_handedover[counts_excel]
+        table_handedover['count_diff'] = table_handedover['counts_y'] - table_handedover['counts_x']
+        table_handedover = table_handedover.rename(columns={"counts_x": str(counts_portal), "counts_y": str(counts_excel)})
+
+        # table_handedover = gis_portal_handedover.join(gis_ml_handedover,lsuffix=lsuffix_portal,rsuffix=rsuffix_excel)
+        # table_handedover['count_diff'] = np.NAN
+        # table_handedover['count_diff'] = table_handedover[counts_portal] - table_handedover[counts_excel]
 
         arcpy.AddMessage('Merge completed..')
         arcpy.AddMessage('The summary statistics table for HandedOver field is successfully produced.')
         
         # Export the updated GIS portal to excel sheet for checking lot IDs
         try:
-            proj_name = re.search('N2|SC', gis_ml).group()
-            file_name = "CHECK-" + proj_name + "_" + "LA_Summary_Statistics_GIS_Portal_and_GIS_ML.xlsx"
+            file_name = "CHECK-" + project + "_" + "LA_Summary_Statistics_GIS_Portal_and_GIS_ML.xlsx"
         except:
             file_name = "CHECK-LA_Summary_Statistics_GIS_Portal_and_GIS_ML.xlsx"
             
@@ -1964,6 +1951,16 @@ class CheckMissingLotIDs(object):
         self.description = "Check Missing Lot IDs (Rap ML, GIS ML, and GIS Portal)"
 
     def getParameterInfo(self):
+        proj = arcpy.Parameter(
+            displayName = "Project Extension: N2 or SC",
+            name = "Project Extension: N2 or SC",
+            datatype = "GPString",
+            parameterType = "Required",
+            direction = "Input"
+        )
+        proj.filter.type = "ValueList"
+        proj.filter.list = ['N2', 'SC']
+    
         gis_dir = arcpy.Parameter(
             displayName = "GIS Masterlist Storage Directory",
             name = "GIS master-list directory",
@@ -1997,17 +1994,18 @@ class CheckMissingLotIDs(object):
             direction = "Input"
         )
 
-        params = [gis_dir, gis_table_ml, gis_portal_ml, rap_table_ml]
+        params = [proj, gis_dir, gis_table_ml, gis_portal_ml, rap_table_ml]
         return params
 
     def updateMessages(self, params):
         return
 
     def execute(self, params, messages):
-        gis_dir = params[0].valueAsText
-        gis_table_ml = params[1].valueAsText
-        gis_portal_ml = params[2].valueAsText
-        rap_table_ml = params[3].valueAsText
+        project = params[0].valueAsText
+        gis_dir = params[1].valueAsText
+        gis_table_ml = params[2].valueAsText
+        gis_portal_ml = params[3].valueAsText
+        rap_table_ml = params[4].valueAsText
 
         def drop_empty_rows(table, field):
             id = table.index[(table[field] == '') | (table[field].isna()) | (table[field].isnull())] # Do not use isna() as 'keep_default_na = False'
@@ -2042,10 +2040,15 @@ class CheckMissingLotIDs(object):
         gis_table = pd.read_excel(gis_table_ml)
         gis_portal = pd.read_excel(gis_portal_ml)
 
+        # rename City/Municipality or City => 'Municipality'
+        colname_change = rap_table.columns[rap_table.columns.str.contains('^City|Municipality',regex=True)]
+        rap_table = rename_columns_title(rap_table, colname_change[0], 'Municipality')
+
         join_field = 'LotID'
         rap_status_field = 'StatusLA'
         rap_status_new_field = 'Rap_Status'
         package_field = 'CP'
+        municipality_field = 'Municipality'
         handedover_field = 'HandedOver'
         handedover_new_field = 'Rap_HandedOver'
         package_x_field = 'Package_x'
@@ -2056,7 +2059,7 @@ class CheckMissingLotIDs(object):
         need_to_check_field = 'Need_to_Check'
 
         # Convert to strings
-        to_string_fields = [join_field, package_field]
+        to_string_fields = [join_field, municipality_field]
         toString(rap_table, to_string_fields)
         toString(gis_table, to_string_fields)
         toString(gis_portal, to_string_fields)
@@ -2067,13 +2070,13 @@ class CheckMissingLotIDs(object):
 
         ### 1.0. Keep only 'LotID', 'CP', and 'StatusLA' fields
         #### 1.0.1. RAP ML
-        search_names = '|'.join([join_field, package_field, rap_status_field])
+        search_names = '|'.join([join_field, municipality_field, rap_status_field])
         bool_list = [e for e in rap_table.columns.str.contains(search_names, regex=True)]
         ind_id = [i for i, val in enumerate(bool_list) if val]
         rap_table_statusla = rap_table.iloc[:, ind_id]
 
         #### 1.0.2. GIS ML
-        search_names = '|'.join([join_field, package_field])
+        search_names = '|'.join([join_field, municipality_field])
         bool_list = [e for e in gis_table.columns.str.contains(search_names, regex=True)]
         ind_id = [i for i, val in enumerate(bool_list) if val]
         gis_table_statusla = gis_table.iloc[:, ind_id]
@@ -2129,13 +2132,13 @@ class CheckMissingLotIDs(object):
         ### 1.0. Keep only 'LotID', 'CP', and 'HandedOver' fields
         #### 1.0.1. RAP ML
         handedover_field_search = "^" + handedover_field + "$"
-        search_names = '|'.join([join_field, package_field, handedover_field_search])
+        search_names = '|'.join([join_field, municipality_field, handedover_field_search])
         bool_list = [e for e in rap_table.columns.str.contains(search_names, regex=True)]
         ind_id = [i for i, val in enumerate(bool_list) if val]
         rap_table_handedover = rap_table.iloc[:, ind_id]
 
         #### 1.0.2. GIS ML
-        search_names = '|'.join([join_field, package_field])
+        search_names = '|'.join([join_field, municipality_field])
         bool_list = [e for e in gis_table.columns.str.contains(search_names, regex=True)]
         ind_id = [i for i, val in enumerate(bool_list) if val]
         gis_table_handedover = gis_table.iloc[:, ind_id]
@@ -2189,8 +2192,7 @@ class CheckMissingLotIDs(object):
         ## This table shows lot ids which are missing in either GIS ML or GIS Portal or both.
         ## Check the following lots with Envi Team: lots with status in Envi Table but not reflected in GIS ML or GIS Portal or both.
         try:
-            proj_name = re.search('N2|SC', gis_table_ml).group()
-            file_name = "CHECK-" + proj_name + "_" + "LA_Missing_Lot_IDs.xlsx"
+            file_name = "CHECK-" + project + "_" + "LA_Missing_Lot_IDs.xlsx"
         except:
             file_name = "_" + "LA_Missing_Lot_IDs.xlsx"
         

@@ -24,7 +24,6 @@
 # Delayed = 3
 # Completed = 4
 
-
 library(googlesheets4)
 library(openxlsx)
 library(dplyr)
@@ -36,95 +35,9 @@ library(lubridate)
 library(rrapply)
 library(purrr)
 
-####################################################################
-### 0: PRELIMINARY WORK----
-## Please run the following code when nPierNumber needs to be re-assigned
-
-## Make sure that nPierNumber follows the format of each site planner from N-01 to N-04
-aa = file.choose()
-x = read.xlsx(aa)
-
-x$pp2 = as.character(x$pp2)
-
-id = which(x$pp<10)
-x$pp2[id] = paste("0",x$pp[id],sep="")
-
-## N-01 ##
-# e.g., P24A, P24B,  (A and B is pile number)
-id = which(x$CP=="N-01")
-x$nPierNumber[id] = x$PierNumber[id]
-x$nPierNumber[id] = gsub("-","",x$nPierNumber[id])
-
-
-pierLetter = c("A","B","C","D","E","F","G","H","I","J","K","L")
-upp = unique(x$pp[id])
-upp = upp[!is.na(upp)]
-
-head(x)
-for(i in upp){
-  id = which(x$CP=="N-01" & x$pp==i)
-  x$nPierNumber[id] = paste(x$nPierNumber[id],pierLetter[i],sep="")
-}
-
-## N-02 ##
-# e.g., P429-P01, P429-P02 (P01 and P02 are pile numbers)
-id = which(x$CP=="N-02")
-x$nPierNumber[id] = x$PierNumber[id]
-x$nPierNumber[id] = gsub("-","",x$nPierNumber[id])
-
-pile_id = which(x$CP=="N-02" & x$Type==1)
-x$nPierNumber[pile_id] = paste(x$nPierNumber[pile_id],"-P",x$pp2[pile_id],sep="")
-
-## N-03 #
-# e.g., P826-1, P826-2 (1 and 2 are pile numbers)
-id = which(x$CP=="N-03")
-x$nPierNumber[id] = x$PierNumber[id]
-x$nPierNumber[id] = gsub("-","",x$nPierNumber[id])
-
-pile_id = which(x$CP=="N-03" & x$Type==1)
-x$nPierNumber[pile_id] = paste(x$nPierNumber[pile_id],"-",x$pp[pile_id],sep="")
-
-head(x[which(x$CP=="N-03"),],20)
-
-## N-04 ##
-# e.g., P1159-01, P1159-02 (01 is pile number)
-id = which(x$CP=="N-04")
-x$nPierNumber[id] = x$PierNumber[id]
-x$nPierNumber[id] = gsub("-","",x$nPierNumber[id])
-
-pile_id = which(x$CP=="N-04" & x$Type==1)
-x$nPierNumber[pile_id] = paste(x$nPierNumber[pile_id],"-",x$pp2[pile_id],sep="")
-
-
-## Reformat date
-x$updated = "2022-02-07"
-x$updated = as.Date(x$updated, origin = "1899-12-30")
-x$updated = as.Date(x$updated, format="%m/%d/%y %H:%M:%S")
-
-x$start_date = as.Date(x$start_date, origin = "1899-12-30")
-x$start_date = as.Date(x$start_date, format="%m/%d/%y %H:%M:%S")
-
-x$end_date = as.Date(x$end_date, origin = "1899-12-30")
-x$end_date = as.Date(x$end_date, format="%m/%d/%y %H:%M:%S")
-
-# Re-assign ID
-## Bored Piles: Contract Package No. + Pier Number + Structure Type + Bored Pile No.
-### e.g., N-04-PLK-1-Pile-L1
-
-## Others: Contract Package No. + Pier Number + Structure Type
-### e.g., N-04-PLK-1-PileCap
-
-x$Status1 = as.numeric(x$Status1)
-
-write.xlsx(x,MLTable)
-##
-
-
-############################################################################
-
 #******************************************************************#
 ## Enter Date of Update ##
-date_update = "2023-10-25"
+date_update = "2024-06-05"
 
 #******************************************************************#
 
@@ -192,8 +105,8 @@ url = "https://docs.google.com/spreadsheets/d/11NMBpr1nKXuOgooHDl-CARvrieVN7VjEp
 
 
 boredPiles = 2
-pileC_pierC_pierH = 3
-precast = 9
+pileC_pierC_pierH = 4
+precast = 12
 
 #################################
 ### N01: BORED PILES #############----
@@ -296,6 +209,16 @@ if(length(id) > 0) {
 # 5. Add field names
 x$CP = "N-01"
 x$Type = 1
+
+
+# P421H1 (X) -> P421H
+id = which(str_detect(x$nPierNumber, "^P421H1$"))
+x$nPierNumber[id] = gsub("H1", "H", x$nPierNumber[id])
+
+id = which(str_detect(x$nPierNumber, "^P421H$"))
+if(length(id) > 0) {
+  x = x[-id, ]
+}
 
 # 5. Join new status to Viaduct masterlist
 y = read.xlsx(MLTable)
@@ -859,15 +782,15 @@ x$Type = 5
 x$nPierNumber = as.character(x$nPierNumber)
 rem = unique(str_extract(x$nPierNumber,"\\([^()]+\\)"))
 
-if(!is.na(rem)){
-  ## 6.1. remove NA
-  rem = rem[!is.na(rem)]
-  rem = paste0(rem,collapse = "|")
-  
-  ## 6.2. remove from nPierNumber
-  id = which(str_detect(x$nPierNumber,rem))
-  x$nPierNumber[id] = gsub(rem,"",x$nPierNumber[id])
-}
+# if(!is.na(rem)){
+#   ## 6.1. remove NA
+#   rem = rem[!is.na(rem)]
+#   rem = paste0(rem,collapse = "|")
+#   
+#   ## 6.2. remove from nPierNumber
+#   id = which(str_detect(x$nPierNumber,rem))
+#   x$nPierNumber[id] = gsub(rem,"",x$nPierNumber[id])
+# }
 
 
 
@@ -1056,6 +979,10 @@ x$end_date = as.POSIXlt(x$end_date, origin="1970-01-01",tZ="UTC")
 x$end_date = as.Date(x$end_date, origin = "1899-12-30")
 x$end_date = as.Date(x$end_date, format="%m/%d/%y %H:%M:%S")
 
+##P596, P597, P598. Civil format is odd. I will remove N, S, NB, or SB
+id = which(str_detect(x$nPierNumber, "^P59[6,7,8][S,SB,N,NB].*P\\d+"))
+x$nPierNumber[id] = gsub("SB|NB|S|B|N","",x$nPierNumber[id])
+
 # 10.Join 
 y = read.xlsx(MLTable)
 yx = left_join(y,x,by=c("nPierNumber","Type"))
@@ -1201,6 +1128,18 @@ x$nPierNumber[] = gsub("P-","P",x$nPierNumber)
 x$nPierNumber = gsub("LS","-LS",x$nPierNumber)
 x$nPierNumber = gsub("RS","-RS",x$nPierNumber)
 
+## S = SB, N = NB
+id = which(str_detect(x$nPierNumber, "^P59[6,7][S]$"))
+x$nPierNumber[id] = gsub("S$", "SB", x$nPierNumber[id])
+
+id = which(str_detect(x$nPierNumber, "^P59[6,7][N]$"))
+x$nPierNumber[id] = gsub("N$", "NB", x$nPierNumber[id])
+
+## Civil Format is not accommodating GIS format
+## P-598 -> P-598SB
+id = which(str_detect(x$nPierNumber, "^P598$"))
+x$nPierNumber[id] = "P598SB"
+
 # 7. Add field names
 x$CP = "N-02"
 x$Type = 2
@@ -1327,6 +1266,13 @@ x$nPierNumber[] = gsub("P-","P",x$nPierNumber)
 x$nPierNumber = gsub("LS","-LS",x$nPierNumber)
 x$nPierNumber = gsub("RS","-RS",x$nPierNumber)
 
+## P-596, P-597. S -> SB, N -> NB
+id = which(str_detect(x$nPierNumber, "^P59[6,7][S]$"))
+x$nPierNumber[id] = gsub("S", "SB", x$nPierNumber[id])
+
+id = which(str_detect(x$nPierNumber, "^P59[6,7][N]$"))
+x$nPierNumber[id] = gsub("N", "NB", x$nPierNumber[id])
+
 # 7. Add field names
 x$CP = "N-02"
 x$Type = 3
@@ -1451,6 +1397,13 @@ x$nPierNumber[] = gsub("P-","P",x$nPierNumber)
 
 x$nPierNumber = gsub("LS","-LS",x$nPierNumber)
 x$nPierNumber = gsub("RS","-RS",x$nPierNumber)
+
+## P-596, P-597. S -> none, N -> none
+id = which(str_detect(x$nPierNumber, "^P59[6,7][S]$"))
+x$nPierNumber[id] = gsub("S", "", x$nPierNumber[id])
+
+id = which(str_detect(x$nPierNumber, "^P59[6,7][N]$"))
+x$nPierNumber[id] = gsub("N", "", x$nPierNumber[id])
 
 # 7. Add field names
 x$CP = "N-02"
@@ -1675,10 +1628,9 @@ write.xlsx(yx, MLTable)
 v = range_read(url, sheet = n03_others)
 v = data.frame(v)
 
-x=v[,c(1,19,22)]
+x=v[,c(1,20,23)]
 id = which(str_detect(x[[3]],"Completed"))
 x=x[id:nrow(x),]
-
 colnames(x) = c("nPierNumber","end_date","Status1")
 
 # 2. Check the presence of columns in the format of 'list'
@@ -1697,8 +1649,8 @@ for(i in seq(coln)) {
 }
 
 # 3. First and end
-id = which(x$Status1 == "Completed")
-x = x[-c(1:id),]
+ id = which(x$Status1 == "Completed")
+ x = x[-c(1:id),]
 
 # 3. Delete empty 
 id=which(is.na(x$Status1))
@@ -1729,9 +1681,19 @@ x$Type = 2
 
 # 6. Edit nPierNumber
 # Extract only piles
-pile_id = which(str_detect(x$nPierNumber,"^P-"))
+pile_id = which(str_detect(x$nPierNumber,"^P-|^MT"))
 x = x[pile_id,]
 x$nPierNumber = gsub("^P-","P",x$nPierNumber)
+
+id = which(str_detect(x$nPierNumber,"^MT"))
+x$nPierNumber[id] = gsub("-","",x$nPierNumber[id])
+
+x$nPierNumber = toupper(x$nPierNumber)
+
+id = which(str_detect(x$nPierNumber, '^MT.*P[1,2]'))
+if(length(id) > 0) {
+  x$nPierNumber[id] = gsub('P','',x$nPierNumber[id])
+}
 
 # Note if pier number has these notations, we need to fix this. "P976R-4" = "P976-R4"
 id = which(str_detect(x$nPierNumber, ".*L-"))
@@ -1752,7 +1714,6 @@ yx = left_join(y,x,by=c("nPierNumber","Type"))
 
 ## Check if the number of Status1 for each Type is same between x and yx.
 ## Check for piles with completed status
-head(yx)
 x_pile = x$nPierNumber[which(x$Status1==4)]
 yx_pile = yx$nPierNumber[which(yx$Status1.y==4 & yx$Type==2 & yx$CP.y=="N-03")]
 
@@ -1803,7 +1764,7 @@ write.xlsx(yx, MLTable)
 
 
 ## N-03 PIER COLUMN:-----
-x=v[,c(1,32,35)]
+x=v[,c(1,33,36)]
 id = which(str_detect(x[[3]],"Completed"))
 x=x[id:nrow(x),]
 
@@ -1930,7 +1891,7 @@ write.xlsx(yx, MLTable)
 
 
 ## N-03 PIER Head:-----
-x=v[,c(1,43,46)]
+x=v[,c(1,44,47)]
 id = which(str_detect(x[[3]],"Completed"))
 x=x[id:nrow(x),]
 
@@ -2001,6 +1962,14 @@ x$nPierNumber[id] = gsub("L", "-L", x$nPierNumber[id])
 id = which(str_detect(x$nPierNumber, ".*R"))
 x$nPierNumber[id] = gsub("R", "-R", x$nPierNumber[id])
 
+# P1120, P1121 has only one structure. If civil GS has two such as -L or -R,
+# we need to fix this to join to GIS table
+id = which(str_detect(x$nPierNumber,"^P1120|^P1121"))
+x$nPierNumber[id] = gsub('-L|-R','',x$nPierNumber[id])
+
+id = which(duplicated(x$nPierNumber))
+x = x[-id,]
+
 # 7. Join 
 y = read.xlsx(MLTable)
 yx = left_join(y,x,by=c("nPierNumber","Type"))
@@ -2056,24 +2025,15 @@ yx[is.na(yx$Status1),]
 write.xlsx(yx, MLTable)
 
 
-###############################################################
-####################### N-04 #################################:----
-##############################################################
-#boredPile = 4
-pCap_pCol_pHead = 6
-
-#url = "https://docs.google.com/spreadsheets/d/1OWdmM36PWL5MgH0lK9HpigaoVq4L7Q6hm7DSN2FxiAA/edit#gid=0"
-url = "https://docs.google.com/spreadsheets/d/1uVTh_m8Owr4dYypHSSc0nRnGzYCdtceiASCj_oPd6jo/edit?usp=sharing"
-
-### N-04: BORED PILES #:----
-# Read and write as CSV and xlsx
-v = range_read(url, sheet = boredPile)
+## N-03 precast: ----
+v = range_read(url, sheet = 3)
 v = data.frame(v)
 
-# Restruecture table
-## I temporarliy used dummy field names to be discarded so need to remove it
-x = v[,c(6,19,30)]
-colnames(x) = c("nPierNumber","end_date","Status1")
+x=v[,c(1,20,22)]
+id = which(str_detect(x[[3]],"yes|Yes|YES"))
+ids = id+1
+idd = sort(c(id, ids))
+x=x[idd,]
 
 # 2. Check the presence of columns in the format of 'list'
 coln = colnames(x)
@@ -2089,19 +2049,49 @@ for(i in seq(coln)) {
     x[[i]] = unlist(x[[i]], use.names = FALSE)
   }
 }
+colnames(x) = c("nPierNumber","end_date","Status1")
+piers = x$nPierNumber[which(!is.na(x$nPierNumber))]
+status = x$Status1[which(!is.na(x$Status1))]
+id = which(is.na(x$nPierNumber) & is.na(x$end_date) & is.na(x$Status1))
+id2 = which(!str_detect(x$end_date, '^A|NA'))
+idd = sort(c(id,id2))
+dates = x$end_date[idd]
 
-# 3. first and end
-id = which(x$Status1 == "Status")
-x = x[-c(1:id),]
-x = x[str_detect(x$nPierNumber,"^P|^PLK|^DEP"),]
+x = data.frame(nPierNumber=piers, end_date=dates, Status1=status)
 
-# 4. Remove empty Status1
-rid = which(is.na(x$Status1))
+##########################################################
 
-if(length(rid)==0){
-  print("no nrows being removed")
+###############################################################################
+# WORK IN PROGRESS
+# identify missing end-date
+head(x,90)
+id = which(is.na(x$nPierNumber) & is.na(x$end_date) & is.na(x$Status1))
+piers_for_dates = x$nPierNumber[id - 1]
+search_piers = paste0("^",piers_for_dates,"$",collapse="|")
+id1 = which(str_detect(x$nPierNumber,search_piers))
+id2 = id1 - 1
+idd = sort(c(id1, id2))
+x1 = x[idd,]
+x1 = x[which(str_detect(x$nPierNumber,search_piers)),]
+
+x2=v[,c(1,10:20,23)]
+x2 = x2[which(str_detect(x2[[1]], search_piers)),]
+
+###############################################################################
+
+
+
+# 3. First and end
+x$Status1 = tolower(x$Status1)
+id = which(x$Status1 == unique(x$Status1))
+x = x[id,]
+
+# 3. Delete empty 
+id=which(is.na(x$Status1))
+if(length(id) > 0) {
+  x=x[-id,]
 } else {
-  x = x[-rid,]
+  print("No empty Status1")
 }
 
 # 3. Edit end_date
@@ -2110,102 +2100,60 @@ x$end_date = as.POSIXlt(x$end_date, origin="1970-01-01",tZ="UTC")
 x$end_date = as.Date(x$end_date, origin = "1899-12-30")
 x$end_date = as.Date(x$end_date, format="%m/%d/%y %H:%M:%S")
 
-# 4. Edit nPierNumber
-# Remove hyphen from pierNumber
-## correct with "P-"
-x$nPierNumber = gsub("[[:space:]]","",x$nPierNumber)
-#x$nPierNumber = gsub("^[P]","P-",x$nPierNumber)
-#x$nPierNumber = gsub("^PLK ","PLK-",x$nPierNumber)
-x$nPierNumber = gsub("DEPO","DEP0",x$nPierNumber)
+# reformat nPierNumber
+x$nPierNumber = gsub('-.*','',x$nPierNumber)
+x$Type = 5
+x$Status1 = 4
+x$CP = 'N-03'
 
-## Fix some wrong notation of nPierNumber
-id_LS = which(str_detect(x$nPierNumber,'LS'))
-id_RS = which(str_detect(x$nPierNumber,'RS'))
-
-x$nPierNumber[id_LS] = gsub("LS-01","-1LS",x$nPierNumber[id_LS])
-x$nPierNumber[id_LS] = gsub("LS-02","-2LS",x$nPierNumber[id_LS])
-x$nPierNumber[id_LS] = gsub("LS-03","-3LS",x$nPierNumber[id_LS])
-
-#x$nPierNumber[id_LS] = gsub("01LS","1LS",x$nPierNumber[id_LS])
-#x$nPierNumber[id_LS] = gsub("02LS","2LS",x$nPierNumber[id_LS])
-
-x$nPierNumber[id_RS] = gsub("RS-01","-1RS",x$nPierNumber[id_RS])
-x$nPierNumber[id_RS] = gsub("RS-02","-2RS",x$nPierNumber[id_RS])
-x$nPierNumber[id_RS] = gsub("RS-03","-3RS",x$nPierNumber[id_RS])
-
-#x$nPierNumber[id_RS] = gsub("01RS","1RS",x$nPierNumber[id_RS])
-#x$nPierNumber[id_RS] = gsub("02RS","2RS",x$nPierNumber[id_RS])
-
-# 5. Edit Status1
-x$Status1[str_detect(x$Status1,pattern="Casted|casted")] = 4 # Bored Pile completed
-x$Status1[str_detect(x$Status1,pattern="Inprogress")] = 1 # Under Construction
-x$Status1[str_detect(x$Status1,pattern="Incomplete")] = 1 # Delayed
-x$Status1 = as.numeric(x$Status1)
-
-## 5.1. remove emtpy status1 if any
-id = which(is.na(x$Status1))
+id = which(x$nPierNumber == x$nPierNumber[duplicated(x$nPierNumber)])
 if(length(id) > 0) {
-  x = x[-id,]
-} else {
-  print("No empty Status1")
+  x = x[-id[1], ]
 }
 
-# 6. Remove duplicated observations if any
-id = which(duplicated(x$nPierNumber))
-
-if(length(id)>0){
-  x = x[-id,]
-} else {
-  print("no duplicated observations")
-}
-
-# 7. Add field names
-x$CP = "N-04"
-x$Type = 1
-
-# 7. Join
 y = read.xlsx(MLTable)
 yx = left_join(y,x,by=c("nPierNumber","Type"))
 
 ## Check if the number of Status1 for each Type is same between x and yx.
 ## Check for piles with completed status
-x.pile = x$nPierNumber[x$Status1==4]
-yx.pile = yx$nPierNumber[which(yx$Status1.y==4 & yx$Type==1 & yx$CP.y=="N-04")]
+x_pile = x$nPierNumber[which(x$Status1==4)]
+yx_pile = yx$nPierNumber[which(yx$Status1.y==4 & yx$Type==5 & yx$CP.y=="N-03")]
 
-missing_in_yx = x.pile[!x.pile %in% yx.pile] # not exist in yx table
-missing_in_x = yx.pile[!yx.pile %in% x.pile] # not exist in x table
+str(x_pile)
+str(yx_pile)
+
+missing_in_yx = x_pile[!x_pile %in% yx_pile] # not exist in yx table
+missing_in_x = yx_pile[!yx_pile %in% x_pile] # not exist in x table
 
 check_Completed()
 
 # check all statuses
 x_t = table(x$Status1)
-yx_t = table(yx$Status1.y[which(yx$CP.y=="N-04" & yx$Type==1)])
+yx_t = table(yx$Status1.y[which(yx$CP.y=="N-03" & yx$Type==5)])
 
 check = x_t %in% yx_t
-check_function() 
+check_function()
 
-# 8.
-gg = which(yx$CP.x=="N-04" & yx$Type==1)
-
+# 8. Update table
+gg = which(yx$CP.x=="N-03" & yx$Type==5)
 yx$end_date.x = as.Date(yx$end_date.x, origin = "1899-12-30")
 yx$end_date.x = as.Date(yx$end_date.x, format="%m/%d/%y %H:%M:%S")
-
 yx$Status1.x[gg] = yx$Status1.y[gg]
 yx$end_date.x[gg] = yx$end_date.y[gg]
 
-delField = which(str_detect(colnames(yx), "Status1.y|Remarks|CP.y|end_date.y"))
+delField = which(str_detect(colnames(yx),"Status1.y|CP.y|end_date.y"))
 yx = yx[,-delField]
 
-# Change Status name
+# 9. Change Status name
 colnames(yx)[str_detect(colnames(yx),pattern="Status1")] = "Status1"
 colnames(yx)[str_detect(colnames(yx),pattern="CP")] = "CP"
 colnames(yx)[str_detect(colnames(yx),pattern="end_date")] = "end_date"
 
-# Convert nA to 1 (to be Constructed)
+# 10. Convert nA to 1 (to be Constructed)
 id = which(is.na(yx$Status1))
 yx$Status1[id] = 1
 
-# Add date of updating table
+# 11. Add date of updating table
 ## Delete old ones
 iid = which(colnames(yx) %in% colnames(yx)[str_detect(colnames(yx),"updated|Updated|UPDATED")])
 yx = yx[,-iid]
@@ -2213,13 +2161,173 @@ yx$updated = ymd(date_update)
 
 yx[is.na(yx$Status1),]
 
-# 
+# 12. Export output
 write.xlsx(yx, MLTable)
+
+
+###############################################################
+####################### N-04 #################################:----
+##############################################################
+#boredPile = 4
+pCap_pCol_pHead = 5
+
+#url = "https://docs.google.com/spreadsheets/d/1OWdmM36PWL5MgH0lK9HpigaoVq4L7Q6hm7DSN2FxiAA/edit#gid=0"
+url = "https://docs.google.com/spreadsheets/d/1ospNZHCvk2D35zB9psxkOczCExCfOvcp4skYQbDO7n4/edit?usp=sharing"
+
+# ### N-04: BORED PILES #:----
+# # Read and write as CSV and xlsx
+# v = range_read(url, sheet = boredPile)
+# v = data.frame(v)
+# 
+# # Restruecture table
+# ## I temporarliy used dummy field names to be discarded so need to remove it
+# x = v[,c(6,19,30)]
+# colnames(x) = c("nPierNumber","end_date","Status1")
+# 
+# # 2. Check the presence of columns in the format of 'list'
+# coln = colnames(x)
+# for(i in seq(coln)) {
+#   type = class(x[[i]])
+#   
+#   # if type is 'list', unlist
+#   if(type == "list") {
+#     ## Convert NULL to NA
+#     x[[i]] = rrapply(x[[i]], f = function(x) replace(x, is.null(x), NA))
+#     
+#     ## then unlist
+#     x[[i]] = unlist(x[[i]], use.names = FALSE)
+#   }
+# }
+# 
+# # 3. first and end
+# id = which(x$Status1 == "Status")
+# x = x[-c(1:id),]
+# x = x[str_detect(x$nPierNumber,"^P|^PLK|^DEP"),]
+# 
+# # 4. Remove empty Status1
+# rid = which(is.na(x$Status1))
+# 
+# if(length(rid)==0){
+#   print("no nrows being removed")
+# } else {
+#   x = x[-rid,]
+# }
+# 
+# # 3. Edit end_date
+# x$end_date = as.numeric(x$end_date)
+# x$end_date = as.POSIXlt(x$end_date, origin="1970-01-01",tZ="UTC")
+# x$end_date = as.Date(x$end_date, origin = "1899-12-30")
+# x$end_date = as.Date(x$end_date, format="%m/%d/%y %H:%M:%S")
+# 
+# # 4. Edit nPierNumber
+# # Remove hyphen from pierNumber
+# ## correct with "P-"
+# x$nPierNumber = gsub("[[:space:]]","",x$nPierNumber)
+# #x$nPierNumber = gsub("^[P]","P-",x$nPierNumber)
+# #x$nPierNumber = gsub("^PLK ","PLK-",x$nPierNumber)
+# x$nPierNumber = gsub("DEPO","DEP0",x$nPierNumber)
+# 
+# ## Fix some wrong notation of nPierNumber
+# id_LS = which(str_detect(x$nPierNumber,'LS'))
+# id_RS = which(str_detect(x$nPierNumber,'RS'))
+# 
+# x$nPierNumber[id_LS] = gsub("LS-01","-1LS",x$nPierNumber[id_LS])
+# x$nPierNumber[id_LS] = gsub("LS-02","-2LS",x$nPierNumber[id_LS])
+# x$nPierNumber[id_LS] = gsub("LS-03","-3LS",x$nPierNumber[id_LS])
+# 
+# #x$nPierNumber[id_LS] = gsub("01LS","1LS",x$nPierNumber[id_LS])
+# #x$nPierNumber[id_LS] = gsub("02LS","2LS",x$nPierNumber[id_LS])
+# 
+# x$nPierNumber[id_RS] = gsub("RS-01","-1RS",x$nPierNumber[id_RS])
+# x$nPierNumber[id_RS] = gsub("RS-02","-2RS",x$nPierNumber[id_RS])
+# x$nPierNumber[id_RS] = gsub("RS-03","-3RS",x$nPierNumber[id_RS])
+# 
+# #x$nPierNumber[id_RS] = gsub("01RS","1RS",x$nPierNumber[id_RS])
+# #x$nPierNumber[id_RS] = gsub("02RS","2RS",x$nPierNumber[id_RS])
+# 
+# # 5. Edit Status1
+# x$Status1[str_detect(x$Status1,pattern="Casted|casted")] = 4 # Bored Pile completed
+# x$Status1[str_detect(x$Status1,pattern="Inprogress")] = 1 # Under Construction
+# x$Status1[str_detect(x$Status1,pattern="Incomplete")] = 1 # Delayed
+# x$Status1 = as.numeric(x$Status1)
+# 
+# ## 5.1. remove emtpy status1 if any
+# id = which(is.na(x$Status1))
+# if(length(id) > 0) {
+#   x = x[-id,]
+# } else {
+#   print("No empty Status1")
+# }
+# 
+# # 6. Remove duplicated observations if any
+# id = which(duplicated(x$nPierNumber))
+# 
+# if(length(id)>0){
+#   x = x[-id,]
+# } else {
+#   print("no duplicated observations")
+# }
+# 
+# # 7. Add field names
+# x$CP = "N-04"
+# x$Type = 1
+# 
+# # 7. Join
+# y = read.xlsx(MLTable)
+# yx = left_join(y,x,by=c("nPierNumber","Type"))
+# 
+# ## Check if the number of Status1 for each Type is same between x and yx.
+# ## Check for piles with completed status
+# x.pile = x$nPierNumber[x$Status1==4]
+# yx.pile = yx$nPierNumber[which(yx$Status1.y==4 & yx$Type==1 & yx$CP.y=="N-04")]
+# 
+# missing_in_yx = x.pile[!x.pile %in% yx.pile] # not exist in yx table
+# missing_in_x = yx.pile[!yx.pile %in% x.pile] # not exist in x table
+# 
+# check_Completed()
+# 
+# # check all statuses
+# x_t = table(x$Status1)
+# yx_t = table(yx$Status1.y[which(yx$CP.y=="N-04" & yx$Type==1)])
+# 
+# check = x_t %in% yx_t
+# check_function() 
+# 
+# # 8.
+# gg = which(yx$CP.x=="N-04" & yx$Type==1)
+# 
+# yx$end_date.x = as.Date(yx$end_date.x, origin = "1899-12-30")
+# yx$end_date.x = as.Date(yx$end_date.x, format="%m/%d/%y %H:%M:%S")
+# 
+# yx$Status1.x[gg] = yx$Status1.y[gg]
+# yx$end_date.x[gg] = yx$end_date.y[gg]
+# 
+# delField = which(str_detect(colnames(yx), "Status1.y|Remarks|CP.y|end_date.y"))
+# yx = yx[,-delField]
+# 
+# # Change Status name
+# colnames(yx)[str_detect(colnames(yx),pattern="Status1")] = "Status1"
+# colnames(yx)[str_detect(colnames(yx),pattern="CP")] = "CP"
+# colnames(yx)[str_detect(colnames(yx),pattern="end_date")] = "end_date"
+# 
+# # Convert nA to 1 (to be Constructed)
+# id = which(is.na(yx$Status1))
+# yx$Status1[id] = 1
+# 
+# # Add date of updating table
+# ## Delete old ones
+# iid = which(colnames(yx) %in% colnames(yx)[str_detect(colnames(yx),"updated|Updated|UPDATED")])
+# yx = yx[,-iid]
+# yx$updated = ymd(date_update)
+# 
+# yx[is.na(yx$Status1),]
+# 
+# # 
+# write.xlsx(yx, MLTable)
 
 ###################################################
 ### N-04: Pilec Caps, Pier, and Pier Head #;----
 ###################################################
-
 ## N-04 PILE CAP:-----
 v = range_read(url, sheet = pCap_pCol_pHead)
 v = data.frame(v)
@@ -2288,7 +2396,6 @@ x$nPierNumber = gsub("RS","-RS",x$nPierNumber)
 x$CP = "N-04"
 x$Type = 2
 
-
 # 8. Join 
 head(y)
 y = read.xlsx(MLTable)
@@ -2353,7 +2460,7 @@ write.xlsx(yx, MLTable)
 
 
 ## N-04 PIER COLUMN:-----
-x=v[,c(18,21,22,25,26,29)]
+x=v[,c(18,20,21,22,24,25,26,29)]
 
 coln = colnames(x)
 for(i in seq(coln)) {
@@ -2370,68 +2477,25 @@ for(i in seq(coln)) {
 }
 
 # 1st lift
-x1 = x[-c(1:11),c(1,2)]
-colnames(x1) = c("end_date", "nPierNumber")
+firstRow = which(str_detect(x[,1],"Date Completed"))
+x1 = x[-c(1:firstRow),c(1:3)]
+colnames(x1) = c("end_date", "week", "nPierNumber")
 
-## Remove empty rows for completed date
-id=which(is.na(x1$end_date))
-if(length(id) > 0) {
-  x1 = x1[-id,]
-} else {
-  print("no empty rows")
-}
-
-## Remove empty rows for nPierNumber
-id=which(is.na(x1$nPierNumber))
-if(length(id) > 0) {
-  x1 = x1[-id,]
-} else {
-  print("no empty rows")
-}
+## Find where 'week' and 'nPierNumber' are both filled
+id=which(!is.na(x1$week) & !is.na(x1$nPierNumber))
+x1 = x1[id, c(1,3)]
 
 # 2nd lift
-x2 = x[-c(1:11),c(1,2,3,4)]
-
-## Remove empty rows for completed date
-id=which(is.na(x2[[1]]) | is.na(x2[[3]]))
-if(length(id) > 0) {
-  x2 = x2[-id,]
-} else {
-  print("no empty rows")
-}
-
-## Remove empty rows for nPierNumber
-id=which(is.na(x2[[4]]))
-if(length(id) > 0) {
-  x2 = x2[-id,]
-} else {
-  print("no empty rows")
-}
-
-x2 = x2[,c(3,4)]
-colnames(x2) = c("end_date", "nPierNumber")
+x2 = x[-c(1:firstRow),c(4:6)]
+colnames(x2) = c("end_date", "week", "nPierNumber")
+id=which(!is.na(x2$week) & !is.na(x2$nPierNumber))
+x2 = x2[id, c(1,3)]
 
 # 3rd lift
-x3 = x[-c(1:11),c(1,2,3,4,5,6)]
-
-## Remove empty rows for completed date
-id=which(is.na(x3[[1]]) | is.na(x3[[3]]) | is.na(x3[[5]]))
-if(length(id) > 0) {
-  x3 = x3[-id,]
-} else {
-  print("no empty rows")
-}
-
-## Remove empty rows for nPierNumber
-id=which(is.na(x3[[6]]))
-if(length(id) > 0) {
-  x3 = x3[-id,]
-} else {
-  print("no empty rows")
-}
-
-x3 = x3[,c(5,6)]
+x3 = x[-c(1:firstRow),c(7:8)]
 colnames(x3) = c("end_date", "nPierNumber")
+id=which(!is.na(x3$nPierNumber))
+x3 = x3[id,]
 
 # Compile x1, x2, and x3
 xx = rbind(x1, x2, x3)
@@ -2476,8 +2540,7 @@ yx = left_join(y,xx,by=c("nPierNumber","Type"))
 
 ## Check if the number of Status1 for each Type is same between x and yx.
 ## Check for piles with completed status
-head(yx)
-x_pile = x$nPierNumber[which(x$Status1==4)]
+x_pile = xx$nPierNumber[which(xx$Status1==4)]
 yx_pile = yx$nPierNumber[which(yx$Status1.y==4 & yx$Type==3 & yx$CP.x=="N-04")]
 
 str(x_pile)
@@ -2489,7 +2552,7 @@ missing_in_x = yx_pile[!yx_pile %in% x_pile] # not exist in x table
 check_Completed()
 
 # check all statuses
-x_t = table(x$Status1)
+x_t = table(xx$Status1)
 yx_t = table(yx$Status1.y[which(yx$CP.x=="N-04" & yx$Type==3)])
 
 check = x_t %in% yx_t
@@ -2562,6 +2625,12 @@ if(length(id) > 0) {
   print("No empty Status1")
 }
 
+# remove emtpy nPierNumber
+id = which(is.na(x$nPierNumber))
+if (length(id) > 0){
+  x = x[-id,]
+}
+
 # 3. Edit end_date
 x$end_date = as.numeric(x$end_date)
 x$end_date = as.POSIXlt(x$end_date, origin="1970-01-01",tZ="UTC")
@@ -2595,14 +2664,9 @@ x$nPierNumber = gsub("RS","-RS",x$nPierNumber)
 id=which(str_detect(x$nPierNumber,"P1159|P1160|P1161|P1162"))
 x$nPierNumber[id] = gsub("-LS|RS", "", x$nPierNumber[id])
 
-## REmove empty rows
-id=which(is.na(x$nPierNumber))
-x = x[-id,]
-
 # 7. Add field names
 x$CP = "N-04"
 x$Type = 4
-
 
 # 8. Join 
 y = read.xlsx(MLTable)
@@ -2674,11 +2738,12 @@ write.xlsx(yx, MLTable)
 # If planned_date < current date & Status1 is NOT complete, Status1 = 3 (delayed)
 today = Sys.Date()
 id = which(yx$planned_date < today & yx$Status1 != 4)
-
 yx$Status1[id] = 3 # delayed status
 
 yx$end_date = as.Date(yx$end_date, origin = "1899-12-30")
 yx$end_date = as.Date(yx$end_date, format="%m/%d/%y %H:%M:%S")
+yx$updated = as.Date(yx$updated, origin = "1899-12-30")
+yx$updated = as.Date(yx$updated, format="%m/%d/%y %H:%M:%S")
 
 write.xlsx(yx, MLTable)
 ################################################################
@@ -2690,7 +2755,6 @@ y1 = y[which(y$Status1 == 4),]
 ##agg_df <- aggregate(y1$Status1, by=list(y1$CP, y1$Type, y1$Year, y1$Status1), FUN=length)
 agg_df <- aggregate(y1$Status1, by=list(y1$CP, y1$Type, y1$Status1), FUN=length)
 agg_df
-
 
 ##
 agg_df <- aggregate(y1$Status1, by=list(y1$Year, y1$Month, y1$Type), FUN=length)
@@ -2705,3 +2769,83 @@ y1 = y[which(y$Status1 == 4),]
 agg_df <- aggregate(y1$Status1, by=list(y1$CP, y1$Type, y1$Status1), FUN=length)
 agg_df
 
+
+###
+a = file.choose()
+gis = read.xlsx(a)
+id=which(gis$H_Level == 2)
+gis_p = gis[id,]
+unique(gis_p$H_Level)
+
+
+b = file.choose()
+env = read.xlsx(b,startRow = 2)
+id=which(env$High_Level=='Pending Delivery')
+env_p = env[id,]
+
+str(gis_p)
+id_gis = gis_p$Id
+id_env = env_p$Id
+
+id_gis[!id_gis %in% id_env]
+id_env[!id_env %in% id_gis]
+
+
+?read.xlsx
+head(env)
+agg = aggregate(gis$H_Level, by=list(gis$H_Level,gis$Package),FUN=length)
+agg
+
+
+###
+a = file.choose()
+gis = read.xlsx(a)
+
+b = file.choose()
+env = read.xlsx(b,startRow = 2)
+
+c = file.choose()
+gis_por = read.xlsx(c)
+
+str(env)
+# StatusNVS3
+gis_sum <- aggregate(gis$StatusNVS3, by=list(gis$Package,gis$StatusNVS3), FUN=length)
+gis_portal_sum <- aggregate(gis_por$StatusNVS3, by=list(gis_por$Package,gis_por$StatusNVS3), FUN=length)
+env_sum <- aggregate(env$Status.NVS, by=list(env$Package,env$Status.NVS), FUN=length)
+
+statusNVS3_table = data.frame(gis_ml=gis_sum[,c(1,3)],gis_portal=gis_portal_sum[,3],env_ml=env_sum[,3])
+
+# HandedOver
+gis_sum <- aggregate(gis$HandedOver, by=list(gis$Package,gis$HandedOver), FUN=length); gis_sum=gis_sum[which(gis_sum$Group.2 == 1),]
+gis_portal_sum = aggregate(gis_por$HandedOver, by=list(gis_por$Package,gis_por$HandedOver), FUN=length); gis_portal_sum=gis_portal_sum[which(gis_portal_sum$Group.2 == 1),]
+env_sum <- aggregate(env$Handed.over.to.JV, by=list(env$Package,env$Handed.over.to.JV), FUN=length); env_sum=env_sum[which(env_sum$Group.2 == 1),]
+
+handedOver1_table = data.frame(gis_ml=gis_sum[,c(1,3)],gis_portal=gis_portal_sum[,3],env_ml=env_sum[,3])
+
+# PTE
+gis_sum <- aggregate(gis$PTE, by=list(gis$Package, gis$PTE), FUN=length); gis_sum=gis_sum[which(gis_sum$Group.2 == 1),]
+gis_portal_sum <- aggregate(gis_por$PTE, by=list(gis_por$Package,gis_por$PTE), FUN=length); gis_portal_sum=gis_portal_sum[which(gis_portal_sum$Group.2 == 1),]
+env_sum <- aggregate(env$Lot.with.PTE, by=list(env$Package,env$Lot.with.PTE), FUN=length); env_sum=env_sum[which(env_sum$Group.2 == 1),]
+
+pte1_table = data.frame(gis_ml=gis_sum[,c(1,3)],gis_portal=gis_portal_sum[,3],env_ml=env_sum[,3])
+
+
+# check Ids between GIS ML and GIS Attribute table
+str(gis_por)
+gis_ids = gis$Id
+gis_por_ids = gis_por$Id
+
+miss_ids_gis_portal = gis_ids[!gis_ids %in% gis_por_ids] # missing Ids in portal
+miss_id_names = paste0(miss_ids_gis_portal,collapse = "|")
+ids = which(str_detect(gis$Id,miss_id_names))
+gis[ids,c('Package','Id','HandedOver','PTE',"StatusNVS3")]
+
+ids=which(str_detect(env$Id,miss_id_names))
+env[ids,c('Package','Id','Handed.over.to.JV','Lot.with.PTE',"Status.NVS")]
+
+
+# statusNVS3 = 4
+gis_4_id = gis[which(gis$StatusNVS3 == 4),c('Id')]
+env_4_id = env[which(env$Status.NVS == 4),c('Id')]
+gis_4_id[!gis_4_id %in% env_4_id]
+env_4_id[!env_4_id %in% gis_4_id]

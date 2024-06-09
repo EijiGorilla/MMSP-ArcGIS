@@ -594,8 +594,19 @@ class UpdateISF(object):
             else:
                 cp_suffix = 'S-'
         
+            rap_table_stats = pd.read_excel(rap_isf_ms)
             rap_table = pd.read_excel(rap_isf_ms)
             gis_table = pd.read_excel(gis_isf_ms)
+
+            # Field definitions
+            municipality_field = 'Municipality'
+            barangay_field = 'Barangay'
+            structure_id_field = 'StrucID'
+            nlo_status_field = 'StatusRC'
+            cp_field = 'CP'
+            count_name = 'counts'
+            counts_rap = count_name + '_RAP'
+            counts_gis = count_name + '_GIS'
 
             # Create backup files
             try:
@@ -604,33 +615,47 @@ class UpdateISF(object):
                 arcpy.AddMessage('You did not choose to create a backup file of {0} master list.'.format('ISF_Relocation_Status'))
             
             # Rename 'City' to Municipality
-            renamed_city = 'Municipality'
             try:
                 renamed_col = rap_table.columns[rap_table.columns.str.contains('|'.join(['City','city', 'Muni']))]
-                rap_table = rap_table.rename(columns={str(renamed_col[0]): renamed_city})
-                first_letter_capital(rap_table, [renamed_city])
+                rap_table = rap_table.rename(columns={str(renamed_col[0]): municipality_field})
+                first_letter_capital(rap_table, [municipality_field])
+
+                # For Summary Stats
+                renamed_col = rap_table_stats.columns[rap_table_stats.columns.str.contains('|'.join(['City','city', 'Muni']))]
+                rap_table_stats = rap_table_stats.rename(columns={str(renamed_col[0]): municipality_field})
+                first_letter_capital(rap_table_stats, [municipality_field])
+            
+
             except:
                 pass
 
             # Rename Barangay
-            renamed_brgy = 'Barangay'
             try:
                 renamed_col = rap_table.columns[rap_table.columns.str.contains('|'.join(['Bara','bara']))]
-                rap_table = rap_table.rename(columns={str(renamed_col[0]): renamed_brgy})
+                rap_table = rap_table.rename(columns={str(renamed_col[0]): barangay_field})
                 #first_letter_capital(rap_table, [renamed_brgy])
+
+                # For summary stats
+                renamed_col = rap_table_stats.columns[rap_table_stats.columns.str.contains('|'.join(['Bara','bara']))]
+                rap_table_stats = rap_table_stats.rename(columns={str(renamed_col[0]): barangay_field})
             except:
                 pass
 
             # force dtypes as string
-            toString(rap_table, ['Municipality', 'Barangay', 'StrucID', 'CP'])
+            toString(rap_table, [municipality_field, barangay_field, structure_id_field, cp_field])
+            toString(rap_table_stats, [municipality_field, barangay_field, structure_id_field, cp_field])
 
             # Reformat CP
             if proj == 'N2':
-                rap_table['CP'] = rap_table['CP'].str[-2:]       
-                rap_table['CP'] = cp_suffix + rap_table['CP']
+                rap_table[cp_field] = rap_table[cp_field].str[-2:]       
+                rap_table[cp_field] = cp_suffix + rap_table[cp_field]
+                
+                # For summary stats
+                rap_table_stats[cp_field] = rap_table_stats[cp_field].str[-2:]       
+                rap_table_stats[cp_field] = cp_suffix + rap_table_stats[cp_field]
 
             # Convert to numeric
-            to_numeric_fields = ["StatusRC", "TypeRC", "HandOver"]
+            to_numeric_fields = [nlo_status_field, "TypeRC", "HandOver"]
             cols = rap_table.columns
             non_match_col = non_match_elements(to_numeric_fields, cols)
             [to_numeric_fields.remove(non_match_col[0]) if non_match_col else print('no need to remove field from the list for numeric conversion')]
@@ -639,10 +664,43 @@ class UpdateISF(object):
                 rap_table[field] = rap_table[field].replace(r'\s+|[^\w\s]', '', regex=True)
                 rap_table[field] = pd.to_numeric(rap_table[field])
 
+                # For Summary stats
+                rap_table_stats[field] = rap_table_stats[field].replace(r'\s+|[^\w\s]', '', regex=True)
+                rap_table_stats[field] = pd.to_numeric(rap_table_stats[field])
+
             # Export
             export_file_name = os.path.splitext(os.path.basename(gis_isf_ms))[0]
             to_excel_file = os.path.join(gis_dir, export_file_name + ".xlsx")
             rap_table.to_excel(to_excel_file, index=False)
+
+            ##############################################################################
+            # Create summary statistics between original rap_table and updated rap_table
+            ### 1.0. StatusRC = 0 -> NA          
+            ## 1.0.1. Original rap_table (before updating)
+            # For summary stats
+            id = rap_table_stats.index[rap_table_stats[nlo_status_field] == 0]
+            rap_table_stats.loc[id, nlo_status_field] = np.NAN
+
+            groupby_fields = [municipality_field, nlo_status_field]
+            rap_table0_stats = rap_table_stats.groupby(groupby_fields)[nlo_status_field].count().reset_index(name=count_name)
+            rap_table0_stats = rap_table0_stats.sort_values(by=groupby_fields)
+
+            ## 1.0.2. Updated rap_table (After updating)
+            rap_table1_stats = rap_table.groupby(groupby_fields)[nlo_status_field].count().reset_index(name=count_name)
+            rap_table1_stats = rap_table1_stats.sort_values(by=groupby_fields)
+
+            ## 1.0.3. Merge
+            # table_stats = rap_table0_stats.join(rap_table1_stats, lsuffix=lsuffix_rap, rsuffix=rsuffix_gis)
+            table_stats = pd.merge(left=rap_table0_stats, right=rap_table1_stats, how='outer', left_on=[municipality_field, nlo_status_field], right_on=[municipality_field, nlo_status_field])
+            table_stats['count_diff'] = np.NAN
+            table_stats['count_diff'] = table_stats['counts_y'] - table_stats['counts_x']
+            table_stats = table_stats.rename(columns={"counts_x": str(counts_rap), "counts_y": str(counts_gis)})
+
+            ### 3.0. Export summary statistics table
+            file_name_stats = 'CHECK-' + proj + '_Structure_ISF_Summary_Statistics_Rap_and_GIS_ML.xlsx'
+            to_excel_file0 = os.path.join(gis_dir, file_name_stats)
+
+            table_stats.to_excel(to_excel_file0, index=False)
 
         N2SC_ISF_Update()
 
@@ -784,12 +842,34 @@ class UpdateStructure(object):
             ####################################################
             # Update Excel Master List Tables
             ####################################################
+            rap_table_stats = pd.read_excel(rap_struc_ms)
             rap_table = pd.read_excel(rap_struc_ms)
             rap_relo_table = pd.read_excel(rap_relo_ms)
             gis_table = pd.read_excel(gis_struc_ms)
 
             # Join Field
             joinField = 'StrucID'
+            cp_field = 'CP'
+            municipality_field = 'Municipality'
+            sc1_contsubm = 'ContSubm'
+            sc1_subcon = 'Subcon'
+            sc1_basic_plan = 'BasicPlan'
+
+            total_area_field = 'TotalArea'
+            affected_area_field = 'AffectedArea'
+            remaining_area_field = 'RemainingArea'
+            handover_field = 'HandOver'
+            structure_status_field = 'StatusStruc'
+            landowner_status_field = 'Status'
+            moa_field = 'MoA'
+            pte_field = 'PTE'
+            occupancy_field = 'Occupancy'
+            structure_use_field = 'StructureUse'
+            family_number_field = 'FamilyNumber'
+
+            count_name = 'counts'
+            counts_rap = count_name + '_RAP'
+            counts_gis = count_name + '_GIS'
 
             # Create backup files
             try:
@@ -803,20 +883,20 @@ class UpdateStructure(object):
             if len(duplicated_Ids) == 0:
                 # Common query and definitions
                 search_names_city = ['City/Municipality', 'City', 'Munici']
-                renamed_city = 'Municipality'
 
                 # SC
                 if proj == 'SC':
+                    ## Update SC1_table
                     try:
                         arcpy.AddMessage("ok0")
-                        joinedFields = [joinField, 'ContSubm', 'Subcon', 'BasicPlan']
+                        joinedFields = [joinField, sc1_contsubm, sc1_subcon, sc1_basic_plan]
 
                         arcpy.AddMessage("ok00")
                         rap_table_sc1 = pd.read_excel(rap_struc_sc1_ms)
                         
                         arcpy.AddMessage("ok1")
                         # Add contractors submission
-                        rap_table_sc1['ContSubm'] = 1
+                        rap_table_sc1[sc1_contsubm] = 1
 
                         # Conver to string with white space removal and uppercase
                         to_string_fields = [joinField]
@@ -841,7 +921,7 @@ class UpdateStructure(object):
                         arcpy.AddMessage("ok6")
 
                         # Check if any missing StrucID when joined
-                        id = rap_table.index[rap_table['ContSubm'] == 1]
+                        id = rap_table.index[rap_table[sc1_contsubm] == 1]
                         lotID_sc = unique(rap_table.loc[id,joinField])
                         lotID_sc1 = unique(rap_table_sc1[joinField])
                         non_match_LotID = non_match_elements(lotID_sc, lotID_sc1)
@@ -855,54 +935,60 @@ class UpdateStructure(object):
 
                 # Rename column names
                 colname_change = rap_table.columns[rap_table.columns.str.contains('|'.join(search_names_city))]
-                rap_table = rap_table.rename(columns={str(colname_change[0]): renamed_city})
+                rap_table = rap_table.rename(columns={str(colname_change[0]): municipality_field})
                         
-                first_letter_capital(rap_table, [renamed_city])
+                first_letter_capital(rap_table, [municipality_field])
 
                 # Convert to numeric
-                to_numeric_fields = ["TotalArea","AffectedArea","RemainingArea","HandOver","StatusStruc","Status","MoA","PTE", "Occupancy"]
+                to_numeric_fields = [total_area_field, affected_area_field, remaining_area_field, handover_field, structure_status_field, landowner_status_field, moa_field, pte_field, occupancy_field]
                 cols = rap_table.columns
                 non_match_col = non_match_elements(to_numeric_fields, cols)
-                [to_numeric_fields.remove(non_match_col[0]) if non_match_col else print('no need to remove field from the list for numeric conversion')]
+                [to_numeric_fields.remove(non_match_col[0]) if non_match_col else arcpy.AddMessage('no need to remove field from the list for numeric conversion')]
 
                 for field in to_numeric_fields:
                     rap_table[field] = rap_table[field].replace(r'\s+|[^\w\s]', '', regex=True)
                     rap_table[field] = pd.to_numeric(rap_table[field])
+
+                    # For Summary Stats later
+                    rap_table_stats[field] = rap_table_stats[field].replace(r'\s+|[^\w\s]', '', regex=True)
+                    rap_table_stats[field] = pd.to_numeric(rap_table_stats[field])
                     
                 # Conver to string
-                common_fields = ["StrucID", "CP"]
+                common_fields = [joinField, cp_field]
                 if proj == 'N2':
-                    to_string_fields = common_fields + ["StructureUse"]
+                    to_string_fields = common_fields + [structure_use_field]
                 else:
                     to_string_fields = common_fields
                 toString(rap_table, to_string_fields)
+                toString(rap_table_stats, to_string_fields)
                 
                 # Reformat CP
-                rap_table['CP'] = rap_table['CP'].str[-2:]    
-                rap_table['CP'] = cp_suffix + rap_table['CP']
+                rap_table[cp_field] = rap_table[cp_field].str[-2:]    
+                rap_table[cp_field] = cp_suffix + rap_table[cp_field]
+
+                rap_table_stats[cp_field] = rap_table_stats[cp_field].str[-2:]       
+                rap_table_stats[cp_field] = cp_suffix + rap_table_stats[cp_field] 
             
                 ## Convert to uppercase letters for StructureUse and StrucID
                 try:
-                    uppercase_field = 'StructureUse'
-                    match_col = match_elements(cols, uppercase_field)
+                    match_col = match_elements(cols, structure_use_field)
                     if len(match_col) > 0:
-                        rap_table[uppercase_field] = rap_table[uppercase_field].apply(lambda x: x.upper())
+                        rap_table[structure_use_field] = rap_table[structure_use_field].apply(lambda x: x.upper())
                 except:
                     pass
                 
                 rap_table[joinField] = rap_table[joinField].apply(lambda x: x.upper())
 
-                # Check and Fix StatusLA, HandedOverDate, HandOverDate, and HandedOverArea
+                # Check and Fix StatusStruc, 
                 ## 1. StatusStruc =0 -> StatusStruc = empty
-                status_field = 'StatusStruc'
-                id = rap_table.index[rap_table[status_field] == 0]
-                rap_table.loc[id, status_field] = None
+                id = rap_table.index[rap_table[structure_status_field] == 0]
+                rap_table.loc[id, structure_status_field] = None
                 
                 # Join the number of families to table
                 rap_relo_table.head()
                 toString(rap_relo_table, [joinField])
-                rap_relo_table['FamilyNumber'] = 0
-                df = rap_relo_table.groupby(joinField).count()[['FamilyNumber']]
+                rap_relo_table[family_number_field] = 0
+                df = rap_relo_table.groupby(joinField).count()[[family_number_field]]
                 rap_table = pd.merge(left=rap_table, right=df, how='left', left_on=joinField, right_on=joinField)
                 
                 # MoA is 'No Need to Acquire' -> StatusStruc is null: What is THIS?
@@ -913,6 +999,60 @@ class UpdateStructure(object):
                 export_file_name = os.path.splitext(os.path.basename(gis_struc_ms))[0]
                 to_excel_file = os.path.join(gis_dir, export_file_name + ".xlsx")
                 rap_table.to_excel(to_excel_file, index=False)
+
+                arcpy.AddMessage("The {} master list for structure was successfully exported.".format(proj))
+
+                ##############################################################################
+                # Create summary statistics between original rap_table and updated rap_table
+                ### 1.0. StatusLA = 0 -> NA          
+                ## 1.0.1. Original rap_table (before updating)
+                colname_change = rap_table_stats.columns[rap_table_stats.columns.str.contains('|'.join(search_names_city))]
+                rap_table_stats = rap_table_stats.rename(columns={str(colname_change[0]): municipality_field})
+                first_letter_capital(rap_table_stats, [municipality_field])
+                
+                id = rap_table_stats.index[rap_table_stats[structure_status_field] == 0]
+                rap_table_stats.loc[id, structure_status_field] = np.NAN
+
+                groupby_fields = [municipality_field, structure_status_field]
+                rap_table0_stats = rap_table_stats.groupby(groupby_fields)[structure_status_field].count().reset_index(name=count_name)
+                rap_table0_stats = rap_table0_stats.sort_values(by=groupby_fields)
+
+                ## 1.0.2. Updated rap_table (After updating)
+                rap_table1_stats = rap_table.groupby(groupby_fields)[structure_status_field].count().reset_index(name=count_name)
+                rap_table1_stats = rap_table1_stats.sort_values(by=groupby_fields)
+
+                ## 1.0.3. Merge
+                # table_stats = rap_table0_stats.join(rap_table1_stats, lsuffix=lsuffix_rap, rsuffix=rsuffix_gis)
+                table_stats = pd.merge(left=rap_table0_stats, right=rap_table1_stats, how='outer', left_on=[municipality_field, structure_status_field], right_on=[municipality_field, structure_status_field])
+                table_stats['count_diff'] = np.NAN
+                table_stats['count_diff'] = table_stats['counts_y'] - table_stats['counts_x']
+                table_stats = table_stats.rename(columns={"counts_x": str(counts_rap), "counts_y": str(counts_gis)})
+                            
+                ### 2.0. HandedOver = 1
+                ## 2.0.1. Original rap_table (before updating)
+                id = rap_table_stats.index[rap_table_stats[handover_field] == 1]
+                groupby_fields = [municipality_field, handover_field]
+                rap_table0_stats = rap_table_stats.groupby(groupby_fields)[handover_field].count().reset_index(name=count_name)
+                rap_table0_stats = rap_table0_stats.sort_values(by=groupby_fields)
+
+                ## 2.0.2. Updated rap_table (After updating)
+                rap_table1_stats = rap_table.groupby(groupby_fields)[handover_field].count().reset_index(name=count_name)
+                rap_table1_stats = rap_table1_stats.sort_values(by=groupby_fields)
+
+                ## 2.0.3. Merge
+                # table_stats_handedover = rap_table0_stats.join(rap_table1_stats, lsuffix=lsuffix_rap, rsuffix=rsuffix_gis)
+                table_stats_handedover = pd.merge(left=rap_table0_stats, right=rap_table1_stats, how='outer', left_on=[municipality_field, handover_field], right_on=[municipality_field, handover_field])
+                table_stats_handedover['count_diff'] = np.NAN
+                table_stats_handedover["count_diff"] = table_stats_handedover['counts_y'] - table_stats_handedover['counts_x']
+                table_stats_handedover = table_stats_handedover.rename(columns={"counts_x": str(counts_rap), "counts_y": str(counts_gis)})
+
+                ### 3.0. Export summary statistics table
+                file_name_stats = 'CHECK-' + proj + '_Structure_Summary_Statistics_Rap_and_GIS_ML.xlsx'
+                to_excel_file0 = os.path.join(gis_dir, file_name_stats)
+
+                with pd.ExcelWriter(to_excel_file0) as writer:
+                    table_stats.to_excel(writer, sheet_name=structure_status_field, index=False)
+                    table_stats_handedover.to_excel(writer, sheet_name=handover_field, index=False)
 
             else:
                 arcpy.AddMessage(duplicated_Ids)
@@ -1419,6 +1559,24 @@ class UpdateStructureGIS(object):
         self.description = "Update feature layers for structures including occupany and ISF Relocation"
 
     def getParameterInfo(self):
+        proj = arcpy.Parameter(
+            displayName = "Project Extension: N2 or SC",
+            name = "Project Extension: N2 or SC",
+            datatype = "GPString",
+            parameterType = "Required",
+            direction = "Input"
+        )
+        proj.filter.type = "ValueList"
+        proj.filter.list = ['N2', 'SC']
+
+        gis_dir = arcpy.Parameter(
+            displayName = "GIS Masterlist Storage Directory",
+            name = "GIS master-list directory",
+            datatype = "DEWorkspace",
+            parameterType = "Required",
+            direction = "Input"
+        )
+    
         in_structure = arcpy.Parameter(
             displayName = "GIS Structure Status (Polygon)",
             name = "GIS Structure Status (Polygon)",
@@ -1459,18 +1617,20 @@ class UpdateStructureGIS(object):
             direction = "Input"
         )
 
-        params = [in_structure, in_occupancy, in_isf, ml_structure, ml_isf]
+        params = [proj, gis_dir, in_structure, in_occupancy, in_isf, ml_structure, ml_isf]
         return params
 
     def updateMessages(self, params):
         return
 
     def execute(self, params, messages):
-        inStruc = params[0].valueAsText
-        inOccup = params[1].valueAsText
-        inISF = params[2].valueAsText
-        mlStruct = params[3].valueAsText
-        mlISF = params[4].valueAsText
+        project = params[0].valueAsText
+        gis_dir = params[1].valueAsText
+        inStruc = params[2].valueAsText
+        inOccup = params[3].valueAsText
+        inISF = params[4].valueAsText
+        mlStruct = params[5].valueAsText
+        mlISF = params[6].valueAsText
 
         def unique_values(table, field):  ##uses list comprehension
             with arcpy.da.SearchCursor(table, [field]) as cursor:
@@ -1526,7 +1686,10 @@ class UpdateStructureGIS(object):
         except:
             pass
             
-        ## 3.2. Get Join Field from MasterList gdb table: Gain all fields except 'Id'
+        ##########################################################################
+        ##### STAGE 1: Update Existing Structure Layer ######
+        ###########################################################################
+        ## 3.2. Gain all fields except 'StrucID'
         struc_ml_fields = [f.name for f in arcpy.ListFields(struc_ml)]
         struc_ml_transfer_fields = [e for e in struc_ml_fields if e not in (join_field, 'strucID','OBJECTID')]
             
@@ -1568,7 +1731,7 @@ class UpdateStructureGIS(object):
         ##MasterListISF = arcpy.TableToTable_conversion(mlISF, workspace, 'MasterListISF')
         MasterListISF = arcpy.conversion.ExportTable(mlISF, 'MasterListISF')
 
-        ## 2-2.2. Get Join Field from MasterList gdb table: Gain all fields except 'StrucId'
+        ## 2-2.2. Gain all fields except 'StrucId'
         inputFieldISF = [f.name for f in arcpy.ListFields(MasterListISF)]
         joinFieldISF = [e for e in inputFieldISF if e not in ('StrucId', 'strucID','OBJECTID')]
 
@@ -1612,6 +1775,21 @@ class UpdateStructureGIS(object):
         # Delete the copied feature layer
         deleteTempLayers = [gis_copied, struc_ml, pointStruc, outLayerISF, MasterListISF]
         arcpy.Delete_management(deleteTempLayers)
+
+        #########################################################
+        ### Export updated GIS Layers to Excel Sheet (used for summary stats and missing IDs)
+        ##########################################################
+        # Structure
+        file_name_structure = project + "_" + "GIS_Structure_Portal.xlsx"
+        arcpy.conversion.TableToExcel(inStruc, os.path.join(gis_dir, file_name_structure))
+
+        # Occupancy (not necessary. )
+        # file_name_occupancy = project + "_" + "GIS_Structure_Occupancy_Portal.xlsx"
+        # arcpy.conversion.TableToExcel(inStruc, os.path.join(gis_dir, file_name_occupancy))
+
+        # NLO
+        file_name_nlo = project + "_" + "GIS_NLO_Portal.xlsx"
+        arcpy.conversion.TableToExcel(inStruc, os.path.join(gis_dir, file_name_nlo))
 
 class UpdatePierGIS(object):
     def __init__(self):

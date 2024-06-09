@@ -15,7 +15,7 @@ class Toolbox(object):
         self.tools = [RestoreScaleForLot, UpdateLot, UpdateISF, UpdateStructure, UpdateBarangay, UpdatePier,
                       UpdateLotGIS, UpdateStructureGIS, UpdatePierGIS, UpdateBarangayGIS,
                       CheckLotUpdatedStatusGIS, CheckStructureUpdatedStatusGIS, CheckIsfUpdatedStatusGIS,
-                      CheckMissingLotIDs, CheckMissingStructureIsfIDs, CheckMissingIsfIDs]
+                      CheckMissingLotIDs, CheckMissingStructureIDs, CheckMissingIsfIDs]
 
 class RestoreScaleForLot(object):
     def __init__(self):
@@ -699,7 +699,7 @@ class UpdateISF(object):
             table_stats = table_stats.rename(columns={"counts_x": str(counts_rap), "counts_y": str(counts_gis)})
 
             ### 3.0. Export summary statistics table
-            file_name_stats = 'CHECK-' + proj + '_Structure_ISF_Summary_Statistics_Rap_and_GIS_ML.xlsx'
+            file_name_stats = 'CHECK-' + proj + '_ISF_Summary_Statistics_Rap_and_GIS_ML.xlsx'
             to_excel_file0 = os.path.join(gis_dir, file_name_stats)
 
             table_stats.to_excel(to_excel_file0, index=False)
@@ -1655,143 +1655,152 @@ class UpdateStructureGIS(object):
         join_field = 'StrucID'
         copied_name = 'Struc_Temp'
 
-        gis_copied = arcpy.CopyFeatures_management(inStruc, copied_name)
-            
-        arcpy.AddMessage("Stage 1: Copy feature layer was success")
+        # if there are duplicated observations in Portal and exit
+        struc_ids_list = [f[0] for f in arcpy.da.SearchCursor(inStruc, [join_field])]
+        dup = [x for x in struc_ids_list if struc_ids_list.count(x) > 1]
+        if len(dup) == 0:
+            gis_copied = arcpy.CopyFeatures_management(inStruc, copied_name)
                 
-        # 2. Delete Field
-        gis_fields = [f.name for f in arcpy.ListFields(gis_copied)]
+            arcpy.AddMessage("Stage 1: Copy feature layer was success")
+                    
+            # 2. Delete Field
+            gis_fields = [f.name for f in arcpy.ListFields(gis_copied)]
+                
+            ## 2.1. Identify fields to be dropped
+            gis_drop_fields_check = [e for e in gis_fields if e not in (join_field, 'strucID','Shape','Shape_Length','Shape_Area','Shape.STArea()','Shape.STLength()','OBJECTID','GlobalID')]
+                            
+            ## 2.3. Check if there are fields to be dropped
+            gis_drop_fields = [f for f in gis_fields if f in tuple(gis_drop_fields_check)]
+                
+            arcpy.AddMessage("Stage 1: Checking for Fields to be dropped was success")
+                
+            ## 2.4 Drop               
+            if len(gis_drop_fields) == 0:
+                arcpy.AddMessage("There is no field that can be dropped from the feature layer")
+            else:
+                arcpy.DeleteField_management(gis_copied, gis_drop_fields)   
+                arcpy.AddMessage("Stage 1: Dropping Fields was success")
+                arcpy.AddMessage("Section 2 of Stage 1 was successfully implemented")
+
+            # 3. Join Field
+            ## 3.1. Convert Excel tables to feature table
+            struc_ml = arcpy.conversion.ExportTable(mlStruct, 'structure_ml')
+
+            # Check if StrucID match between ML and GIS
+            try:
+                check_field_match(gis_copied, struc_ml, join_field)
+            except:
+                pass
+                
+            ##########################################################################
+            ##### STAGE 1: Update Existing Structure Layer ######
+            ###########################################################################
+            ## 3.2. Gain all fields except 'StrucID'
+            struc_ml_fields = [f.name for f in arcpy.ListFields(struc_ml)]
+            struc_ml_transfer_fields = [e for e in struc_ml_fields if e not in (join_field, 'strucID','OBJECTID')]
+                
+            ## 3.3. Extract a Field from MasterList and Feature Layer to be used to join two tables
+            gis_join_field = ' '.join(map(str, [f for f in gis_fields if f in (join_field, 'strucID')]))
+            struc_ml_join_field = ' '.join(map(str, [f for f in struc_ml_fields if f in (join_field, 'strucID')]))
+                
+            ## 3.4 Join
+            arcpy.JoinField_management(in_data=gis_copied, in_field=gis_join_field, join_table=struc_ml, join_field=struc_ml_join_field, fields=struc_ml_transfer_fields)
+
+            # 4. Trucnate
+            arcpy.TruncateTable_management(inStruc)
+
+            # 5. Append
+            arcpy.Append_management(gis_copied, inStruc, schema_type = 'NO_TEST')
+
+            ##########################################################################
+            ##### STAGE 2: Update Existing Structure (Occupancy) & Structure (ISF) ######
+            ###########################################################################
+            ## Copy original feature layer
             
-        ## 2.1. Identify fields to be dropped
-        gis_drop_fields_check = [e for e in gis_fields if e not in (join_field, 'strucID','Shape','Shape_Length','Shape_Area','Shape.STArea()','Shape.STLength()','OBJECTID','GlobalID')]
-                        
-        ## 2.3. Check if there are fields to be dropped
-        gis_drop_fields = [f for f in gis_fields if f in tuple(gis_drop_fields_check)]
             
-        arcpy.AddMessage("Stage 1: Checking for Fields to be dropped was success")
+            # STAGE: 2-1. Create Structure (point) for Occupany
+            ## 2-1.1. Feature to Point for Occupany
+            outFeatureClassPointStruc = 'Structure_point_occupancy_temp'
+            pointStruc = arcpy.FeatureToPoint_management(inStruc, outFeatureClassPointStruc, "CENTROID")
             
-        ## 2.4 Drop               
-        if len(gis_drop_fields) == 0:
-            arcpy.AddMessage("There is no field that can be dropped from the feature layer")
+            ## 2-1.2. Add XY Coordinates
+            arcpy.AddXY_management(pointStruc)
+            
+            ## 2-1.3. Truncate original point structure layer (Occupancy)
+            arcpy.TruncateTable_management(inOccup)
+
+            ## 2-1.4. Append to the original FL
+            arcpy.Append_management(pointStruc, inOccup, schema_type = 'NO_TEST')
+
+            # STAGE: 2-2. Create and Update ISF Feture Layer
+            ## 2-2.1. Convert ISF (Relocation excel) to Feature table
+            ##MasterListISF = arcpy.TableToTable_conversion(mlISF, workspace, 'MasterListISF')
+            MasterListISF = arcpy.conversion.ExportTable(mlISF, 'MasterListISF')
+
+            ## 2-2.2. Gain all fields except 'StrucId'
+            inputFieldISF = [f.name for f in arcpy.ListFields(MasterListISF)]
+            joinFieldISF = [e for e in inputFieldISF if e not in ('StrucId', 'strucID','OBJECTID')]
+
+            ## 3.3. Extract a Field from MasterList and Feature Layer to be used to join two tables
+            tISF = [f.name for f in arcpy.ListFields(inOccup)] # Note 'inputLayerOccupOrigin' must be used, not ISF
+            in_fieldISF= ' '.join(map(str, [f for f in tISF if f in (join_field,'strucID')]))
+
+            uISF = [f.name for f in arcpy.ListFields(MasterListISF)]
+            join_fieldISF = ' '.join(map(str, [f for f in uISF if f in (join_field, 'strucID')]))
+
+            ## Join
+            xCoords = "POINT_X"
+            yCoords = "POINT_Y"
+            zCoords = "POINT_Z"
+
+            # Join only 'POINT_X' and 'POINT_Y' in the 'inputLayerOccupOrigin' to 'MasterListISF'
+            arcpy.JoinField_management(in_data=MasterListISF, in_field=join_fieldISF, join_table=inOccup, join_field=in_fieldISF, fields=[xCoords, yCoords, zCoords])
+
+            ## 2-2.3. XY Table to Points (FL)
+            out_feature_class = "Status_for_Relocation_ISF_temp"
+            sr = arcpy.SpatialReference(3123)
+            outLayerISF = arcpy.management.XYTableToPoint(MasterListISF, out_feature_class, xCoords, yCoords, zCoords, sr)
+
+            ### Delete 'POINT_X', 'POINT_Y', 'POINT_Z'; otherwise, it gives error for the next batch
+            dropXYZ = [xCoords, yCoords, zCoords]
+            arcpy.DeleteField_management(outLayerISF, dropXYZ)
+            
+            ## Check if StrucIDs match between ISF excel ML and GIS point feature layer
+            arcpy.AddMessage(".\n")
+            try:
+                check_field_match(outLayerISF, MasterListISF, join_field)
+            except:
+                pass
+
+            ## 2-2.5. Truncate original ISF point FL
+            arcpy.TruncateTable_management(inISF)
+
+            ## 2-2.6. Append to the Original ISF
+            arcpy.Append_management(outLayerISF, inISF, schema_type = 'NO_TEST')
+
+            # Delete the copied feature layer
+            deleteTempLayers = [gis_copied, struc_ml, pointStruc, outLayerISF, MasterListISF]
+            arcpy.Delete_management(deleteTempLayers)
+
+            #########################################################
+            ### Export updated GIS Layers to Excel Sheet (used for summary stats and missing IDs)
+            ##########################################################
+            # Structure
+            file_name_structure = project + "_" + "GIS_Structure_Portal.xlsx"
+            arcpy.conversion.TableToExcel(inStruc, os.path.join(gis_dir, file_name_structure))
+
+            # Occupancy (not necessary. )
+            # file_name_occupancy = project + "_" + "GIS_Structure_Occupancy_Portal.xlsx"
+            # arcpy.conversion.TableToExcel(inStruc, os.path.join(gis_dir, file_name_occupancy))
+
+            # NLO
+            file_name_nlo = project + "_" + "GIS_ISF_Portal.xlsx"
+            arcpy.conversion.TableToExcel(inISF, os.path.join(gis_dir, file_name_nlo))
+
         else:
-            arcpy.DeleteField_management(gis_copied, gis_drop_fields)   
-            arcpy.AddMessage("Stage 1: Dropping Fields was success")
-            arcpy.AddMessage("Section 2 of Stage 1 was successfully implemented")
-
-        # 3. Join Field
-        ## 3.1. Convert Excel tables to feature table
-        struc_ml = arcpy.conversion.ExportTable(mlStruct, 'structure_ml')
-
-        # Check if StrucID match between ML and GIS
-        try:
-            check_field_match(gis_copied, struc_ml, join_field)
-        except:
-            pass
-            
-        ##########################################################################
-        ##### STAGE 1: Update Existing Structure Layer ######
-        ###########################################################################
-        ## 3.2. Gain all fields except 'StrucID'
-        struc_ml_fields = [f.name for f in arcpy.ListFields(struc_ml)]
-        struc_ml_transfer_fields = [e for e in struc_ml_fields if e not in (join_field, 'strucID','OBJECTID')]
-            
-        ## 3.3. Extract a Field from MasterList and Feature Layer to be used to join two tables
-        gis_join_field = ' '.join(map(str, [f for f in gis_fields if f in (join_field, 'strucID')]))
-        struc_ml_join_field = ' '.join(map(str, [f for f in struc_ml_fields if f in (join_field, 'strucID')]))
-            
-        ## 3.4 Join
-        arcpy.JoinField_management(in_data=gis_copied, in_field=gis_join_field, join_table=struc_ml, join_field=struc_ml_join_field, fields=struc_ml_transfer_fields)
-
-        # 4. Trucnate
-        arcpy.TruncateTable_management(inStruc)
-
-        # 5. Append
-        arcpy.Append_management(gis_copied, inStruc, schema_type = 'NO_TEST')
-
-        ##########################################################################
-        ##### STAGE 2: Update Existing Structure (Occupancy) & Structure (ISF) ######
-        ###########################################################################
-        ## Copy original feature layer
-        
-        
-        # STAGE: 2-1. Create Structure (point) for Occupany
-        ## 2-1.1. Feature to Point for Occupany
-        outFeatureClassPointStruc = 'Structure_point_occupancy_temp'
-        pointStruc = arcpy.FeatureToPoint_management(inStruc, outFeatureClassPointStruc, "CENTROID")
-        
-        ## 2-1.2. Add XY Coordinates
-        arcpy.AddXY_management(pointStruc)
-        
-        ## 2-1.3. Truncate original point structure layer (Occupancy)
-        arcpy.TruncateTable_management(inOccup)
-
-        ## 2-1.4. Append to the original FL
-        arcpy.Append_management(pointStruc, inOccup, schema_type = 'NO_TEST')
-
-        # STAGE: 2-2. Create and Update ISF Feture Layer
-        ## 2-2.1. Convert ISF (Relocation excel) to Feature table
-        ##MasterListISF = arcpy.TableToTable_conversion(mlISF, workspace, 'MasterListISF')
-        MasterListISF = arcpy.conversion.ExportTable(mlISF, 'MasterListISF')
-
-        ## 2-2.2. Gain all fields except 'StrucId'
-        inputFieldISF = [f.name for f in arcpy.ListFields(MasterListISF)]
-        joinFieldISF = [e for e in inputFieldISF if e not in ('StrucId', 'strucID','OBJECTID')]
-
-        ## 3.3. Extract a Field from MasterList and Feature Layer to be used to join two tables
-        tISF = [f.name for f in arcpy.ListFields(inOccup)] # Note 'inputLayerOccupOrigin' must be used, not ISF
-        in_fieldISF= ' '.join(map(str, [f for f in tISF if f in (join_field,'strucID')]))
-
-        uISF = [f.name for f in arcpy.ListFields(MasterListISF)]
-        join_fieldISF = ' '.join(map(str, [f for f in uISF if f in (join_field, 'strucID')]))
-
-        ## Join
-        xCoords = "POINT_X"
-        yCoords = "POINT_Y"
-        zCoords = "POINT_Z"
-
-        # Join only 'POINT_X' and 'POINT_Y' in the 'inputLayerOccupOrigin' to 'MasterListISF'
-        arcpy.JoinField_management(in_data=MasterListISF, in_field=join_fieldISF, join_table=inOccup, join_field=in_fieldISF, fields=[xCoords, yCoords, zCoords])
-
-        ## 2-2.3. XY Table to Points (FL)
-        out_feature_class = "Status_for_Relocation_ISF_temp"
-        sr = arcpy.SpatialReference(3123)
-        outLayerISF = arcpy.management.XYTableToPoint(MasterListISF, out_feature_class, xCoords, yCoords, zCoords, sr)
-
-        ### Delete 'POINT_X', 'POINT_Y', 'POINT_Z'; otherwise, it gives error for the next batch
-        dropXYZ = [xCoords, yCoords, zCoords]
-        arcpy.DeleteField_management(outLayerISF, dropXYZ)
-        
-        ## Check if StrucIDs match between ISF excel ML and GIS point feature layer
-        arcpy.AddMessage(".\n")
-        try:
-            check_field_match(outLayerISF, MasterListISF, join_field)
-        except:
-            pass
-
-        ## 2-2.5. Truncate original ISF point FL
-        arcpy.TruncateTable_management(inISF)
-
-        ## 2-2.6. Append to the Original ISF
-        arcpy.Append_management(outLayerISF, inISF, schema_type = 'NO_TEST')
-
-        # Delete the copied feature layer
-        deleteTempLayers = [gis_copied, struc_ml, pointStruc, outLayerISF, MasterListISF]
-        arcpy.Delete_management(deleteTempLayers)
-
-        #########################################################
-        ### Export updated GIS Layers to Excel Sheet (used for summary stats and missing IDs)
-        ##########################################################
-        # Structure
-        file_name_structure = project + "_" + "GIS_Structure_Portal.xlsx"
-        arcpy.conversion.TableToExcel(inStruc, os.path.join(gis_dir, file_name_structure))
-
-        # Occupancy (not necessary. )
-        # file_name_occupancy = project + "_" + "GIS_Structure_Occupancy_Portal.xlsx"
-        # arcpy.conversion.TableToExcel(inStruc, os.path.join(gis_dir, file_name_occupancy))
-
-        # NLO
-        file_name_nlo = project + "_" + "GIS_ISF_Portal.xlsx"
-        arcpy.conversion.TableToExcel(inISF, os.path.join(gis_dir, file_name_nlo))
+            arcpy.AddMessage('The following Struc IDs are duplicated in the GIS attribute table:')
+            arcpy.AddMessage(dup)
+            arcpy.AddError('There are duplicated StrucIDs in the GIS attribute table. The process stops. Please fix this first.')
 
 class UpdatePierGIS(object):
     def __init__(self):
@@ -2228,8 +2237,8 @@ class CheckStructureUpdatedStatusGIS(object):
 
 class CheckIsfUpdatedStatusGIS(object):
     def __init__(self):
-        self.label = "3.2. Summary Stats for Structure Status (GIS Portal and GIS ML)"
-        self.description = "Summary Stats for Structure Status (GIS Portal and GIS ML)"
+        self.label = "3.3. Summary Stats for ISF Status (GIS Portal and GIS ML)"
+        self.description = "Summary Stats for ISF Status (GIS Portal and GIS ML)"
 
     def getParameterInfo(self):
         proj = arcpy.Parameter(
@@ -2319,9 +2328,9 @@ class CheckIsfUpdatedStatusGIS(object):
         
         # Export the updated GIS portal to excel sheet for checking lot IDs
         try:
-            file_name = "CHECK-" + project + "_" + "Structure_Summary_Statistics_GIS_Portal_and_GIS_ML.xlsx"
+            file_name = "CHECK-" + project + "_" + "ISF_Summary_Statistics_GIS_Portal_and_GIS_ML.xlsx"
         except:
-            file_name = "CHECK-Structure_Summary_Statistics_GIS_Portal_and_GIS_ML.xlsx"
+            file_name = "CHECK-ISF_Summary_Statistics_GIS_Portal_and_GIS_ML.xlsx"
             
         to_excel_file = os.path.join(gis_dir, file_name)
         with pd.ExcelWriter(to_excel_file) as writer:
@@ -2583,7 +2592,7 @@ class CheckMissingLotIDs(object):
             table.to_excel(writer, sheet_name=rap_status_field, index=False)
             table_handedover.to_excel(writer, sheet_name=handedover_field, index=False)
 
-class CheckMissingStructureIsfIDs(object):
+class CheckMissingStructureIDs(object):
     def __init__(self):
         self.label = "4.2. Check Missing Structure IDs (Rap ML, GIS ML, and GIS Portal)"
         self.description = "Check Missing Structure IDs (Rap ML, GIS ML, and GIS Portal)"
@@ -2814,8 +2823,8 @@ class CheckMissingIsfIDs(object):
         )
 
         rap_table_ml = arcpy.Parameter(
-            displayName = "Rap Structure ISF ML (Excel)",
-            name = "Rap Structure ISF ML (Excel)",
+            displayName = "Rap ISF ML (Excel)",
+            name = "Rap ISF ML (Excel)",
             datatype = "DEFile",
             parameterType = "Required",
             direction = "Input"

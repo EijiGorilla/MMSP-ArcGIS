@@ -13,7 +13,9 @@ class Toolbox(object):
         self.label = "UpdateLandAcquisition"
         self.alias = "UpdateLandAcquisition"
         self.tools = [RestoreScaleForLot, UpdateLot, UpdateISF, UpdateStructure, UpdateBarangay, UpdatePier,
-                      UpdateLotGIS, UpdateStructureGIS, UpdatePierGIS, UpdateBarangayGIS, CheckLotUpdatedStatusGIS, CheckMissingLotIDs]
+                      UpdateLotGIS, UpdateStructureGIS, UpdatePierGIS, UpdateBarangayGIS,
+                      CheckLotUpdatedStatusGIS, CheckStructureUpdatedStatusGIS, CheckIsfUpdatedStatusGIS,
+                      CheckMissingLotIDs, CheckMissingStructureIsfIDs, CheckMissingIsfIDs]
 
 class RestoreScaleForLot(object):
     def __init__(self):
@@ -1788,8 +1790,8 @@ class UpdateStructureGIS(object):
         # arcpy.conversion.TableToExcel(inStruc, os.path.join(gis_dir, file_name_occupancy))
 
         # NLO
-        file_name_nlo = project + "_" + "GIS_NLO_Portal.xlsx"
-        arcpy.conversion.TableToExcel(inStruc, os.path.join(gis_dir, file_name_nlo))
+        file_name_nlo = project + "_" + "GIS_ISF_Portal.xlsx"
+        arcpy.conversion.TableToExcel(inISF, os.path.join(gis_dir, file_name_nlo))
 
 class UpdatePierGIS(object):
     def __init__(self):
@@ -1998,7 +2000,7 @@ class UpdateBarangayGIS(object):
 
 class CheckLotUpdatedStatusGIS(object):
     def __init__(self):
-        self.label = "3.0. Summary Stats for Lot Status (GIS Portal and GIS ML)"
+        self.label = "3.1. Summary Stats for Lot Status (GIS Portal and GIS ML)"
         self.description = "Summary Stats for Lot Status (GIS Portal and GIS ML)"
 
     def getParameterInfo(self):
@@ -2030,8 +2032,8 @@ class CheckLotUpdatedStatusGIS(object):
         )
 
         gis_ml = arcpy.Parameter(
-            displayName = "GIS ML File (Excel)",
-            name = "GIS ML File (Excel)",
+            displayName = "GIS Lot ML File (Excel)",
+            name = "GIS Lot ML File (Excel)",
             datatype = "DEFile",
             parameterType = "Required",
             direction = "Input"
@@ -2122,10 +2124,212 @@ class CheckLotUpdatedStatusGIS(object):
         with pd.ExcelWriter(to_excel_file) as writer:
             table.to_excel(writer, sheet_name=statusla_field, index=False)
             table_handedover.to_excel(writer, sheet_name=handedover_field, index=False)
+
+class CheckStructureUpdatedStatusGIS(object):
+    def __init__(self):
+        self.label = "3.2. Summary Stats for Structure Status (GIS Portal and GIS ML)"
+        self.description = "Summary Stats for Structure Status (GIS Portal and GIS ML)"
+
+    def getParameterInfo(self):
+        proj = arcpy.Parameter(
+            displayName = "Project Extension: N2 or SC",
+            name = "Project Extension: N2 or SC",
+            datatype = "GPString",
+            parameterType = "Required",
+            direction = "Input"
+        )
+        proj.filter.type = "ValueList"
+        proj.filter.list = ['N2', 'SC']
+    
+        gis_dir = arcpy.Parameter(
+            displayName = "GIS Masterlist Storage Directory",
+            name = "GIS master-list directory",
+            datatype = "DEWorkspace",
+            parameterType = "Required",
+            direction = "Input"
+        )
+
+        # Input Feature Layers
+        gis_layer = arcpy.Parameter(
+            displayName = "GIS Structure Portal File (Excel)",
+            name = "GIS Structure Portal File (Excel)",
+            datatype = "DEFile",
+            parameterType = "Required",
+            direction = "Input"
+        )
+
+        gis_ml = arcpy.Parameter(
+            displayName = "GIS Structure ML File (Excel)",
+            name = "GIS Structure ML File (Excel)",
+            datatype = "DEFile",
+            parameterType = "Required",
+            direction = "Input"
+        )
+
+        params = [proj, gis_dir, gis_layer, gis_ml]
+        return params
+
+    def updateMessages(self, params):
+        return
+
+    def execute(self, params, messages):
+        project = params[0].valueAsText
+        gis_dir = params[1].valueAsText
+        gis_layer = params[2].valueAsText
+        gis_ml = params[3].valueAsText
+
+        # Read table
+        gis_table = pd.read_excel(gis_ml)
+        gis_portal = pd.read_excel(gis_layer)
+
+        # 0. Defin field names
+        statusla_field = 'StatusStruc'
+        package_field = 'CP'
+        municipality_field = 'Municipality'
+        count_name = 'counts'
+        lsuffix_portal = '_Portal'
+        rsuffix_excel = '_Excel'
+        counts_portal = count_name + lsuffix_portal
+        counts_excel = count_name + rsuffix_excel
+
+        # 1.0 Status LA
+        keep_fields = [municipality_field, statusla_field]
+
+        ## 1.0.1. GIS Portal
+        gis_portal_statusla = gis_portal.groupby(keep_fields)[statusla_field].count().reset_index(name=count_name)
+        gis_portal_statusla = gis_portal_statusla.sort_values(by=keep_fields)
+
+        ## 1.0.2. GIS ML
+        gis_ml_statusla = gis_table.groupby(keep_fields)[statusla_field].count().reset_index(name=count_name)
+        gis_ml_statusla = gis_ml_statusla.sort_values(by=keep_fields)
+
+        ## 1.0.3. Merge
+        table = pd.merge(left=gis_portal_statusla, right=gis_ml_statusla, how='outer', left_on=[municipality_field, statusla_field], right_on=[municipality_field, statusla_field])
+        table['count_diff'] = np.NAN
+        table['count_diff'] = table['counts_y'] - table['counts_x']
+        table = table.rename(columns={"counts_x": str(counts_portal), "counts_y": str(counts_excel)})
         
+        # table = gis_portal_statusla.join(gis_ml_statusla,lsuffix=lsuffix_portal,rsuffix=rsuffix_excel)
+        # table['count_diff'] = np.NAN
+        # table['count_diff'] = table[counts_portal] - table[counts_excel]
+
+        arcpy.AddMessage('Merge completed..')
+        arcpy.AddMessage('The summary statistics table for StatusLA field is successfully produced.')
+        
+        # Export the updated GIS portal to excel sheet for checking lot IDs
+        try:
+            file_name = "CHECK-" + project + "_" + "Structure_Summary_Statistics_GIS_Portal_and_GIS_ML.xlsx"
+        except:
+            file_name = "CHECK-Structure_Summary_Statistics_GIS_Portal_and_GIS_ML.xlsx"
+            
+        to_excel_file = os.path.join(gis_dir, file_name)
+        with pd.ExcelWriter(to_excel_file) as writer:
+            table.to_excel(writer, sheet_name=statusla_field, index=False)
+
+class CheckIsfUpdatedStatusGIS(object):
+    def __init__(self):
+        self.label = "3.2. Summary Stats for Structure Status (GIS Portal and GIS ML)"
+        self.description = "Summary Stats for Structure Status (GIS Portal and GIS ML)"
+
+    def getParameterInfo(self):
+        proj = arcpy.Parameter(
+            displayName = "Project Extension: N2 or SC",
+            name = "Project Extension: N2 or SC",
+            datatype = "GPString",
+            parameterType = "Required",
+            direction = "Input"
+        )
+        proj.filter.type = "ValueList"
+        proj.filter.list = ['N2', 'SC']
+    
+        gis_dir = arcpy.Parameter(
+            displayName = "GIS Masterlist Storage Directory",
+            name = "GIS master-list directory",
+            datatype = "DEWorkspace",
+            parameterType = "Required",
+            direction = "Input"
+        )
+
+        # Input Feature Layers
+        gis_layer = arcpy.Parameter(
+            displayName = "GIS ISF Portal File (Excel)",
+            name = "GIS ISF Portal File (Excel)",
+            datatype = "DEFile",
+            parameterType = "Required",
+            direction = "Input"
+        )
+
+        gis_ml = arcpy.Parameter(
+            displayName = "GIS ISF ML File (Excel)",
+            name = "GIS ISF ML File (Excel)",
+            datatype = "DEFile",
+            parameterType = "Required",
+            direction = "Input"
+        )
+
+        params = [proj, gis_dir, gis_layer, gis_ml]
+        return params
+
+    def updateMessages(self, params):
+        return
+
+    def execute(self, params, messages):
+        project = params[0].valueAsText
+        gis_dir = params[1].valueAsText
+        gis_layer = params[2].valueAsText
+        gis_ml = params[3].valueAsText
+
+        # Read table
+        gis_table = pd.read_excel(gis_ml)
+        gis_portal = pd.read_excel(gis_layer)
+
+        # 0. Defin field names
+        statusla_field = 'StatusRC'
+        package_field = 'CP'
+        municipality_field = 'Municipality'
+        count_name = 'counts'
+        lsuffix_portal = '_Portal'
+        rsuffix_excel = '_Excel'
+        counts_portal = count_name + lsuffix_portal
+        counts_excel = count_name + rsuffix_excel
+
+        # 1.0 Status LA
+        keep_fields = [municipality_field, statusla_field]
+
+        ## 1.0.1. GIS Portal
+        gis_portal_statusla = gis_portal.groupby(keep_fields)[statusla_field].count().reset_index(name=count_name)
+        gis_portal_statusla = gis_portal_statusla.sort_values(by=keep_fields)
+
+        ## 1.0.2. GIS ML
+        gis_ml_statusla = gis_table.groupby(keep_fields)[statusla_field].count().reset_index(name=count_name)
+        gis_ml_statusla = gis_ml_statusla.sort_values(by=keep_fields)
+
+        ## 1.0.3. Merge
+        table = pd.merge(left=gis_portal_statusla, right=gis_ml_statusla, how='outer', left_on=[municipality_field, statusla_field], right_on=[municipality_field, statusla_field])
+        table['count_diff'] = np.NAN
+        table['count_diff'] = table['counts_y'] - table['counts_x']
+        table = table.rename(columns={"counts_x": str(counts_portal), "counts_y": str(counts_excel)})
+        
+        # table = gis_portal_statusla.join(gis_ml_statusla,lsuffix=lsuffix_portal,rsuffix=rsuffix_excel)
+        # table['count_diff'] = np.NAN
+        # table['count_diff'] = table[counts_portal] - table[counts_excel]
+
+        arcpy.AddMessage('Merge completed..')
+        arcpy.AddMessage('The summary statistics table for StatusLA field is successfully produced.')
+        
+        # Export the updated GIS portal to excel sheet for checking lot IDs
+        try:
+            file_name = "CHECK-" + project + "_" + "Structure_Summary_Statistics_GIS_Portal_and_GIS_ML.xlsx"
+        except:
+            file_name = "CHECK-Structure_Summary_Statistics_GIS_Portal_and_GIS_ML.xlsx"
+            
+        to_excel_file = os.path.join(gis_dir, file_name)
+        with pd.ExcelWriter(to_excel_file) as writer:
+            table.to_excel(writer, sheet_name=statusla_field, index=False)
+
 class CheckMissingLotIDs(object):
     def __init__(self):
-        self.label = "3.1. Check Missing Lot IDs (Rap ML, GIS ML, and GIS Portal)"
+        self.label = "4.1. Check Missing Lot IDs (Rap ML, GIS ML, and GIS Portal)"
         self.description = "Check Missing Lot IDs (Rap ML, GIS ML, and GIS Portal)"
 
     def getParameterInfo(self):
@@ -2379,3 +2583,380 @@ class CheckMissingLotIDs(object):
             table.to_excel(writer, sheet_name=rap_status_field, index=False)
             table_handedover.to_excel(writer, sheet_name=handedover_field, index=False)
 
+class CheckMissingStructureIsfIDs(object):
+    def __init__(self):
+        self.label = "4.2. Check Missing Structure IDs (Rap ML, GIS ML, and GIS Portal)"
+        self.description = "Check Missing Structure IDs (Rap ML, GIS ML, and GIS Portal)"
+
+    def getParameterInfo(self):
+        proj = arcpy.Parameter(
+            displayName = "Project Extension: N2 or SC",
+            name = "Project Extension: N2 or SC",
+            datatype = "GPString",
+            parameterType = "Required",
+            direction = "Input"
+        )
+        proj.filter.type = "ValueList"
+        proj.filter.list = ['N2', 'SC']
+    
+        gis_dir = arcpy.Parameter(
+            displayName = "GIS Masterlist Storage Directory",
+            name = "GIS master-list directory",
+            datatype = "DEWorkspace",
+            parameterType = "Required",
+            direction = "Input"
+        )
+
+        # Input Feature Layers
+        gis_table_ml = arcpy.Parameter(
+            displayName = "GIS Structure ML (Excel)",
+            name = "GIS Structure ML (Excel)",
+            datatype = "DEFile",
+            parameterType = "Required",
+            direction = "Input"
+        )
+
+        gis_portal_ml = arcpy.Parameter(
+            displayName = "GIS Structure Portal (Excel)",
+            name = "GIS Structure Portal (Excel)",
+            datatype = "DEFile",
+            parameterType = "Required",
+            direction = "Input"
+        )
+
+        rap_table_ml = arcpy.Parameter(
+            displayName = "Rap Structure ML (Excel)",
+            name = "Rap Structure ML (Excel)",
+            datatype = "DEFile",
+            parameterType = "Required",
+            direction = "Input"
+        )
+
+        params = [proj, gis_dir, gis_table_ml, gis_portal_ml, rap_table_ml]
+        return params
+
+    def updateMessages(self, params):
+        return
+
+    def execute(self, params, messages):
+        project = params[0].valueAsText
+        gis_dir = params[1].valueAsText
+        gis_table_ml = params[2].valueAsText
+        gis_portal_ml = params[3].valueAsText
+        rap_table_ml = params[4].valueAsText
+
+        def drop_empty_rows(table, field):
+            id = table.index[(table[field] == '') | (table[field].isna()) | (table[field].isnull())] # Do not use isna() as 'keep_default_na = False'
+            table = table.drop(id)
+            table = table.reset_index(drop=True)
+            return table
+
+        def rename_columns_title(table, search_names, renamed_word): # one by one
+            colname_change = table.columns[table.columns.str.contains(search_names,regex=True)]
+            try:
+                table = table.rename(columns={str(colname_change[0]): renamed_word})
+            except:
+                pass
+            return table
+        
+        def unique(lists):
+            collect = []
+            unique_list = pd.Series(lists).drop_duplicates().tolist()
+            for x in unique_list:
+                collect.append(x)
+            return(collect)
+        
+        def toString(table, to_string_fields): # list of fields to be converted to string
+            for field in to_string_fields:
+                ## Need to convert string first, then apply space removal, and then convert to string again
+                ## If you do not apply string conversion twice, it will fail to join with the GIS attribute table
+                table[field] = table[field].astype(str)
+                table[field] = table[field].apply(lambda x: x.replace(r'\s+', ''))
+                table[field] = table[field].astype(str)
+        
+        rap_table = pd.read_excel(rap_table_ml) # for checking NVS3, do not use default_na = false
+        gis_table = pd.read_excel(gis_table_ml)
+        gis_portal = pd.read_excel(gis_portal_ml)
+
+        # rename City/Municipality or City => 'Municipality'
+        colname_change = rap_table.columns[rap_table.columns.str.contains('^City|Municipality',regex=True)]
+        rap_table = rename_columns_title(rap_table, colname_change[0], 'Municipality')
+
+        join_field = 'StrucID'
+        rap_status_field = 'StatusStruc'
+        rap_status_new_field = 'Rap_Status'
+        package_field = 'CP'
+        municipality_field = 'Municipality'
+        rap_field = 'Rap_ML'
+        gis_field = 'GIS_ML'
+        gis_portal_field = 'GIS_Portal'
+        need_to_check_field = 'Need_to_Check'
+
+        # Convert to strings
+        to_string_fields = [join_field, municipality_field]
+        toString(rap_table, to_string_fields)
+        toString(gis_table, to_string_fields)
+        toString(gis_portal, to_string_fields)
+
+        ## 1. StatusLA =0 -> StatusLA = empty
+        id = rap_table.index[rap_table[rap_status_field] == 0]
+        rap_table.loc[id, rap_status_field] = None
+
+        ### 1.0. Keep only 'LotID', 'CP', and 'StatusLA' fields
+        #### 1.0.1. RAP ML
+        search_names = '|'.join([join_field, municipality_field, rap_status_field])
+        bool_list = [e for e in rap_table.columns.str.contains(search_names, regex=True)]
+        ind_id = [i for i, val in enumerate(bool_list) if val]
+        rap_table_statusla = rap_table.iloc[:, ind_id]
+
+        #### 1.0.2. GIS ML
+        search_names = '|'.join([join_field, municipality_field])
+        bool_list = [e for e in gis_table.columns.str.contains(search_names, regex=True)]
+        ind_id = [i for i, val in enumerate(bool_list) if val]
+        gis_table_statusla = gis_table.iloc[:, ind_id]
+
+        #### 1.0.3. GIS Portal
+        bool_list = [e for e in gis_portal.columns.str.contains(search_names, regex=True)]
+        ind_id = [i for i, val in enumerate(bool_list) if val]
+        gis_portal_statusla = gis_portal.iloc[:, ind_id]
+
+        ## 1.2. Filter
+        rap_lot_ids = unique(rap_table_statusla[join_field])
+        gis_lot_ids = unique(gis_table_statusla[join_field])
+        gis_portal_lot_ids = unique(gis_portal_statusla[join_field])
+
+        ### 1.3. Identify Lot IDs missing in GIS ML and GIS Portal Ids in reference to RAP ML
+        rap_gis_no_ids = [e for e in rap_lot_ids if e not in gis_lot_ids]
+        rap_gis_portal_no_ids = [e for e in rap_lot_ids if e not in gis_portal_lot_ids]
+
+        ## compare rap_gis_no_ids with rap_gis_portal_no_ids
+        ## Lot ids not commonly observed between these two GIS tables => 'GIS ML' = 'Yes'
+        gis_add_lot_ids = [e for e in rap_gis_portal_no_ids if e not in rap_gis_no_ids]
+
+        ## Lot ids from RAP ML missing in GIS ML
+        gis_no_ids = rap_table_statusla[rap_table_statusla[join_field].isin(rap_gis_no_ids)]
+        gis_no_ids[gis_field] = 'No'
+
+        ## Lot ids from RAP ML missing in GIS Portal
+        gis_portal_no_ids = rap_table_statusla[rap_table_statusla[join_field].isin(rap_gis_portal_no_ids)]
+        gis_portal_no_ids[gis_portal_field] = 'No'
+
+        ## 1.4. Concatenate two tables (rbind)
+        dataframes = [gis_no_ids,gis_portal_no_ids]
+        table = pd.concat(dataframes)
+        table = table.reset_index(drop=True)
+        duplicated_ids = table.index[table.duplicated([join_field]) == True]
+        table = table.drop(duplicated_ids)
+        table[gis_portal_field] = 'No'
+
+        ## 1.5. Update 'GIS_ML' and 'Env_ML'
+        id = table.index[table[join_field].isin(gis_add_lot_ids)]
+        table.loc[id, gis_field] = 'Yes'
+        table[rap_field] = 'Yes'
+
+        ## 1.6. Add check field
+        table = rename_columns_title(table, rap_status_field, rap_status_new_field)
+        table[rap_status_new_field] = pd.to_numeric(table[rap_status_new_field], errors='coerce')
+        table['Need_to_Check'] = 'No?'
+        id = table.index[table[rap_status_new_field].notna()]
+        table.loc[id,'Need_to_Check'] = 'Yes'
+
+        ## This table shows lot ids which are missing in either GIS ML or GIS Portal or both.
+        ## Check the following lots with Envi Team: lots with status in Envi Table but not reflected in GIS ML or GIS Portal or both.
+        try:
+            file_name = "CHECK-" + project + "_" + "Structure_Missing_IDs.xlsx"
+        except:
+            file_name = "_" + "Structure_Missing_IDs.xlsx"
+        
+        to_excel_file = os.path.join(gis_dir, file_name)
+        with pd.ExcelWriter(to_excel_file) as writer:
+            table.to_excel(writer, sheet_name=rap_status_field, index=False)
+
+class CheckMissingIsfIDs(object):
+    def __init__(self):
+        self.label = "4.3. Check Missing ISF (NLO) IDs (Rap ML, GIS ML, and GIS Portal)"
+        self.description = "Check Missing ISF (NLO) IDs (Rap ML, GIS ML, and GIS Portal)"
+
+    def getParameterInfo(self):
+        proj = arcpy.Parameter(
+            displayName = "Project Extension: N2 or SC",
+            name = "Project Extension: N2 or SC",
+            datatype = "GPString",
+            parameterType = "Required",
+            direction = "Input"
+        )
+        proj.filter.type = "ValueList"
+        proj.filter.list = ['N2', 'SC']
+    
+        gis_dir = arcpy.Parameter(
+            displayName = "GIS Masterlist Storage Directory",
+            name = "GIS master-list directory",
+            datatype = "DEWorkspace",
+            parameterType = "Required",
+            direction = "Input"
+        )
+
+        # Input Feature Layers
+        gis_table_ml = arcpy.Parameter(
+            displayName = "GIS ISF ML (Excel)",
+            name = "GIS ISF ML (Excel)",
+            datatype = "DEFile",
+            parameterType = "Required",
+            direction = "Input"
+        )
+
+        gis_portal_ml = arcpy.Parameter(
+            displayName = "GIS ISF Portal (Excel)",
+            name = "GIS ISF Portal (Excel)",
+            datatype = "DEFile",
+            parameterType = "Required",
+            direction = "Input"
+        )
+
+        rap_table_ml = arcpy.Parameter(
+            displayName = "Rap Structure ISF ML (Excel)",
+            name = "Rap Structure ISF ML (Excel)",
+            datatype = "DEFile",
+            parameterType = "Required",
+            direction = "Input"
+        )
+
+        params = [proj, gis_dir, gis_table_ml, gis_portal_ml, rap_table_ml]
+        return params
+
+    def updateMessages(self, params):
+        return
+
+    def execute(self, params, messages):
+        project = params[0].valueAsText
+        gis_dir = params[1].valueAsText
+        gis_table_ml = params[2].valueAsText
+        gis_portal_ml = params[3].valueAsText
+        rap_table_ml = params[4].valueAsText
+
+        def drop_empty_rows(table, field):
+            id = table.index[(table[field] == '') | (table[field].isna()) | (table[field].isnull())] # Do not use isna() as 'keep_default_na = False'
+            table = table.drop(id)
+            table = table.reset_index(drop=True)
+            return table
+
+        def rename_columns_title(table, search_names, renamed_word): # one by one
+            colname_change = table.columns[table.columns.str.contains(search_names,regex=True)]
+            try:
+                table = table.rename(columns={str(colname_change[0]): renamed_word})
+            except:
+                pass
+            return table
+        
+        def unique(lists):
+            collect = []
+            unique_list = pd.Series(lists).drop_duplicates().tolist()
+            for x in unique_list:
+                collect.append(x)
+            return(collect)
+        
+        def toString(table, to_string_fields): # list of fields to be converted to string
+            for field in to_string_fields:
+                ## Need to convert string first, then apply space removal, and then convert to string again
+                ## If you do not apply string conversion twice, it will fail to join with the GIS attribute table
+                table[field] = table[field].astype(str)
+                table[field] = table[field].apply(lambda x: x.replace(r'\s+', ''))
+                table[field] = table[field].astype(str)
+        
+        rap_table = pd.read_excel(rap_table_ml) # for checking NVS3, do not use default_na = false
+        gis_table = pd.read_excel(gis_table_ml)
+        gis_portal = pd.read_excel(gis_portal_ml)
+
+        # rename City/Municipality or City => 'Municipality'
+        colname_change = rap_table.columns[rap_table.columns.str.contains('^City|Municipality',regex=True)]
+        rap_table = rename_columns_title(rap_table, colname_change[0], 'Municipality')
+
+        join_field = 'StrucID'
+        rap_status_field = 'StatusRC'
+        rap_status_new_field = 'Rap_Status'
+        package_field = 'CP'
+        municipality_field = 'Municipality'
+        rap_field = 'Rap_ML'
+        gis_field = 'GIS_ML'
+        gis_portal_field = 'GIS_Portal'
+        need_to_check_field = 'Need_to_Check'
+
+        # Convert to strings
+        to_string_fields = [join_field, municipality_field]
+        toString(rap_table, to_string_fields)
+        toString(gis_table, to_string_fields)
+        toString(gis_portal, to_string_fields)
+
+        ## 1. StatusLA =0 -> StatusLA = empty
+        id = rap_table.index[rap_table[rap_status_field] == 0]
+        rap_table.loc[id, rap_status_field] = None
+
+        ### 1.0. Keep only 'LotID', 'CP', and 'StatusLA' fields
+        #### 1.0.1. RAP ML
+        search_names = '|'.join([join_field, municipality_field, rap_status_field])
+        bool_list = [e for e in rap_table.columns.str.contains(search_names, regex=True)]
+        ind_id = [i for i, val in enumerate(bool_list) if val]
+        rap_table_statusla = rap_table.iloc[:, ind_id]
+
+        #### 1.0.2. GIS ML
+        search_names = '|'.join([join_field, municipality_field])
+        bool_list = [e for e in gis_table.columns.str.contains(search_names, regex=True)]
+        ind_id = [i for i, val in enumerate(bool_list) if val]
+        gis_table_statusla = gis_table.iloc[:, ind_id]
+
+        #### 1.0.3. GIS Portal
+        bool_list = [e for e in gis_portal.columns.str.contains(search_names, regex=True)]
+        ind_id = [i for i, val in enumerate(bool_list) if val]
+        gis_portal_statusla = gis_portal.iloc[:, ind_id]
+
+        ## 1.2. Filter
+        rap_lot_ids = unique(rap_table_statusla[join_field])
+        gis_lot_ids = unique(gis_table_statusla[join_field])
+        gis_portal_lot_ids = unique(gis_portal_statusla[join_field])
+
+        ### 1.3. Identify Lot IDs missing in GIS ML and GIS Portal Ids in reference to RAP ML
+        rap_gis_no_ids = [e for e in rap_lot_ids if e not in gis_lot_ids]
+        rap_gis_portal_no_ids = [e for e in rap_lot_ids if e not in gis_portal_lot_ids]
+
+        ## compare rap_gis_no_ids with rap_gis_portal_no_ids
+        ## Lot ids not commonly observed between these two GIS tables => 'GIS ML' = 'Yes'
+        gis_add_lot_ids = [e for e in rap_gis_portal_no_ids if e not in rap_gis_no_ids]
+
+        ## Lot ids from RAP ML missing in GIS ML
+        gis_no_ids = rap_table_statusla[rap_table_statusla[join_field].isin(rap_gis_no_ids)]
+        gis_no_ids[gis_field] = 'No'
+
+        ## Lot ids from RAP ML missing in GIS Portal
+        gis_portal_no_ids = rap_table_statusla[rap_table_statusla[join_field].isin(rap_gis_portal_no_ids)]
+        gis_portal_no_ids[gis_portal_field] = 'No'
+
+        ## 1.4. Concatenate two tables (rbind)
+        dataframes = [gis_no_ids,gis_portal_no_ids]
+        table = pd.concat(dataframes)
+        table = table.reset_index(drop=True)
+        duplicated_ids = table.index[table.duplicated([join_field]) == True]
+        table = table.drop(duplicated_ids)
+        table[gis_portal_field] = 'No'
+
+        ## 1.5. Update 'GIS_ML' and 'Env_ML'
+        id = table.index[table[join_field].isin(gis_add_lot_ids)]
+        table.loc[id, gis_field] = 'Yes'
+        table[rap_field] = 'Yes'
+
+        ## 1.6. Add check field
+        table = rename_columns_title(table, rap_status_field, rap_status_new_field)
+        table[rap_status_new_field] = pd.to_numeric(table[rap_status_new_field], errors='coerce')
+        table['Need_to_Check'] = 'No?'
+        id = table.index[table[rap_status_new_field].notna()]
+        table.loc[id,'Need_to_Check'] = 'Yes'
+
+        ## This table shows lot ids which are missing in either GIS ML or GIS Portal or both.
+        ## Check the following lots with Envi Team: lots with status in Envi Table but not reflected in GIS ML or GIS Portal or both.
+        try:
+            file_name = "CHECK-" + project + "_" + "ISF_Missing_Structure_IDs.xlsx"
+        except:
+            file_name = "_" + "ISF_Missing_Structure_IDs.xlsx"
+        
+        to_excel_file = os.path.join(gis_dir, file_name)
+        with pd.ExcelWriter(to_excel_file) as writer:
+            table.to_excel(writer, sheet_name=rap_status_field, index=False)

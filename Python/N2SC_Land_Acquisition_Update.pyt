@@ -2019,7 +2019,7 @@ class UpdateBarangayGIS(object):
 
 class JustMessage3(object):
     def __init__(self):
-        self.label = "3.0. ----- Summary Status GIS ML and GIS Portal -----"
+        self.label = "3.0. ----- Summary Statistics GIS ML and GIS Portal -----"
         self.description = "Update Excel Master List"
 
 class CheckLotUpdatedStatusGIS(object):

@@ -12,14 +12,14 @@ class Toolbox(object):
     def __init__(self):
         self.label = "UpdateLandAcquisition"
         self.alias = "UpdateLandAcquisition"
-        self.tools = [RestoreScaleForLot, UpdateLot, UpdateISF, UpdateStructure, UpdateBarangay, UpdatePier,
-                      UpdateLotGIS, UpdateStructureGIS, UpdatePierGIS, UpdateBarangayGIS,
-                      CheckLotUpdatedStatusGIS, CheckStructureUpdatedStatusGIS, CheckIsfUpdatedStatusGIS,
-                      CheckMissingLotIDs, CheckMissingStructureIDs, CheckMissingIsfIDs]
+        self.tools = [RestoreScaleForLot, JustMessage1, UpdateLot, UpdateISF, UpdateStructure, UpdateBarangay, UpdatePier,
+                      JustMessage2, UpdateLotGIS, UpdateStructureGIS, UpdatePierGIS, UpdateBarangayGIS,
+                      JustMessage3, CheckLotUpdatedStatusGIS, CheckStructureUpdatedStatusGIS, CheckIsfUpdatedStatusGIS,
+                      JustMessage4, CheckMissingLotIDs, CheckMissingStructureIDs, CheckMissingIsfIDs]
 
 class RestoreScaleForLot(object):
     def __init__(self):
-        self.label = "1.0. Add Scale To GIS Excel ML (Lot)"
+        self.label = "0.0. Add Scale To GIS Excel ML (Lot)"
         self.description = "Add Scale To GIS Excel ML (Lot)"
 
     def getParameterInfo(self):
@@ -85,6 +85,11 @@ class RestoreScaleForLot(object):
             target_table_new.to_excel(to_excel_file, index=False)
 
         N2SC_Restore_Scale()
+
+class JustMessage1(object):
+    def __init__(self):
+        self.label = "1.0. ----- Update Excel Master List -----"
+        self.description = "Update Excel Master List"
 
 class UpdateLot(object):
     def __init__(self):
@@ -1401,6 +1406,11 @@ class UpdatePier(object):
 
         N2SC_Pier_Update()
 
+class JustMessage2(object):
+    def __init__(self):
+        self.label = "2.0. ----- Update GIS Layers -----"
+        self.description = "Update Excel Master List"
+
 class UpdateLotGIS(object):
     def __init__(self):
         self.label = "2.1. Update GIS Attribute Table (Lot)"
@@ -2007,6 +2017,11 @@ class UpdateBarangayGIS(object):
             arcpy.AddError("Something went wrong..process stopped.")
             pass
 
+class JustMessage3(object):
+    def __init__(self):
+        self.label = "3.0. ----- Summary Status GIS ML and GIS Portal -----"
+        self.description = "Update Excel Master List"
+
 class CheckLotUpdatedStatusGIS(object):
     def __init__(self):
         self.label = "3.1. Summary Stats for Lot Status (GIS Portal and GIS ML)"
@@ -2091,10 +2106,6 @@ class CheckLotUpdatedStatusGIS(object):
         table['count_diff'] = np.NAN
         table['count_diff'] = table['counts_y'] - table['counts_x']
         table = table.rename(columns={"counts_x": str(counts_portal), "counts_y": str(counts_excel)})
-        
-        # table = gis_portal_statusla.join(gis_ml_statusla,lsuffix=lsuffix_portal,rsuffix=rsuffix_excel)
-        # table['count_diff'] = np.NAN
-        # table['count_diff'] = table[counts_portal] - table[counts_excel]
 
         arcpy.AddMessage('Merge completed..')
         arcpy.AddMessage('The summary statistics table for StatusLA field is successfully produced.')
@@ -2111,14 +2122,10 @@ class CheckLotUpdatedStatusGIS(object):
         gis_ml_handedover = gis_ml_handedover.sort_values(by=keep_fields)
 
         ## 2.0.3. Merge
-        # table_handedover = pd.merge(left=gis_portal_handedover, right=gis_ml_handedover, how='outer', left_on=[municipality_field, handedover_field], right_on=[municipality_field, handedover_field])
+        table_handedover = pd.merge(left=gis_portal_handedover, right=gis_ml_handedover, how='outer', left_on=[municipality_field, handedover_field], right_on=[municipality_field, handedover_field])
         table_handedover['count_diff'] = np.NAN
         table_handedover['count_diff'] = table_handedover['counts_y'] - table_handedover['counts_x']
         table_handedover = table_handedover.rename(columns={"counts_x": str(counts_portal), "counts_y": str(counts_excel)})
-
-        # table_handedover = gis_portal_handedover.join(gis_ml_handedover,lsuffix=lsuffix_portal,rsuffix=rsuffix_excel)
-        # table_handedover['count_diff'] = np.NAN
-        # table_handedover['count_diff'] = table_handedover[counts_portal] - table_handedover[counts_excel]
 
         arcpy.AddMessage('Merge completed..')
         arcpy.AddMessage('The summary statistics table for HandedOver field is successfully produced.')
@@ -2335,6 +2342,11 @@ class CheckIsfUpdatedStatusGIS(object):
         to_excel_file = os.path.join(gis_dir, file_name)
         with pd.ExcelWriter(to_excel_file) as writer:
             table.to_excel(writer, sheet_name=statusla_field, index=False)
+
+class JustMessage4(object):
+    def __init__(self):
+        self.label = "4.0. ----- Identify Missing IDs -----"
+        self.description = "Update Excel Master List"
 
 class CheckMissingLotIDs(object):
     def __init__(self):

@@ -668,30 +668,12 @@ class CheckLotUpdatedStatusEnvGIS(object):
                 ## Rename
                 env_sum = env_sum.rename(columns={station_field: str(station1_field)})
 
-                if field == h_level_rename:
-                    table_ol = pd.merge(left=env_sum, right=gis_sum, how='outer',
-                            left_on=[package_field, station1_field, type_field, h_level_rename],
-                            right_on=[package_field, station1_field, type_field, h_level_rename])
-                elif field == la_field_rename:
-                    table_ol = pd.merge(left=env_sum, right=gis_sum, how='outer',
-                            left_on=[package_field, station1_field, type_field, la_field_rename],
-                            right_on=[package_field, station1_field, type_field, la_field_rename])
-                elif field == la2_field_rename:
-                    table_ol = pd.merge(left=env_sum, right=gis_sum, how='outer',
-                            left_on=[package_field, station1_field, type_field, la2_field_rename],
-                            right_on=[package_field, station1_field, type_field, la2_field_rename])
-                elif field == pp_field_rename:
-                    table_ol = pd.merge(left=env_sum, right=gis_sum, how='outer',
-                            left_on=[package_field, station1_field, type_field, pp_field_rename],
-                            right_on=[package_field, station1_field, type_field, pp_field_rename])
-                elif field == expro_field_rename:
-                    table_ol = pd.merge(left=env_sum, right=gis_sum, how='outer',
-                            left_on=[package_field, station1_field, type_field, expro_field_rename],
-                            right_on=[package_field, station1_field, type_field, expro_field_rename])   
+                # if field == h_level_rename:
+                table_ol = pd.merge(left=env_sum, right=gis_sum, how='outer',
+                        left_on=[package_field, station1_field, type_field, field],
+                        right_on=[package_field, station1_field, type_field, field])
 
-                # table_ol = env_sum.join(gis_sum, lsuffix=lsuffix_env, rsuffix=rsuffix_gis)
                 table_ol['count_diff'] = np.NAN
-                # table_ol['count_diff'] = table_ol[counts_gis] - table_ol[counts_env]
                 table_ol['count_diff'] = table_ol['counts_y'] - table_ol['counts_x']
                 table_ol = table_ol.rename(columns={"counts_x": str(counts_env), "counts_y": str(counts_gis)})
 
@@ -1484,9 +1466,13 @@ class CheckLotUpdatedStatusGIS(object):
         nvs3_gis_ml = nvs3_gis_ml.sort_values(by=[package_field,station_field,type_field])
 
         ## Merge
-        table_nvs3 = nvs3_gis_portal.join(nvs3_gis_ml,lsuffix=lsuffix_portal,rsuffix=rsuffix_excel)
+        table_nvs3 = pd.merge(left=nvs3_gis_portal, right=nvs3_gis_ml, how='outer',
+                              left_on=[package_field,station_field,type_field,nvs3_field_gis],
+                              right_on=[package_field,station_field,type_field,nvs3_field_gis])
+        # table_nvs3 = nvs3_gis_portal.join(nvs3_gis_ml,lsuffix=lsuffix_portal,rsuffix=rsuffix_excel)
         table_nvs3['count_diff'] = np.NAN
-        table_nvs3['count_diff'] = table_nvs3[counts_portal] - table_nvs3[counts_excel]
+        table_nvs3['count_diff'] = table_nvs3['counts_y'] - table_nvs3['counts_x']
+        table_nvs3 = table_nvs3.rename(columns={"counts_x": str(counts_portal), "counts_y": str(counts_excel)})
 
         arcpy.AddMessage('Merge completed..')
         arcpy.AddMessage('The summary statistics table for StatusNVS3 field is successfully produced.')
@@ -1511,9 +1497,13 @@ class CheckLotUpdatedStatusGIS(object):
             gis_ml = gis_ml.sort_values(by=[package_field,station_field,type_field])
 
             # Merge
-            table_ol = gis_p.join(gis_ml,lsuffix=lsuffix_portal,rsuffix=rsuffix_excel)
+            table_ol = pd.merge(left=gis_p, right=gis_ml, how='outer',
+                                left_on=[package_field,station_field,type_field,field],
+                                right_on=[package_field,station_field,type_field,field])
+            # table_nvs3 = nvs3_gis_portal.join(nvs3_gis_ml,lsuffix=lsuffix_portal,rsuffix=rsuffix_excel)
             table_ol['count_diff'] = np.NAN
-            table_ol['count_diff'] = table_ol[counts_portal] - table_ol[counts_excel]
+            table_ol['count_diff'] = table_ol['counts_y'] - table_ol['counts_x']
+            table_ol = table_ol.rename(columns={"counts_x": str(counts_portal), "counts_y": str(counts_excel)})
             
             # store data
             data_store[n_step] = table_ol
@@ -1522,12 +1512,12 @@ class CheckLotUpdatedStatusGIS(object):
         # Compile and Export
         arcpy.AddMessage("Compile all summary statistics for StatusNVS3 and Operation Level status..")
         with pd.ExcelWriter(to_excel_file) as writer:
-            table_nvs3.to_excel(writer, sheet_name=nvs3_field_gis)
-            data_store[0].to_excel(writer, sheet_name=status_fields_ol[0])
-            data_store[1].to_excel(writer, sheet_name=status_fields_ol[1])
-            data_store[2].to_excel(writer, sheet_name=status_fields_ol[2])
-            data_store[3].to_excel(writer, sheet_name=status_fields_ol[3])
-            data_store[4].to_excel(writer, sheet_name=status_fields_ol[4])
+            table_nvs3.to_excel(writer, sheet_name=nvs3_field_gis, index=False)
+            data_store[0].to_excel(writer, sheet_name=status_fields_ol[0], index=False)
+            data_store[1].to_excel(writer, sheet_name=status_fields_ol[1], index=False)
+            data_store[2].to_excel(writer, sheet_name=status_fields_ol[2], index=False)
+            data_store[3].to_excel(writer, sheet_name=status_fields_ol[3], index=False)
+            data_store[4].to_excel(writer, sheet_name=status_fields_ol[4], index=False)
 
         arcpy.AddMessage('The compilation is successful and the table is exported to your directory..')
   

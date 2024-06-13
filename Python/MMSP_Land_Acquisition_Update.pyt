@@ -13,7 +13,7 @@ class Toolbox(object):
     def __init__(self):
         self.label = "UpdateLandAcquisition"
         self.alias = "UpdateLandAcquisition"
-        self.tools = [UpdateLotExcel, UpdateLotMPRExcel, CheckLotUpdatedStatusEnvGIS, CheckLotUpdatedStatusGIS, UpdateStructureExcel, UpdateISFExcel, UpdateGISLayers, CheckMissingLotIDs]
+        self.tools = [UpdateLotExcel, UpdateLotMPRExcel, CheckLotUpdatedStatusEnvGIS, CheckLotUpdatedStatusGIS, UpdateStructureExcel, UpdateISFExcel, UpdateGISLayers, CheckMissingLotIDs, CopyInputToTargetLayer]
 
 class UpdateLotExcel(object):
     def __init__(self):
@@ -477,7 +477,7 @@ class CheckLotUpdatedStatusEnvGIS(object):
 
             export_file_name = 'CHECK-LA_Summary_Statistics_Envi_and_GIS_ML.xlsx'
             to_excel_file = os.path.join(gis_dir, export_file_name)
-
+ 
             ######################################
             ############ 'StatusNVS3' ############
             ######################################
@@ -518,9 +518,19 @@ class CheckLotUpdatedStatusEnvGIS(object):
             arcpy.AddMessage('04.')
 
             # Merge
-            table_nvs3 = nvs3_env.join(nvs3_gis,lsuffix=lsuffix_env,rsuffix=rsuffix_gis)
+            ## We need to rename Station and StatusNVS in the envi table to match GIS.
+            ### 'STATION'(x) -> 'Station1'
+            ### 'StatusNVS(x) -> 'StatusNVS3'
+            nvs3_env = nvs3_env.rename(columns={station_field: str(station1_field), nvs3_field_env: str(nvs3_field_gis)})
+
+            table_nvs3 = pd.merge(left=nvs3_env, right=nvs3_gis, how='outer',
+                                  left_on=[package_field, station1_field, type_field, nvs3_field_gis],
+                                  right_on=[package_field, station1_field, type_field, nvs3_field_gis])
+            # table_nvs3 = nvs3_env.join(nvs3_gis,lsuffix=lsuffix_env,rsuffix=rsuffix_gis)
             table_nvs3['count_diff'] = np.NAN
-            table_nvs3['count_diff'] = table_nvs3[counts_gis] - table_nvs3[counts_env]
+            # table_nvs3['count_diff'] = table_nvs3[counts_gis] - table_nvs3[counts_env]
+            table_nvs3['count_diff'] = table_nvs3['counts_y'] - table_nvs3['counts_x']
+            table_nvs3 = table_nvs3.rename(columns={"counts_x": str(counts_env), "counts_y": str(counts_gis)})
 
             ############################################
             ############ 'Operations Level' ############
@@ -550,7 +560,7 @@ class CheckLotUpdatedStatusEnvGIS(object):
             ### 2.1.1. Rename status fields
             status_fields_old = [hl_field, la_field, la2_field, payp_field, expro_field]
             status_fields_new = [h_level_rename, la_field_rename, la2_field_rename, pp_field_rename, expro_field_rename]
-
+            
             for i in range(len(status_fields_old)):
                 env_table_ol = rename_columns_title(env_table_ol, status_fields_old[i], status_fields_new[i])
 
@@ -569,16 +579,16 @@ class CheckLotUpdatedStatusEnvGIS(object):
                 {
                     "On-going Validation": 1,
                     "Pending Appraisal": 2,
-                    "Pending Delivery": 3,
-                    "Pending Compilation of Documents": 4,
-                    "OTB for Serving": 5,
-                    "Pending OTB Reply (Within 30 Days)": 6,
-                    "Pending OTB Reply Beyond 30 Days (Uncooperative)": 7,
-                    "Pending OTB Reply Beyond 30 Days (Cooperative)": 8,
-                    "OTB Accepted with Pending Documents From PO or Other Agencies": 9,
-                    "OTB Accepted": 10,
-                    "Expropriation": 11,
-                    "ROWUA/TUA": 12
+                    # "Pending Delivery": 3,
+                    "Pending Compilation of Documents": 3,
+                    "OTB for Serving": 4,
+                    "Pending OTB Reply (Within 30 Days)": 5,
+                    "Pending OTB Reply Beyond 30 Days (Uncooperative)": 6,
+                    "Pending OTB Reply Beyond 30 Days (Cooperative)": 7,
+                    "OTB Accepted with Pending Documents From PO or Other Agencies": 8,
+                    "OTB Accepted": 9,
+                    "Expropriation": 10,
+                    "ROWUA/TUA": 11
                 },
                 
                 # Land Acquisition1
@@ -645,7 +655,7 @@ class CheckLotUpdatedStatusEnvGIS(object):
                 env_sum = env_sum.sort_values(by=[package_field,station_field,type_field])
 
                 ### Remove empty status
-                id = env_sum.index[env_sum[field] == '']
+                id = env_sum.index[(env_sum[field] == '') | (env_sum[field].isna()) | (env_sum[field].isnull())]
                 env_sum = env_sum.drop(id)
                 env_sum = env_sum.reset_index(drop=True)
 
@@ -655,20 +665,46 @@ class CheckLotUpdatedStatusEnvGIS(object):
                 gis_sum = gis_sum.sort_values(by=[package_field, station1_field, type_field]) 
 
                 # Merge
-                table_ol = env_sum.join(gis_sum, lsuffix=lsuffix_env, rsuffix=rsuffix_gis)
+                ## Rename
+                env_sum = env_sum.rename(columns={station_field: str(station1_field)})
+
+                if field == h_level_rename:
+                    table_ol = pd.merge(left=env_sum, right=gis_sum, how='outer',
+                            left_on=[package_field, station1_field, type_field, h_level_rename],
+                            right_on=[package_field, station1_field, type_field, h_level_rename])
+                elif field == la_field_rename:
+                    table_ol = pd.merge(left=env_sum, right=gis_sum, how='outer',
+                            left_on=[package_field, station1_field, type_field, la_field_rename],
+                            right_on=[package_field, station1_field, type_field, la_field_rename])
+                elif field == la2_field_rename:
+                    table_ol = pd.merge(left=env_sum, right=gis_sum, how='outer',
+                            left_on=[package_field, station1_field, type_field, la2_field_rename],
+                            right_on=[package_field, station1_field, type_field, la2_field_rename])
+                elif field == pp_field_rename:
+                    table_ol = pd.merge(left=env_sum, right=gis_sum, how='outer',
+                            left_on=[package_field, station1_field, type_field, pp_field_rename],
+                            right_on=[package_field, station1_field, type_field, pp_field_rename])
+                elif field == expro_field_rename:
+                    table_ol = pd.merge(left=env_sum, right=gis_sum, how='outer',
+                            left_on=[package_field, station1_field, type_field, expro_field_rename],
+                            right_on=[package_field, station1_field, type_field, expro_field_rename])   
+
+                # table_ol = env_sum.join(gis_sum, lsuffix=lsuffix_env, rsuffix=rsuffix_gis)
                 table_ol['count_diff'] = np.NAN
-                table_ol['count_diff'] = table_ol[counts_gis] - table_ol[counts_env]
+                # table_ol['count_diff'] = table_ol[counts_gis] - table_ol[counts_env]
+                table_ol['count_diff'] = table_ol['counts_y'] - table_ol['counts_x']
+                table_ol = table_ol.rename(columns={"counts_x": str(counts_env), "counts_y": str(counts_gis)})
 
                 data_store[n_step] = table_ol
 
             # Export
             with pd.ExcelWriter(to_excel_file) as writer:
-                table_nvs3.to_excel(writer, sheet_name=nvs3_field_gis)
-                data_store[0].to_excel(writer, sheet_name=status_fields_new[0])
-                data_store[1].to_excel(writer, sheet_name=status_fields_new[1])
-                data_store[2].to_excel(writer, sheet_name=status_fields_new[2])
-                data_store[3].to_excel(writer, sheet_name=status_fields_new[3])
-                data_store[4].to_excel(writer, sheet_name=status_fields_new[4])
+                table_nvs3.to_excel(writer, sheet_name=nvs3_field_gis, index=False)
+                data_store[0].to_excel(writer, sheet_name=status_fields_new[0], index=False)
+                data_store[1].to_excel(writer, sheet_name=status_fields_new[1], index=False)
+                data_store[2].to_excel(writer, sheet_name=status_fields_new[2], index=False)
+                data_store[3].to_excel(writer, sheet_name=status_fields_new[3], index=False)
+                data_store[4].to_excel(writer, sheet_name=status_fields_new[4], index=False)
     
         MMSP_Land_Update()
 
@@ -1644,6 +1680,109 @@ class CheckMissingLotIDs(object):
         ## Check the following lots with Envi Team: lots with status in Envi Table but not reflected in GIS ML or GIS Portal or both.
         file_name = os.path.join(gis_dir, 'CHECK-LA_Missing_Lot_IDs.xlsx')
         table.to_excel(file_name, index=False)
+
+class CopyInputToTargetLayer(object):
+    def __init__(self):
+        self.label = "4.3. Copy Input Layer to Target Layer (GIS Layers)"
+        self.description = "4.3. Copy Input Layer to Target Layer (GIS Layers)"
+
+    def getParameterInfo(self):
+        # Input Feature Layers
+        input_layer = arcpy.Parameter(
+            displayName = "Input Feature Layer",
+            name = "Input Feature Layer",
+            datatype = "GPFeatureLayer",
+            parameterType = "Required",
+            direction = "Input"
+        )
+
+        target_layer = arcpy.Parameter(
+            displayName = "Target Feature Layer",
+            name = "Target Feature Layer",
+            datatype = "GPFeatureLayer",
+            parameterType = "Required",
+            direction = "Input"
+        )
+
+        params = [input_layer, target_layer]
+        return params
+
+    def updateMessages(self, params):
+        return
+
+    def execute(self, params, messages):
+        input_layer = params[0].valueAsText
+        target_layer = params[1].valueAsText
+
+        # To allow overwriting the outputs change the overwrite option to true.
+        arcpy.env.overwriteOutput = True
+        
+        # 1. Copy the source SDE
+        copied = "copied_layer"
+
+        ## 1.1 Check if target_fgdb is 32651 or 3857
+        sp_target = arcpy.Describe(target_layer).spatialReference.factoryCode # WKID
+        sp_input = arcpy.Describe(input_layer).spatialReference.factoryCode
+        
+        sp_target_name = arcpy.Describe(target_layer).spatialReference.name
+        sp_input_name = arcpy.Describe(input_layer).spatialReference.name
+
+        arcpy.AddMessage('Spatial Reference of Input Layer: {}'.format(sp_input_name))
+        arcpy.AddMessage('Spatial Reference of Target Layer: {}'.format(sp_target_name))
+
+        wgs84_output = "WGS 1984 Web Mercator (auxiliary sphere)"
+        prs92_output = "PRS 1992 Philippines Zone III"
+        wgs84_utm_output = "WGS 1984 UTM Zone 51N"
+        prs92_wgs84_transform = "PRS_1992_To_WGS_1984_1"
+
+        if sp_target == 3857 and sp_input == 3857:
+            arcpy.env.outputCoordinateSystem = arcpy.SpatialReference(wgs84_output)
+            arcpy.AddMessage('Output Coordinate System: {0}, Geographic Transformation: {1}'.format(wgs84_output, 'None'))
+
+        elif sp_target == 3857 and sp_input == 32651:
+            arcpy.env.outputCoordinateSystem = arcpy.SpatialReference(wgs84_output)
+            arcpy.AddMessage('Output Coordinate System: {0}, Geographic Transformation: {1}'.format(wgs84_output, 'None'))
+
+        elif sp_target == 3857 and sp_input == 3123:
+            arcpy.env.geographicTransformations = prs92_wgs84_transform
+            arcpy.env.outputCoordinateSystem = arcpy.SpatialReference(wgs84_output)
+            arcpy.AddMessage('Output Coordinate System: {0}, Geographic Transformation: {1}'.format(wgs84_output, prs92_wgs84_transform))
+
+        elif sp_target == 3123 and sp_input == 3857:
+            arcpy.env.geographicTransformations = prs92_wgs84_transform
+            arcpy.env.outputCoordinateSystem = arcpy.SpatialReference(prs92_output)
+            arcpy.AddMessage('Output Coordinate System: {0}, Geographic Transformation: {1}'.format(prs92_output, prs92_wgs84_transform))
+            
+        elif sp_target == 3123 and sp_input == 32651:
+            arcpy.env.geographicTransformations = prs92_wgs84_transform
+            arcpy.env.outputCoordinateSystem = arcpy.SpatialReference(prs92_output)
+            arcpy.AddMessage('Output Coordinate System: {0}, Geographic Transformation: {1}'.format(prs92_output, prs92_wgs84_transform))
+
+        elif sp_target == 3123 and sp_input == 3123:
+            arcpy.env.outputCoordinateSystem = arcpy.SpatialReference(prs92_output)
+            arcpy.AddMessage('Output Coordinate System: {0}, Geographic Transformation: {1}'.format(prs92_output, 'None'))
+
+        elif sp_target == 32651 and sp_input == 3857:
+            arcpy.env.outputCoordinateSystem = arcpy.SpatialReference(wgs84_utm_output)
+            arcpy.AddMessage('Output Coordinate System: {0}, Geographic Transformation: {1}'.format(wgs84_utm_output, 'None'))
+
+        elif sp_target == 32651 and sp_input == 32651:
+            arcpy.env.outputCoordinateSystem = arcpy.SpatialReference(wgs84_utm_output)
+            arcpy.AddMessage('Output Coordinate System: {0}, Geographic Transformation: {1}'.format(wgs84_utm_output, 'None'))
+            
+        elif sp_target == 32651 and sp_input == 3123:
+            arcpy.env.geographicTransformations = prs92_wgs84_transform
+            arcpy.env.outputCoordinateSystem = arcpy.SpatialReference(wgs84_utm_output)
+            arcpy.AddMessage('Output Coordinate System: {}, Geographic Transformation: {}'.format(wgs84_utm_output, prs92_wgs84_transform))
+
+        copyL = arcpy.CopyFeatures_management(input_layer, copied)
+        arcpy.TruncateTable_management(target_layer)
+        arcpy.Append_management(copyL, target_layer, schema_type = 'NO_TEST')
+
+        # Delete
+        arcpy.Delete_management(copyL)
+        arcpy.AddMessage("Delete copied layer is Success")
+
 
 
 

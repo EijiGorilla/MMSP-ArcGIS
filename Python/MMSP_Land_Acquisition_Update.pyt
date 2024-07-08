@@ -166,6 +166,7 @@ class UpdateLotExcel(object):
             gis_table = pd.read_excel(gis_lot_ms)
             env_table = pd.read_excel(env_lot_ms, skiprows=1, keep_default_na=False) # keep_default=False for High_Level Columns
  
+            arcpy.AddMessage(f"gis_table fields: {gis_table.dtypes}")
             # Create bakcup files
             try:
                 gis_table.to_excel(os.path.join(gis_bakcup_dir, lastupdate + "_" + "GIS_Land_MasterList.xlsx"),index=False)
@@ -261,6 +262,7 @@ class UpdateLotExcel(object):
             status_nvs3_field = 'StatusNVS3'
             handedover_field = 'HandedOver'
             handover_date_field = 'HandOverDate'
+            handedover_year_field = 'HandedOverYear'
             handover_2_field = 'Handover2'
             not_yet_field = 'not_yet'
             moa_field = 'MOA'
@@ -330,7 +332,6 @@ class UpdateLotExcel(object):
 
                 old_fields = [f for f in env_table_ol.columns[1:7]] # H_Level to ROWUA
                 new_fields = [h_level_field, la_field, la2_field, pp_field, expro_field, rowua_field, remarks_field, issue_field]
-                
 
                 ### 2.2.1 Update status for Operation Level
                 for i in range(len(old_fields)):
@@ -359,6 +360,14 @@ class UpdateLotExcel(object):
 
                 # 3. GIS table (updated)
                 ## 3.1. Join fiels from new table to original GIS table
+                ### Before merge, check duplicated fields
+                gis_table_fields = gis_table.columns
+                gis_table_new_fields = gis_table_new.columns
+                dup1 = [f for f in gis_table_fields if f in gis_table_new_fields]
+                duplicated_fields = [f for f in dup1 if f not in join_field]
+                if len(duplicated_fields) > 0:
+                    gis_table = gis_table.drop(columns = duplicated_fields)
+
                 gis_table_updated = pd.merge(left=gis_table, right=gis_table_new, how='left', left_on=join_field, right_on=join_field)
 
                 ## 3.2. Fix date
@@ -374,6 +383,14 @@ class UpdateLotExcel(object):
                 # to_string_fields = [join_field]
                 toString(gis_table_updated, ['CN'])
 
+                # Get HandedOverYear from HandOverDate
+                ## Convert object to pandas datetime
+                gis_table_updated[handover_date_field] = pd.to_datetime(gis_table_updated[handover_date_field])
+                gis_table_updated[handedover_year_field] = gis_table_updated[handover_date_field].dt.year
+
+                # Recover the original date format
+                gis_table_updated[handover_date_field] = pd.to_datetime(gis_table_updated[handover_date_field], errors='coerce').dt.date
+ 
                 # 4. Export to excel
                 export_file_name = os.path.splitext(os.path.basename(gis_lot_ms))[0]
                 to_excel_file = os.path.join(gis_dir, export_file_name + ".xlsx")

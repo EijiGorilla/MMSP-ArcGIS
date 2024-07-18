@@ -37,7 +37,7 @@ library(purrr)
 
 #******************************************************************#
 ## Enter Date of Update ##
-date_update = "2024-06-05"
+date_update = "2024-07-03"
 
 #******************************************************************#
 
@@ -106,7 +106,7 @@ url = "https://docs.google.com/spreadsheets/d/11NMBpr1nKXuOgooHDl-CARvrieVN7VjEp
 
 boredPiles = 2
 pileC_pierC_pierH = 4
-precast = 12
+precast = 17
 
 #################################
 ### N01: BORED PILES #############----
@@ -379,7 +379,6 @@ x$nPierNumber = gsub("[[:space:]]","",x$nPierNumber)
 ## 6.4. Remove bracket if present
 x$nPierNumber = gsub("[()]","",x$nPierNumber)
 
-
 # 7. Join 
 y = read.xlsx(MLTable)
 yx = left_join(y,x,by=c("nPierNumber","Type"))
@@ -438,6 +437,8 @@ yx = yx[,-iid]
 
 ## Add new dates
 yx$updated = ymd(date_update)
+
+yx_pile = yx$nPierNumber[which(yx$Status1==4 & yx$Type==2 & yx$CP=="N-01")]
 
 # 12. Export output
 write.xlsx(yx, MLTable)
@@ -886,7 +887,7 @@ write.xlsx(yx, MLTable)
 url = "https://docs.google.com/spreadsheets/d/1du9qnThdve1yXBv-W_lLzSa3RMd6wX6_NlNCz8PqFdg/edit?usp=sharing"
 
 # sheet no
-sheetNumber = 2
+sheetNumber = 4
 
 ###########################
 ### N-02: BORED PILES #:----
@@ -1092,7 +1093,7 @@ for(i in seq(coln)) {
 # 3.Identify the first and last
 keep_row = which(str_detect(x$nPierNumber, "^P-|^MT"))
 x = x[keep_row,]
-x
+
 # 3. Delete empty 
 id=which(is.na(x$Status1))
 if(length(id) > 0) {
@@ -1399,11 +1400,15 @@ x$nPierNumber = gsub("LS","-LS",x$nPierNumber)
 x$nPierNumber = gsub("RS","-RS",x$nPierNumber)
 
 ## P-596, P-597. S -> none, N -> none
-id = which(str_detect(x$nPierNumber, "^P59[6,7][S]$"))
-x$nPierNumber[id] = gsub("S", "", x$nPierNumber[id])
+id = which(str_detect(x$nPierNumber, "^P59[6,7,8][S]$|^P596SB$"))
+x$nPierNumber[id] = gsub("S|SB", "", x$nPierNumber[id])
 
-id = which(str_detect(x$nPierNumber, "^P59[6,7][N]$"))
-x$nPierNumber[id] = gsub("N", "", x$nPierNumber[id])
+id = which(str_detect(x$nPierNumber, "^P59[6,7][N]$|^P598NB$"))
+x$nPierNumber[id] = gsub("N|NB", "", x$nPierNumber[id])
+
+### delete the duplicated if any
+id = which(duplicated(x$nPierNumber))
+if (length(id)>0) x = x[-id,]
 
 # 7. Add field names
 x$CP = "N-02"
@@ -1818,7 +1823,7 @@ x$Type = 3
 
 # 6. Edit nPierNumber
 # Extract only piles
-pile_id = which(str_detect(x$nPierNumber,"^P-"))
+pile_id = which(str_detect(x$nPierNumber,"^P-|^MT"))
 x = x[pile_id,]
 x$nPierNumber = gsub("^P-","P",x$nPierNumber)
 
@@ -1834,6 +1839,10 @@ x$nPierNumber[id] = gsub("L", "-L", x$nPierNumber[id])
 
 id = which(str_detect(x$nPierNumber, ".*R"))
 x$nPierNumber[id] = gsub("R", "-R", x$nPierNumber[id])
+
+## civil: MT03-P2 -> GIS: MT032...
+id = which(str_detect(x$nPierNumber, "^MT"))
+x$nPierNumber[id] = gsub("-P", "", x$nPierNumber[id])
 
 # 7. Join 
 y = read.xlsx(MLTable)
@@ -2736,16 +2745,16 @@ write.xlsx(yx, MLTable)
 ####################### Final Data Prepa #####################:----
 ##############################################################
 # If planned_date < current date & Status1 is NOT complete, Status1 = 3 (delayed)
-today = Sys.Date()
-id = which(yx$planned_date < today & yx$Status1 != 4)
-yx$Status1[id] = 3 # delayed status
-
-yx$end_date = as.Date(yx$end_date, origin = "1899-12-30")
-yx$end_date = as.Date(yx$end_date, format="%m/%d/%y %H:%M:%S")
-yx$updated = as.Date(yx$updated, origin = "1899-12-30")
-yx$updated = as.Date(yx$updated, format="%m/%d/%y %H:%M:%S")
-
-write.xlsx(yx, MLTable)
+# today = Sys.Date()
+# id = which(yx$planned_date < today & yx$Status1 != 4)
+# yx$Status1[id] = 3 # delayed status
+# 
+# yx$end_date = as.Date(yx$end_date, origin = "1899-12-30")
+# yx$end_date = as.Date(yx$end_date, format="%m/%d/%y %H:%M:%S")
+# yx$updated = as.Date(yx$updated, origin = "1899-12-30")
+# yx$updated = as.Date(yx$updated, format="%m/%d/%y %H:%M:%S")
+# 
+# write.xlsx(yx, MLTable)
 ################################################################
 ###
 # summary table to check

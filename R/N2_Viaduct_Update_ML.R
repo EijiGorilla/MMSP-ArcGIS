@@ -37,7 +37,7 @@ library(purrr)
 
 #******************************************************************#
 ## Enter Date of Update ##
-date_update = "2024-07-03"
+date_update = "2024-07-17"
 
 #******************************************************************#
 
@@ -1372,6 +1372,7 @@ if(length(id) > 0) {
   print("No empty Status1")
 }
 
+
 # 3. Edit end_date
 x$end_date = as.numeric(x$end_date)
 x$end_date = as.POSIXlt(x$end_date, origin="1970-01-01",tZ="UTC")
@@ -1413,6 +1414,7 @@ if (length(id)>0) x = x[-id,]
 # 7. Add field names
 x$CP = "N-02"
 x$Type = 4
+
 
 # 8. Join 
 y = read.xlsx(MLTable)

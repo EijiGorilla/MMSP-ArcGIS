@@ -735,7 +735,7 @@ class AddFieldsToDepotCivilWorksLayer(object):
 
     def getParameterInfo(self):
         in_replaced_fc = arcpy.Parameter(
-            displayName = "Select Sublayers in Depot Civil Works Layers (e.g., StructuralColumns)",
+            displayName = "Select Sublayers in Depot Civil Works Layers (Floors, Walls, StairsRailing, StructuralFoundations, PlumbingFixtures)",
             name = "Select Sublayers in Depot Civil Works Layers", 
             datatype = "GPFeatureLayer",
             parameterType = "Required",
@@ -776,19 +776,27 @@ class AddFieldsToDepotCivilWorksLayer(object):
                     row[0] = 1
                     cursor.updateRow(row)
                     
-        ## which information is used to identify 'Type' for monitoring? Dwall and U-Type
-        ## Dwall and U-Type are two separate revit files, so find something unique
-        # for layer in layers:
-        #     with arcpy.da.UpdateCursor(layer, ['DocName', 'Name']) as cursor:
-        #         for row in cursor:                    
-        #             try:
-        #                 building_name = re.search(r'BAN\w+|BAN\w+[12]',row[0]).group()
-        #             except AttributeError:
-        #                 building_name = re.search(r'BAN\w+|BAN\w+[12]',row[0])
-                    
-        #             final_name = re.sub(r'BAN','',building_name)
-        #             row[1] = final_name
-        #             cursor.updateRow(row)
+        # 3. Types of categories
+        for layer in layers:
+            with arcpy.da.UpdateCursor(layer, ['BaseCategory', 'Types']) as cursor:
+                for row in cursor:
+                    if row[0] == 'StructuralFoundation':
+                        row[1] = 1
+                    elif row[0] == 'StructuralColumn':
+                        row[1] = 2
+                    elif row[0] == 'StructuralFraming':
+                        row[1] = 3
+                    elif row[0] == 'Roofs':
+                        row[1] = 4
+                    elif row[0] == 'Floors':
+                        row[1] = 5
+                    elif row[0] == 'Walls':
+                        row[1] = 6
+                    elif row[0] == 'Columns':
+                        row[1] = 7
+                    else:
+                        row[1] = 8
+                    cursor.updateRow(row)
 
 class EditDepotCivilWorks(object):
     # For Depot Civil works, simply replace all existing layers with new ones.
@@ -884,8 +892,8 @@ class DomainSettingDepotCivilWorks(object):
 
     def getParameterInfo(self):
         gis_layers = arcpy.Parameter(
-            displayName = "Building Layers (e.g., StructuralColumns)",
-            name = "Building Layers (e.g., StructuralColumns)", 
+            displayName = "Building Layers (e.g., StructuralFoundations)",
+            name = "Building Layers (e.g., StructuralFoundations)", 
             datatype = "GPFeatureLayer",
             parameterType = "Required",
             direction = "Input",
@@ -901,7 +909,7 @@ class DomainSettingDepotCivilWorks(object):
         )
 
         domain_field.filter.type = "ValueList"
-        domain_field.filter.list = ['Type','Status']
+        domain_field.filter.list = ['Types','Status']
 
         params = [gis_layers, domain_field]
         return params
@@ -917,12 +925,12 @@ class DomainSettingDepotCivilWorks(object):
         layers = list(gis_layers.split(";"))
 
         # # Apply symbology changes to lyr, which will create a new finalLayer:       
-        domainList = ['Depot_Civil_Works_TYPE', 'Station Structures_STATUS']
+        domainList = ['Station Structures_TYPE', 'Station Structures_STATUS',]
         
         for layer in layers:
             if domain_field == 'Status':
                 arcpy.AssignDomainToField_management(layer, domain_field, domainList[1])
-            elif domain_field == 'Type':
+            elif domain_field == 'Types':
                 arcpy.AssignDomainToField_management(layer, domain_field, domainList[0])
             else:
                 arcpy.AddError("Your specified field was not found in doman lists...please check.")

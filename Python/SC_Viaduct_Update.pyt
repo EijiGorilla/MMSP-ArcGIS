@@ -273,6 +273,7 @@ class UpdateExcelML(object):
 
                     # 1. Convert to date
                     for field in date_fields:
+                        toDate(civil_table, field)
                         civil_table[field] = civil_table[field].astype('datetime64[ns]')
 
                     # 2. add viaduct type

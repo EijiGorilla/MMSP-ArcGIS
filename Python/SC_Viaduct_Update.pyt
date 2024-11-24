@@ -218,6 +218,9 @@ class UpdateExcelML(object):
                     table = table.drop(id)
                     
                     # Create ID ('Pier" + '-' + 'No')
+                    ## Make sure to have no hypen for P. (e.g., P684-2 (O), P-684-2 (X))
+                    table[civil_pier_field] = table[civil_pier_field].apply(lambda x: x.upper())
+                    table[civil_pier_field] = table[civil_pier_field].apply(lambda x: x.replace(r'P-','P'))
                     table[No_field] = table[No_field].astype(str)
                     table[id_field] = table[civil_pier_field].str.cat(table[No_field], sep = "-")
 
@@ -304,8 +307,8 @@ class UpdateExcelML(object):
                     civil_table.loc[id,status1_field] = 4
 
                     ## finish_actual empty but Status = cast/Cast/casted/Casted
-                    id = civil_table.index[civil_table[finish_actual_field].isna() | civil_table[status_field].str.contains(r'cast|casted|Cast|Casted',regex=True)]
-                    civil_table.loc[id, status1_field] = 4
+                    # id = civil_table.index[civil_table[finish_actual_field].isna() | civil_table[status_field].str.contains(r'cast|casted|Cast|Casted',regex=True)]
+                    # civil_table.loc[id, status1_field] = 4
                     
                     ### start_actual & empty finish_actual -> 2 (under construction)
                     id = civil_table.index[(civil_table[start_actual_field].notna()) & (civil_table[finish_actual_field].isnull())]
@@ -326,7 +329,7 @@ class UpdateExcelML(object):
                         civil_table[No_field] = civil_table[No_field].astype(str)
                         civil_table[No_field] = civil_table[No_field].apply(lambda x: re.sub('.0','',x)) # need to remove '.0' in '3.0'
                         
-                        # Concatenate: 'Pier' + "-" + 'No' + "-" + 'Type'
+                        # Concatenate: 'Pier' + "-" + 'No' + "-" + 'Type' (e.g., P684-2-2-1, P684-2-3-1)
                         arcpy.AddMessage("6.")
     
                         civil_table[id_field] = civil_table[civil_pier_field] + "-" + civil_table[No_field] + "-" + civil_table[type_field]
@@ -360,6 +363,8 @@ class UpdateExcelML(object):
                 ids = civil_table2[id_field]
                 
                 ## 2.2. Extract rows from GIS table with respective IDs
+                ### 2.2.1. Clean 'P-' to 'P-'
+                gis_table[pier_field] = gis_table[pier_field].apply(lambda x: x.replace(r'P-','P'))
                 gis_table2 = gis_table # copy in case
                 id = gis_table2.index[gis_table2[id_field].str.contains('|'.join(ids))]
                 g_table = gis_table2.iloc[id]

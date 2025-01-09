@@ -11,7 +11,7 @@ class Toolbox(object):
     def __init__(self):
         self.label = "UpdateSCViaduct"
         self.alias = "UpdateSCViaduct"
-        self.tools = [UpdateExcelML ,UpdateGISTable]
+        self.tools = [UpdateExcelML, UpdateGISTable, ReSortGISTable]
 
 class UpdateExcelML(object):
     def __init__(self):
@@ -535,3 +535,132 @@ class UpdateGISTable(object):
         # Delete the copied feature layer
         deleteTempLayers = [gis_copied, viaduct_ml]
         arcpy.Delete_management(deleteTempLayers)
+
+class ReSortGISTable(object):
+    def __init__(self):
+        self.label = "(Optional) Re-Sort GIS Attribute Table (SC Viaduct)"
+        self.description = "(Optional) Re-Sort GIS Attribute Table (SC Viaduct)"
+
+    def getParameterInfo(self):
+        gis_layer = arcpy.Parameter(
+            displayName = "GIS Attribute Table (SC Viaduct)",
+            name = "GIS Attribute Table (SC Viaduct)",
+            datatype = "GPFeatureLayer",
+            parameterType = "Required",
+            direction = "Input"
+        )
+
+        excel_export_dir = arcpy.Parameter(
+            displayName = "New MasterList Export Directory",
+            name = "New MasterList Export Directory",
+            datatype = "DEWorkspace",
+            parameterType = "Optional",
+            direction = "Input"
+        )
+
+        params = [gis_layer, excel_export_dir]
+        return params
+    
+    def updateMessages(self, params):
+        return
+    
+    def execute(self, params, messages):
+        layer = params[0].valueAsText
+        excel_export_dir = params[1].valueAsText
+
+        # Define fields
+        cp_field = 'CP'
+        pier_number_field = 'PierNumber'
+        new_field = 'temp_pier'
+        uniqueID_field = 'uniqueID'
+        type_field = 'Type'
+
+        # 0.5. If 'CP' and 'Type' fields contain empty rows, exit and stop process
+        cp_list = [row[0] for row in arcpy.da.SearchCursor(layer, ["CP"])]
+        type_list = [row[0] for row in arcpy.da.SearchCursor(layer, ["Type"])]
+        unique_value_list = list(cp_list+type_list)
+        unique_final = set(unique_value_list)
+        arcpy.AddMessage(unique_final)
+        # final_list = pd.Series(unique_final)
+        empty_list = [i for i, val in enumerate(unique_final) if val is None]
+
+        if len(empty_list) == 0:
+            # 1. Add temporary field for sorting
+            fields = [e.name for e in arcpy.ListFields(layer)]
+            temp_field = [f for f in fields if f == new_field]
+            if not temp_field:
+                arcpy.management.AddField(layer, new_field, "TEXT", field_alias=new_field, field_is_nullable="NULLABLE")
+        
+            # 2.
+            try:
+                with arcpy.da.UpdateCursor(layer, [pier_number_field, new_field]) as cursor:
+                    for row in cursor:
+                        if row[0]:
+                            pier_n = re.sub("\D+","",row[0])
+                            try:
+                                pier_s = re.search(r"^BUE-P.*[SN]?$|^SCT.*[SN]?$|^PR.*[SN]?$|^P.*[SN]?$|^MT.*[SN]?$|^STR.*[SN]?$|^DAT.*[SN]?$",str(row[0])).group()
+                            except AttributeError:
+                                pier_s = re.search(r"^BUE-P.*[SN]?$|^SCT.*[SN]?$|^PR.*[SN]?$|^P.*[SN]?$P|^MT.*[SN]?$|^STR.*[SN]?$|^DAT.*[SN]?$",str(row[0]))
+                            
+                            # when PierNumber has N or S suffix, we need to account for this.
+                            digit = re.sub('\D+','',pier_s)
+                            
+                            if int(pier_n) > 0 and int(pier_n) < 10: # 0 - 9
+                                if not digit:
+                                    row[1] = pier_s + "00" + pier_n
+                                else:
+                                    # 'P1S' -> 'P001S'
+                                    str_digit = str(digit)
+                                    row[1] = re.sub(str_digit, "00"+str_digit, pier_s)
+                                    
+                            elif int(pier_n) >= 10 and int(pier_n) < 100:
+                                if not digit:
+                                    row[1] = pier_s + "0" + pier_n
+                                else:
+                                    # 'P99S' -> 'P099S'
+                                    str_digit = str(digit)
+                                    row[1] = re.sub(str_digit, "0"+str_digit, pier_s)
+                            else:
+                                if not digit:
+                                    row[1] = pier_s + pier_n
+                                else:
+                                    # 'P100N' -. 'P100N'
+                                    row[1] = pier_s
+                            cursor.updateRow(row)
+                        else:
+                            row[0] = None
+
+                # 3. Sort
+                ## Sort by CP, temp, and type
+                layer_sorted = "SC_viaduct_sorted"
+                sort_fields = [[cp_field,"ASCENDING"],[new_field,"ASCENDING"],[type_field,"ASCENDING"]]
+                arcpy.Sort_management(layer, layer_sorted, sort_fields)
+
+                # 4. Re-enter 'uniqueID'
+                with arcpy.da.UpdateCursor(layer_sorted, [uniqueID_field]) as cursor:
+                    rec = 0
+                    for row in cursor:
+                        rec = rec + 1
+                        row[0] = rec
+                        cursor.updateRow(row)
+
+                # 5. Delete temporary field
+                arcpy.management.DeleteField(layer_sorted, [new_field], "DELETE_FIELDS")
+
+                # 6. Truncate and append the original GIS attribute table
+                arcpy.TruncateTable_management(layer)
+                arcpy.management.Append(layer_sorted, layer, schema_type = 'NO_TEST')
+
+                # 7. Export to excel as a new master-list
+                to_excel_file = os.path.join(excel_export_dir, "SC_Viaduct_ML_new.xlsx")
+                arcpy.conversion.TableToExcel(layer_sorted, to_excel_file)
+
+                # 8. Delete sorted layer
+                arcpy.management.Delete(layer_sorted)
+            
+            except Exception:
+                arcpy.AddMessage('This failed. Please check your code')
+                arcpy.AddError('This failed. Please check your code')
+        else:
+            arcpy.AddMessage('This failed. Please check your code')
+            arcpy.AddError('This failed. Please check your code')

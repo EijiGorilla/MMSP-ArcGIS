@@ -253,6 +253,8 @@ class UpdateLot(object):
             handedover_area_field = 'HandedOverArea'
             handedover_field = 'HandedOver'
             handover_date_field = 'HandOverDate'
+            target_actual_field = 'TargetActual'
+            target_actual_date_field = 'TargetActualDate'
             handedover_date_field = 'HandedOverDate'
             percent_handedover_area_field = 'percentHandedOver'
             priority_field = 'Priority'
@@ -370,12 +372,12 @@ class UpdateLot(object):
                 toString(rap_table_stats, to_string_fields)
 
                 # Reformat CP
-                if proj == 'N2':
-                    rap_table[package_field] = rap_table[package_field].str[-2:]       
-                    rap_table[package_field] = cp_suffix + rap_table[package_field]
+                # if proj == 'N2':
+                rap_table[package_field] = rap_table[package_field].str[-2:]       
+                rap_table[package_field] = cp_suffix + rap_table[package_field]
 
-                    rap_table_stats[package_field] = rap_table_stats[package_field].str[-2:]       
-                    rap_table_stats[package_field] = cp_suffix + rap_table_stats[package_field] 
+                rap_table_stats[package_field] = rap_table_stats[package_field].str[-2:]       
+                rap_table_stats[package_field] = cp_suffix + rap_table_stats[package_field] 
                     
                 # Conver to date   
                 to_date_fields = [handover_date_field, handedover_date_field]
@@ -405,7 +407,7 @@ class UpdateLot(object):
                 id = rap_table.index[(rap_table[handedover_field] == 0) & (rap_table[handedover_date_field].notna())]
                 rap_table.loc[id, handedover_date_field] = None
 
-            ## 4. if the first row is empty, temporarily add the first row for 'HandedOverDate' and 'HandOverDate'
+                ## 4. if the first row is empty, temporarily add the first row for 'HandedOverDate' and 'HandOverDate'
                 for field in to_date_fields:
                     date_item = rap_table[field].iloc[:1].item()
                     if date_item is None or pd.isnull(date_item):
@@ -417,6 +419,26 @@ class UpdateLot(object):
 
                 # Calculate percent handed-over
                 rap_table[percent_handedover_area_field] = round((rap_table[handedover_area_field] / rap_table[affected_area_field])*100,0)
+
+                ## 6. Fill HandOverDateTarget (only N2 as of Jan.26, 2025)
+                ### For creating cumulative monthly bar chart for target (HandOverDate) and handed-over (HandedOver = 1)
+                ### HandOverDateTarget = 1 (HandedOver =  0 & HandOverDate is not null)
+                rap_table[target_actual_field] = 0
+                rap_table[target_actual_date_field] = ""
+                rap_table[target_actual_date_field] = pd.to_datetime(rap_table[target_actual_date_field],errors='coerce').dt.date
+
+                # 'TargetActual':  Target = 1, Actual = 2
+                ## Enter for actual
+                id = rap_table.index[rap_table[handedover_field] == 1]
+                rap_table.loc[id, target_actual_field] = 2
+                rap_table.loc[id, target_actual_date_field] = rap_table[handedover_date_field]
+
+                # Enter for target
+                id = rap_table.index[(rap_table[handedover_field] == 0) & (rap_table[handover_date_field].notna())]
+                rap_table.loc[id, target_actual_field] = 1
+                rap_table.loc[id, target_actual_date_field] = rap_table[handover_date_field]
+
+                rap_table[target_actual_date_field] = pd.to_datetime(rap_table[target_actual_date_field],errors='coerce').dt.date
 
                 # Export
                 export_file_name = os.path.splitext(os.path.basename(gis_lot_ms))[0]
@@ -1489,6 +1511,8 @@ class UpdateLotGIS(object):
 
 
         # For updating lot
+        target_actual_field = "TargetActual"
+        target_actual_date_field = "TargetActualDate"
         try:
             arcpy.AddMessage('Updating Lot status has started..')
             # 1. Copy Original Feature Layers
@@ -1553,6 +1577,17 @@ class UpdateLotGIS(object):
 
             # 5. Append
             arcpy.Append_management(gis_copied, inLot, schema_type = 'NO_TEST')
+
+            # 6. Delete temporary date from 'TargetActualDate'
+            try:
+                with arcpy.da.UpdateCursor(mlLot, [target_actual_field, target_actual_date_field]) as cursor:
+                    for row in cursor:
+                        if int(row[1].year) < 1991:
+                            row[0] = None
+                            row[1] = None
+                        cursor.updateRow(row)
+            except:
+                pass
 
             # Delete the copied feature layer
             deleteTempLayers = [gis_copied, lot_ml]

@@ -252,6 +252,8 @@ class UpdateExcelML(object):
 
             # Continue only when there is no duplicated observations
             if dup_len == 0:
+                arcpy.AddMessage("No duplicated records..Proceed.")
+
                 ## 1. Compile civil table
                 civil_table2 = pd.DataFrame()
                 for sheet in sheet_names:    
@@ -272,7 +274,6 @@ class UpdateExcelML(object):
 
                     # Re-format 'P-' to 'P'
                     civil_table[civil_pier_field] = civil_table[civil_pier_field].apply(lambda x: x.replace(r'P-','P'))
-                    arcpy.AddMessage("5.")
 
                     # 1. Convert to date
                     for field in date_fields:
@@ -296,7 +297,7 @@ class UpdateExcelML(object):
                     id = civil_table.index[(civil_table[status_field].isnull()) | (civil_table[status_field].isna())]
                     civil_table = civil_table.drop(id)
 
-                    arcpy.AddMessage(civil_table)
+                    # arcpy.AddMessage(civil_table)
 
                     ### start_actual is empty & finish_plan > today (construction has not started but target date is future)
                     id = civil_table.index[civil_table[start_actual_field].isnull() & (civil_table[finish_plan_field] > today)]
@@ -329,16 +330,12 @@ class UpdateExcelML(object):
                         civil_table[No_field] = civil_table[No_field].astype(str)
                         civil_table[No_field] = civil_table[No_field].apply(lambda x: re.sub('.0','',x)) # need to remove '.0' in '3.0'
                         
-                        # Concatenate: 'Pier' + "-" + 'No' + "-" + 'Type' (e.g., P684-2-2-1, P684-2-3-1)
-                        arcpy.AddMessage("6.")
-    
+                        # Concatenate: 'Pier' + "-" + 'No' + "-" + 'Type' (e.g., P684-2-2-1, P684-2-3-1)    
                         civil_table[id_field] = civil_table[civil_pier_field] + "-" + civil_table[No_field] + "-" + civil_table[type_field]
                         civil_table = civil_table.drop(columns=[No_field,type_field])
-                        arcpy.AddMessage("7.")
                     else:
                         civil_table[id_field] = civil_table[civil_pier_field] + "-" + civil_table[type_field]
                         civil_table = civil_table.drop(columns=type_field)
-                        arcpy.AddMessage("8.")
                         
                     # Re-format 'Pier' and rename
                     civil_table = rename_columns_title(civil_table,civil_pier_field,pier_field)
@@ -347,6 +344,10 @@ class UpdateExcelML(object):
                     civil_table = civil_table.drop(columns=status_field)
                     civil_table = rename_columns_title(civil_table,status1_field,status_field)
                     civil_table[status_field] = civil_table[status_field].astype('int64')
+
+                    # Ensure to delete empty column if present (sometimes civil_table has empty columns. In this case, python throws 'Unanamed' column)
+                    empty_column = civil_table.columns[civil_table.columns.str.contains(r'^Unnamed',regex=True)]
+                    civil_table = civil_table.drop(columns=empty_column)
                     
                     # Drope other fields
                     civil_table = civil_table.drop(columns=delete_fields)

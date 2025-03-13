@@ -373,10 +373,22 @@ class UpdateLot(object):
 
                 # Reformat CP
                 # if proj == 'N2':
-                rap_table[package_field] = rap_table[package_field].str[-2:]       
-                rap_table[package_field] = cp_suffix + rap_table[package_field]
+                if proj == 'N2':
+                    rap_table[package_field] = rap_table[package_field].str[-2:]       
+                    rap_table[package_field] = cp_suffix + rap_table[package_field]
+                else:
+                    ids_abc = rap_table.index[rap_table[package_field].str.contains(r'.*[abc]$',regex=True,na=False)] # For S-03abc
+                    ids = rap_table.index[rap_table[package_field].str.contains(r'-0[1-9]$',regex=True,na=False)] # For S-03/N-01..
+                
+                    rap_table.loc[ids, package_field] = rap_table.loc[ids, package_field].str[-2:]
+                    rap_table.loc[ids_abc, package_field] = rap_table.loc[ids_abc, package_field].str[-3:]
+                    rap_table[package_field] = cp_suffix + rap_table[package_field]
 
-                rap_table_stats[package_field] = rap_table_stats[package_field].str[-2:]       
+
+                ids_abc = rap_table_stats.index[rap_table_stats[package_field].str.contains(r'.*[abc]$',regex=True,na=False)] # For S-03abc
+                ids = rap_table_stats.index[rap_table_stats[package_field].str.contains(r'-0[1-9]$',regex=True,na=False)] # For S-03/N-01..
+                rap_table_stats.loc[ids, package_field] = rap_table_stats.loc[ids, package_field].str[-2:]
+                rap_table_stats.loc[ids_abc, package_field] = rap_table_stats.loc[ids_abc, package_field].str[-3:]
                 rap_table_stats[package_field] = cp_suffix + rap_table_stats[package_field] 
                     
                 # Conver to date   
@@ -386,7 +398,11 @@ class UpdateLot(object):
             
                 ## Convert to uppercase letters for LandUse
                 if proj == 'N2':
-                    rap_table[land_use_field] = rap_table[land_use_field].apply(lambda x: x.upper())
+                    try:
+                        rap_table[land_use_field] = rap_table[land_use_field].str.title()
+                        rap_table[land_use_field] = rap_table[land_use_field].replace(r'\s+|[^\w\s]','',regex=True)
+                    except:
+                        pass
 
                 # Add scale from old master list
                 rap_table = rap_table.drop(scale_field,axis=1)
@@ -1578,7 +1594,18 @@ class UpdateLotGIS(object):
             # 5. Append
             arcpy.Append_management(gis_copied, inLot, schema_type = 'NO_TEST')
 
-            # 6. Delete temporary date from 'TargetActualDate'
+            # 6. Delete temporary date from the updated GIS layer
+            try:
+                with arcpy.da.UpdateCursor(inLot, target_actual_date_field) as cursor:
+                    for row in cursor:
+                        if row[0]:
+                            if int(row[0].year) < 1991:
+                                row[0] = None
+                        cursor.updateRow(row)
+            except:
+                pass
+
+            # 7. Delete temporary date from 'TargetActualDate'
             try:
                 with arcpy.da.UpdateCursor(mlLot, [target_actual_field, target_actual_date_field]) as cursor:
                     for row in cursor:

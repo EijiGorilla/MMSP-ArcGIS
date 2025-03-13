@@ -11,7 +11,7 @@ class Toolbox(object):
     def __init__(self):
         self.label = "UpdateSCViaduct"
         self.alias = "UpdateSCViaduct"
-        self.tools = [UpdateExcelML, UpdateGISTable, ReSortGISTable]
+        self.tools = [UpdateExcelML, UpdateGISTable, ReSortGISTable, CheckUpdatesCivilGIS]
 
 class UpdateExcelML(object):
     def __init__(self):
@@ -158,6 +158,7 @@ class UpdateExcelML(object):
                 pass
 
             ## Define field names
+            cp_field = 'CP'
             unique_id = 'uniqueID'
             status_field = 'Status'
             status1_field = 'Status1'
@@ -198,20 +199,24 @@ class UpdateExcelML(object):
             arcpy.AddMessage("2.")
             ## choose sheet names for each viaduct
             temp_table = pd.ExcelFile(civil_dir)
-            sheet_names = temp_table.sheet_names[:-1]
+            sheet_names = temp_table.sheet_names
 
             # 0. Check duplicated observations in Civil Table
             dup_compile = []
             for sheet in sheet_names:
                 table = pd.read_excel(civil_dir, sheet_name=sheet)
 
-                # Civil table often misses boref pile no, in this case, drop these piers
+                # Civil table often misses bored pile no, in this case, drop these piers
                 table[id_field] = np.nan
 
                 if via_type[sheet] == 1: # only for bored piles
                     # Remove the first row with 'SAMPLE' in Remarks column
                     id = table.index[table['Remarks'] == 'SAMPLE']
                     table = table.drop(id)
+                    
+                    # Delete this later
+                    # x1 = table.query(f"{civil_pier_field} == 'P685'")
+                    # arcpy.AddMessage(x1)
 
                     # Drop rows with empty 'No'
                     id = table.index[table[No_field].isnull()]
@@ -260,6 +265,9 @@ class UpdateExcelML(object):
                     # Read sheet for each viaduct type
                     arcpy.AddMessage(sheet)
                     civil_table = pd.read_excel(civil_dir, sheet_name=sheet)
+
+                    # Drop no 'finish_actual'
+                    civil_table = civil_table.query(f"{finish_actual_field}.notna()").reset_index(drop=True)
 
                     # Remove the first row with 'SAMPLE' in Remarks column
                     id = civil_table.index[civil_table['Remarks'] == 'SAMPLE']
@@ -322,7 +330,7 @@ class UpdateExcelML(object):
                     # arcpy.AddMessage(civil_table)
                     
                     if via_type[sheet] == 1: # only for bored piles
-                         # Drop rows with empty 'No'
+                        # Drop rows with empty 'No'
                         id = civil_table.index[civil_table[No_field].isnull()]
                         civil_table = civil_table.drop(id)
 
@@ -336,7 +344,13 @@ class UpdateExcelML(object):
                     else:
                         civil_table[id_field] = civil_table[civil_pier_field] + "-" + civil_table[type_field]
                         civil_table = civil_table.drop(columns=type_field)
-                        
+
+                    # Drop column name 'Segement' if present
+                    try:
+                         civil_table = civil_table.drop(columns="Segment")
+                    except:
+                        pass
+
                     # Re-format 'Pier' and rename
                     civil_table = rename_columns_title(civil_table,civil_pier_field,pier_field)
                     
@@ -348,17 +362,17 @@ class UpdateExcelML(object):
                     # Ensure to delete empty column if present (sometimes civil_table has empty columns. In this case, python throws 'Unanamed' column)
                     empty_column = civil_table.columns[civil_table.columns.str.contains(r'^Unnamed',regex=True)]
                     civil_table = civil_table.drop(columns=empty_column)
-                    
+                   
                     # Drope other fields
-                    civil_table = civil_table.drop(columns=delete_fields)
+                    civil_table1 = civil_table.drop(columns=delete_fields)
 
                     # Column bind 
-                    civil_table2 = pd.concat([civil_table2,civil_table])
+                    civil_table2 = pd.concat([civil_table2,civil_table1])
                     civil_table2.to_excel(os.path.join(gis_dir, "check_civil_table2" + ".xlsx"), index=False)
                 
                 # Re-index the compiled table
                 civil_table2 = civil_table2.reset_index(drop=True)
-                
+
                 ## 2. Update GIS ML table               
                 ## 2.1. Get only 'ID's from the updated Civil table
                 ids = civil_table2[id_field]
@@ -386,6 +400,8 @@ class UpdateExcelML(object):
                 ## 2.6. Sort by uniqueID
                 final_table = final_table.sort_values(by=[unique_id])
 
+                final_table.to_excel(os.path.join(gis_dir, "testTable1.xlsx"), index=False)
+
                 ## Final tweak:
                 ## 2.6. Status = 1 when Status is empty
                 id = final_table.index[final_table[status_field].isnull()]
@@ -400,7 +416,7 @@ class UpdateExcelML(object):
 
                     # to Date (conver to pd.to_datetime)
                     toDate(final_table, field)
-                
+
                 ## Export
                 to_excel_file = os.path.join(gis_dir, export_file_name + ".xlsx")
                 final_table.to_excel(to_excel_file, index=False)
@@ -665,3 +681,147 @@ class ReSortGISTable(object):
         else:
             arcpy.AddMessage('This failed. Please check your code')
             arcpy.AddError('This failed. Please check your code')
+
+class CheckUpdatesCivilGIS(object):
+    def __init__(self):
+        self.label = "3. Check Update between Civil and GIS Maser List (SC Viaduct)"
+        self.description = "Check Update between Civil and GIS Maser List (SC Viaduct)"
+
+    def getParameterInfo(self):
+        gis_dir = arcpy.Parameter(
+            displayName = "GIS Masterlist Storage Directory",
+            name = "GIS master-list directory",
+            datatype = "DEWorkspace",
+            parameterType = "Required",
+            direction = "Input"
+        )
+
+        gis_ml = arcpy.Parameter(
+            displayName = "Target GIS ML Table (Excel)",
+            name = "Target GIS ML Table (Excel)",
+            datatype = "DEFile",
+            parameterType = "Required",
+            direction = "Input"
+        )
+
+        civil_ml = arcpy.Parameter(
+            displayName = "Input Civil ML Table (Excel)",
+            name = "Input Civil ML Table (Excel)",
+            datatype = "DEFile",
+            parameterType = "Required",
+            direction = "Input"
+        )
+
+
+        params = [gis_dir, gis_ml, civil_ml]
+        return params
+    
+    def updateMessages(self, params):
+        return
+    
+    def execute(self, params, messages):
+        gis_dir = params[0].valueAsText
+        gis_ml = params[1].valueAsText
+        civil_ml = params[2].valueAsText
+
+        def unique_values(table, field):  ##uses list comprehension
+            with arcpy.da.SearchCursor(table, [field]) as cursor:
+                return sorted({row[0] for row in cursor if row[0] is not None})
+
+        civil_table = pd.ExcelFile(os.path.join(gis_dir,civil_ml))
+        sheet_names = civil_table.sheet_names
+
+        # 1. GIS ML: Count for completed viaduct components
+        y = pd.read_excel(os.path.join(gis_dir,gis_ml))
+
+        type_field = 'Type'
+        status_field = 'Status'
+        cp_field = 'CP'
+        count_field = 'count'
+
+        ## query
+        gis_t = y.query(f"{status_field} == 4")
+        gis_sum = gis_t.groupby([cp_field,type_field,status_field])[status_field].count().reset_index(name=count_field)
+        
+        # 2. Civil ML: Count for completed viaduct components
+        cp_name = {
+            "1": "S-01",
+            "2": "S-02",
+            "3a": "S-03a",
+            "3b": "S-03b",
+            "3c": "S-03c",
+            "4": "S-04",
+            "5": "S-05",
+            "6": "S-06",
+        }
+
+        pier_field = 'Pier'
+        finish_actual_field = 'finish_actual'
+        cp_field_civil = 'Package'
+        id_field = 'ID'
+        no_field = 'No'
+
+        civil_sum = pd.DataFrame({cp_field:[],type_field:[],status_field:[],'count':[]} )
+
+        for i, sheet in enumerate(sheet_names):
+            x = pd.read_excel(os.path.join(gis_dir,civil_ml),sheet_name=sheet)
+            if i == 0:
+                x = x.loc[1:,[pier_field,no_field,cp_field_civil,finish_actual_field]]
+            else:
+                x = x.loc[1:,[pier_field,cp_field_civil,finish_actual_field]]
+            
+            # "---------------------------------------------------------------------------------------"
+            # 1. Summary statistics:
+            # Re-formata 'Package'
+            x[cp_field_civil] = x[cp_field_civil].astype(str)
+            x[cp_field_civil] = x[cp_field_civil].replace(r'/s+','',regex=True)
+            
+            # Remove 'S' or 'S0'
+            x[cp_field_civil] = x[cp_field_civil].replace(r'S|S0|0|.0','',regex=True)
+            x = x.query(f"{finish_actual_field}.notna()").reset_index(drop=True)
+            x[status_field] = 4
+            x[type_field] = i + 1
+            
+            x = x.assign(CP=x.Package.map(cp_name))
+            x_sum = x.groupby([cp_field,type_field,status_field])[status_field].count().reset_index(name='count')
+            civil_sum = civil_sum._append(x_sum,ignore_index=True)
+            
+            # "-----------------------------------------------------------------------------------------
+            # 2. Non-Matched Piers
+            if i == 0:
+                x[no_field] = x[no_field].astype(str)
+                x[id_field] = x[pier_field] + "-" + x[no_field] + "-1"
+            else:
+                x[id_field] = x[pier_field] + "-" + str(i+1)
+            
+            ## Delete unnecessary columns
+            drop_columns = x.columns[x.columns.str.contains(r'^Unname',regex=True,na=False)]
+            x = x.drop(columns=drop_columns)
+            
+            ## Get pier ID
+            civil_id = x.loc[:,'ID'].values.tolist()
+            
+            # 2. GIS ML
+            ## Filter
+            gis_fil = y.query(f"{status_field} == 4 & {type_field} == {i+1}")
+
+            # Get pier ID
+            gis_id = gis_fil.loc[:,'ID'].values.tolist()
+            
+            # 3. Non-matched pier
+            non_matched_piers = [e for e in civil_id if e not in gis_id]
+            arcpy.AddMessage(f"For {sheet_names[i]}, there are {len(civil_id)} completed cases in Civil ML. Your GIS master list has the following missing piers: {non_matched_piers}")
+
+            # Merge
+            count_name_civil = 'Civil'
+            count_name_gis = 'GIS'
+            merged_t = pd.merge(left=civil_sum,right=gis_sum,how='left',left_on=[cp_field,type_field],right_on=[cp_field,type_field])
+            merged_t = merged_t.rename(columns={'count_x':count_name_civil,'count_y':count_name_gis})
+            merged_t['Difference'] = merged_t[count_name_civil] - merged_t[count_name_gis]
+            merged_t = merged_t.drop(columns=['Status_x','Status_y'])
+        arcpy.AddMessage(merged_t)
+
+
+
+
+        

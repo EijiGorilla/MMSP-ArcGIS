@@ -179,14 +179,6 @@ class UpdateLot(object):
                 cp_suffix = 'N-'
             else:
                 cp_suffix = 'S-'
-            
-            ## 1. Remove leading and trailing space for object columns
-            def whitespace_removal(dataframe):
-                for i in dataframe.columns:
-                    try:
-                        dataframe[i] = dataframe[i].apply(lambda x: x.strip())
-                    except AttributeError:
-                        print("Not processed: " + '{}'.format(i))
 
             ## 2. Return unique values
             def unique(lists):
@@ -204,29 +196,16 @@ class UpdateLot(object):
                         non_match.append(i)
                 return non_match
             
-            ## 4. Return matched elements
-            def match_elements(list_a, list_b):
-                matched = []
-                for i in list_a:
-                    if i in list_b:
-                        matched.append(i)
-                return matched
-            
-            def toString(table, to_string_fields): # list of fields to be converted to string
+            def toString(table, to_string_fields):
                 for field in to_string_fields:
-                    ## Need to convert string first, then apply space removal, and then convert to string again
-                    ## If you do not apply string conversion twice, it will fail to join with the GIS attribute table
                     table[field] = table[field].astype(str)
-                    table[field] = table[field].apply(lambda x: x.replace(r'\s+', ''))
-                    table[field] = table[field].astype(str)
-
-            def rename_columns_title(table, search_names, renamed_word): # search_names are list, renamed_word is a string
-                colname_change = table.columns[table.columns.str.contains('|'.join(search_names))]
-                table = table.rename(columns={str(colname_change[0]): renamed_word})
+                    table[field] = table[field].replace(r'\s+|^\w\s$','',regex=True)
+                return table
 
             def first_letter_capital(table, column_names): # column_names are list
                 for name in column_names:
-                    table[name] = table[name].apply(lambda x: x.title())
+                    table[name] = table[name].str.title()
+                return table
             
             # Read as xlsx
             rap_table_stats = pd.read_excel(rap_lot_ms)
@@ -265,8 +244,6 @@ class UpdateLot(object):
             renamed_city = 'Municipality'
 
             count_name = 'counts'
-            lsuffix_rap = '_RAP'
-            rsuffix_gis = '_GIS'
             counts_rap = count_name + '_RAP'
             counts_gis = count_name + '_GIS'
 
@@ -280,7 +257,6 @@ class UpdateLot(object):
             duplicated_Ids = rap_table[rap_table.duplicated([joinField]) == True][joinField]
 
             if len(duplicated_Ids) == 0:
-
                 # Common query and definitions
                 search_names_city = [rap_citymuni_field, rap_city_field, rap_muni_field]
 
@@ -302,11 +278,11 @@ class UpdateLot(object):
                         colname_change = rap_table_sc1.columns[rap_table_sc1.columns.str.contains('|'.join(search_names_city))]
                         rap_table_sc1 = rap_table_sc1.rename(columns={str(colname_change[0]): renamed_city})
 
-                        first_letter_capital(rap_table, [renamed_city])
-                        first_letter_capital(rap_table, [renamed_city])
+                        rap_table = first_letter_capital(rap_table, [renamed_city])
+                        rap_table = first_letter_capital(rap_table, [renamed_city])
 
                         # Convert to numeric
-                        rap_table_sc1[rap_sc1_priority1] = rap_table_sc1[rap_sc1_priority1].replace(r'\s+|[^\w\s]', '', regex=True)
+                        rap_table_sc1[rap_sc1_priority1] = rap_table_sc1[rap_sc1_priority1].replace(r'\s+|^\w\s$','',regex=True)
                         rap_table_sc1[rap_sc1_priority1] = pd.to_numeric(rap_table_sc1[rap_sc1_priority1])
                             
                         # Create Priority1_1 for web mapping purpose only
@@ -345,7 +321,7 @@ class UpdateLot(object):
                 # Rename City for Municipality and upper case letter for the first letter
                 colname_change = rap_table.columns[rap_table.columns.str.contains('|'.join(search_names_city))]
                 rap_table = rap_table.rename(columns={str(colname_change[0]): renamed_city})
-                first_letter_capital(rap_table, [renamed_city])
+                rap_table = first_letter_capital(rap_table, [renamed_city])
                 
                 # Convert to numeric
                 numeric_fields_common = [total_area_field, affected_area_field, remaining_area_field, handedover_area_field, handedover_field, priority_field, statusla_field, moa_field, pte_field]
@@ -360,16 +336,17 @@ class UpdateLot(object):
                 [to_numeric_fields.remove(non_match_col[0]) if non_match_col else arcpy.AddMessage('no need to remove field from the list for numeric conversion')]
 
                 for field in to_numeric_fields:
-                    rap_table[field] = rap_table[field].replace(r'\s+|[^\w\s]', '', regex=True)
+                    # you need to keep [] a set of characters in regex; otherwise, error.
+                    rap_table[field] = rap_table[field].replace(r'\s+|[^\w\s$]','',regex=True)
                     rap_table[field] = pd.to_numeric(rap_table[field])
 
-                    rap_table_stats[field] = rap_table_stats[field].replace(r'\s+|[^\w\s]', '', regex=True)
+                    rap_table_stats[field] = rap_table_stats[field].replace(r'\s+|[^\w\s$]','',regex=True)
                     rap_table_stats[field] = pd.to_numeric(rap_table_stats[field])
                     
                 # Conver to string
                 to_string_fields = [joinField, package_field]
-                toString(rap_table, to_string_fields)
-                toString(rap_table_stats, to_string_fields)
+                rap_table = toString(rap_table, to_string_fields)
+                rap_table_stats = toString(rap_table_stats, to_string_fields)
 
                 # Reformat CP
                 # if proj == 'N2':
@@ -399,8 +376,9 @@ class UpdateLot(object):
                 ## Convert to uppercase letters for LandUse
                 if proj == 'N2':
                     try:
-                        rap_table[land_use_field] = rap_table[land_use_field].str.title()
-                        rap_table[land_use_field] = rap_table[land_use_field].replace(r'\s+|[^\w\s]','',regex=True)
+                        rap_table = first_letter_capital(rap_table, [land_use_field])
+                        # [] is a set of caracters, so this removes hypen or underline along with space
+                        rap_table[land_use_field] = rap_table[land_use_field].replace(r'\s+|[^\w\s$]','',regex=True)
                     except:
                         pass
 
@@ -469,7 +447,7 @@ class UpdateLot(object):
                 ## 1.0.1. Original rap_table (before updating)
                 colname_change = rap_table_stats.columns[rap_table_stats.columns.str.contains('|'.join(search_names_city))]
                 rap_table_stats = rap_table_stats.rename(columns={str(colname_change[0]): renamed_city})
-                first_letter_capital(rap_table_stats, [renamed_city])
+                rap_table_stats = first_letter_capital(rap_table_stats, [renamed_city])
                 
                 id = rap_table_stats.index[rap_table_stats[statusla_field] == 0]
                 rap_table_stats.loc[id, statusla_field] = np.NAN
@@ -611,25 +589,16 @@ class UpdateISF(object):
                         non_match.append(i)
                 return non_match
             
-            ## 4. Return matched elements
-            def match_elements(list_a, list_b):
-                matched = []
-                for i in list_a:
-                    if i in list_b:
-                        matched.append(i)
-                return matched
-            
-            def toString(table, to_string_fields): # list of fields to be converted to string
+            def toString(table, to_string_fields):
                 for field in to_string_fields:
-                    ## Need to convert string first, then apply space removal, and then convert to string again
-                    ## If you do not apply string conversion twice, it will fail to join with the GIS attribute table
                     table[field] = table[field].astype(str)
-                    table[field] = table[field].apply(lambda x: x.replace(r'\s+', ''))
-                    table[field] = table[field].astype(str)
+                    table[field] = table[field].replace(r'\s+|^\w\s$','',regex=True)
+                return table
 
             def first_letter_capital(table, column_names): # column_names are list
                 for name in column_names:
-                    table[name] = table[name].apply(lambda x: x.title())
+                    table[name] = table[name].str.title()
+                return table
             
             ####################################################
             # Update Excel Master List Tables
@@ -663,12 +632,12 @@ class UpdateISF(object):
             try:
                 renamed_col = rap_table.columns[rap_table.columns.str.contains('|'.join(['City','city', 'Muni']))]
                 rap_table = rap_table.rename(columns={str(renamed_col[0]): municipality_field})
-                first_letter_capital(rap_table, [municipality_field])
+                rap_table = first_letter_capital(rap_table, [municipality_field])
 
                 # For Summary Stats
                 renamed_col = rap_table_stats.columns[rap_table_stats.columns.str.contains('|'.join(['City','city', 'Muni']))]
                 rap_table_stats = rap_table_stats.rename(columns={str(renamed_col[0]): municipality_field})
-                first_letter_capital(rap_table_stats, [municipality_field])
+                rap_table_stats = first_letter_capital(rap_table_stats, [municipality_field])
             
 
             except:
@@ -687,8 +656,10 @@ class UpdateISF(object):
                 pass
 
             # force dtypes as string
-            toString(rap_table, [municipality_field, barangay_field, structure_id_field, cp_field])
-            toString(rap_table_stats, [municipality_field, barangay_field, structure_id_field, cp_field])
+            to_string_fields = [municipality_field, barangay_field, structure_id_field, cp_field]
+            for field in to_string_fields:
+                rap_table[field] = rap_table[field].astype(str)
+                rap_table_stats[field] = rap_table_stats[field].astype(str)
 
             # Reformat CP
             if proj == 'N2':
@@ -872,17 +843,16 @@ class UpdateStructure(object):
                         matched.append(i)
                 return matched
             
-            def toString(table, to_string_fields): # list of fields to be converted to string
+            def toString(table, to_string_fields):
                 for field in to_string_fields:
-                    ## Need to convert string first, then apply space removal, and then convert to string again
-                    ## If you do not apply string conversion twice, it will fail to join with the GIS attribute table
                     table[field] = table[field].astype(str)
-                    table[field] = table[field].apply(lambda x: x.replace(r'\s+', ''))
-                    table[field] = table[field].astype(str)
+                    table[field] = table[field].replace(r'\s+|^\w\s$','',regex=True)
+                return table
 
             def first_letter_capital(table, column_names): # column_names are list
                 for name in column_names:
-                    table[name] = table[name].apply(lambda x: x.title())
+                    table[name] = table[name].str.title()
+                return table
             
             ####################################################
             # Update Excel Master List Tables
@@ -982,7 +952,7 @@ class UpdateStructure(object):
                 colname_change = rap_table.columns[rap_table.columns.str.contains('|'.join(search_names_city))]
                 rap_table = rap_table.rename(columns={str(colname_change[0]): municipality_field})
                         
-                first_letter_capital(rap_table, [municipality_field])
+                rap_table = first_letter_capital(rap_table, [municipality_field])
 
                 # Convert to numeric
                 to_numeric_fields = [total_area_field, affected_area_field, remaining_area_field, handover_field, structure_status_field, landowner_status_field, moa_field, pte_field, occupancy_field]
@@ -1004,8 +974,8 @@ class UpdateStructure(object):
                     to_string_fields = common_fields + [structure_use_field]
                 else:
                     to_string_fields = common_fields
-                toString(rap_table, to_string_fields)
-                toString(rap_table_stats, to_string_fields)
+                rap_table = toString(rap_table, to_string_fields)
+                rap_table_stats = toString(rap_table_stats, to_string_fields)
                 
                 # Reformat CP
                 rap_table[cp_field] = rap_table[cp_field].str[-2:]    
@@ -1053,7 +1023,7 @@ class UpdateStructure(object):
                 ## 1.0.1. Original rap_table (before updating)
                 colname_change = rap_table_stats.columns[rap_table_stats.columns.str.contains('|'.join(search_names_city))]
                 rap_table_stats = rap_table_stats.rename(columns={str(colname_change[0]): municipality_field})
-                first_letter_capital(rap_table_stats, [municipality_field])
+                rap_table_stats = first_letter_capital(rap_table_stats, [municipality_field])
                 
                 id = rap_table_stats.index[rap_table_stats[structure_status_field] == 0]
                 rap_table_stats.loc[id, structure_status_field] = np.NAN
@@ -1192,25 +1162,16 @@ class UpdateBarangay(object):
                         non_match.append(i)
                 return non_match
             
-            ## 4. Return matched elements
-            def match_elements(list_a, list_b):
-                matched = []
-                for i in list_a:
-                    if i in list_b:
-                        matched.append(i)
-                return matched
-            
-            def toString(table, to_string_fields): # list of fields to be converted to string
+            def toString(table, to_string_fields):
                 for field in to_string_fields:
-                    ## Need to convert string first, then apply space removal, and then convert to string again
-                    ## If you do not apply string conversion twice, it will fail to join with the GIS attribute table
                     table[field] = table[field].astype(str)
-                    table[field] = table[field].apply(lambda x: x.replace(r'\s+', ''))
-                    table[field] = table[field].astype(str)
+                    table[field] = table[field].replace(r'\s+|^\w\s$','',regex=True)
+                return table
 
             def first_letter_capital(table, column_names): # column_names are list
                 for name in column_names:
-                    table[name] = table[name].apply(lambda x: x.title())
+                    table[name] = table[name].str.title()
+                return table
             
             ####################################################
             # Update Excel Master List Tables
@@ -1228,13 +1189,13 @@ class UpdateBarangay(object):
             renamed_city = 'Municipality'
             renamed_col = rap_table.columns[rap_table.columns.str.contains('|'.join(['City','city']))]
             rap_table = rap_table.rename(columns={str(renamed_col[0]): renamed_city})
-            first_letter_capital(rap_table, [renamed_city])
+            rap_table = first_letter_capital(rap_table, [renamed_city])
 
             # Rename Barangay
             renamed_brgy = 'Barangay'
             renamed_col = rap_table.columns[rap_table.columns.str.contains('|'.join(['Bgy','bgy']))]
             rap_table = rap_table.rename(columns={str(renamed_col[0]): renamed_brgy})
-            first_letter_capital(rap_table, [renamed_brgy])
+            rap_table = first_letter_capital(rap_table, [renamed_brgy])
 
             # Remove 'Barangay'
             # rap_table['Barangay'] = rap_table['Barangay'].apply(lambda x: x.replace(regex="^Barangay", value=""))
@@ -1242,7 +1203,7 @@ class UpdateBarangay(object):
             whitespace_removal(rap_table)
 
             # Make sure no space
-            toString(rap_table, ['Municipality', 'Barangay', 'Subcon'])
+            rap_table = toString(rap_table, ['Municipality', 'Barangay', 'Subcon'])
 
             # Convert to numeric
             to_numeric_fields = ["Coop"]
@@ -1349,26 +1310,17 @@ class UpdatePier(object):
                     if i not in list_b:
                         non_match.append(i)
                 return non_match
-            
-            ## 4. Return matched elements
-            def match_elements(list_a, list_b):
-                matched = []
-                for i in list_a:
-                    if i in list_b:
-                        matched.append(i)
-                return matched
-            
-            def toString(table, to_string_fields): # list of fields to be converted to string
+                       
+            def toString(table, to_string_fields):
                 for field in to_string_fields:
-                    ## Need to convert string first, then apply space removal, and then convert to string again
-                    ## If you do not apply string conversion twice, it will fail to join with the GIS attribute table
                     table[field] = table[field].astype(str)
-                    table[field] = table[field].apply(lambda x: x.replace(r'\s+', ''))
-                    table[field] = table[field].astype(str)
+                    table[field] = table[field].replace(r'\s+|^\w\s$','',regex=True)
+                return table
 
             def first_letter_capital(table, column_names): # column_names are list
                 for name in column_names:
-                    table[name] = table[name].apply(lambda x: x.title())
+                    table[name] = table[name].str.title()
+                return table
             
             ####################################################
             # Update Excel Master List Tables
@@ -1392,7 +1344,7 @@ class UpdatePier(object):
             try:
                 renamed_col = rap_table.columns[rap_table.columns.str.contains('|'.join(['City','city', 'Muni']))]
                 rap_table = rap_table.rename(columns={str(renamed_col[0]): renamed_city})
-                first_letter_capital(rap_table, [renamed_city])
+                rap_table = first_letter_capital(rap_table, [renamed_city])
             except:
                 pass       
             
@@ -1407,10 +1359,10 @@ class UpdatePier(object):
             rap_table['AccessDate'] = pd.to_datetime(rap_table['AccessDate'],errors='coerce').dt.date
 
             # Make sure no space
-            toString(rap_table, ['Municipality', 'PIER', 'CP'])
+            rap_table = toString(rap_table, ['Municipality', 'PIER', 'CP'])
 
             # CP to upper case
-            rap_table['CP'] = rap_table['CP'].apply(lambda x: x.upper())  
+            rap_table['CP'] = rap_table['CP'].str.upper()
 
             # Reformat CP
             if proj == 'N2':
@@ -2493,13 +2445,11 @@ class CheckMissingLotIDs(object):
                 collect.append(x)
             return(collect)
         
-        def toString(table, to_string_fields): # list of fields to be converted to string
+        def toString(table, to_string_fields):
             for field in to_string_fields:
-                ## Need to convert string first, then apply space removal, and then convert to string again
-                ## If you do not apply string conversion twice, it will fail to join with the GIS attribute table
                 table[field] = table[field].astype(str)
-                table[field] = table[field].apply(lambda x: x.replace(r'\s+', ''))
-                table[field] = table[field].astype(str)
+                table[field] = table[field].replace(r'\s+|^\w\s$','',regex=True)
+            return table
         
         rap_table = pd.read_excel(rap_table_ml) # for checking NVS3, do not use default_na = false
         gis_table = pd.read_excel(gis_table_ml)
@@ -2525,9 +2475,9 @@ class CheckMissingLotIDs(object):
 
         # Convert to strings
         to_string_fields = [join_field, municipality_field]
-        toString(rap_table, to_string_fields)
-        toString(gis_table, to_string_fields)
-        toString(gis_portal, to_string_fields)
+        rap_table = toString(rap_table, to_string_fields)
+        gis_table = toString(gis_table, to_string_fields)
+        gis_portal = toString(gis_portal, to_string_fields)
 
         ## 1. StatusLA =0 -> StatusLA = empty
         id = rap_table.index[rap_table[rap_status_field] == 0]
@@ -2749,13 +2699,11 @@ class CheckMissingStructureIDs(object):
                 collect.append(x)
             return(collect)
         
-        def toString(table, to_string_fields): # list of fields to be converted to string
+        def toString(table, to_string_fields):
             for field in to_string_fields:
-                ## Need to convert string first, then apply space removal, and then convert to string again
-                ## If you do not apply string conversion twice, it will fail to join with the GIS attribute table
                 table[field] = table[field].astype(str)
-                table[field] = table[field].apply(lambda x: x.replace(r'\s+', ''))
-                table[field] = table[field].astype(str)
+                table[field] = table[field].replace(r'\s+|^\w\s$','',regex=True)
+            return table
         
         rap_table = pd.read_excel(rap_table_ml) # for checking NVS3, do not use default_na = false
         gis_table = pd.read_excel(gis_table_ml)
@@ -2777,9 +2725,9 @@ class CheckMissingStructureIDs(object):
 
         # Convert to strings
         to_string_fields = [join_field, municipality_field]
-        toString(rap_table, to_string_fields)
-        toString(gis_table, to_string_fields)
-        toString(gis_portal, to_string_fields)
+        rap_table = toString(rap_table, to_string_fields)
+        gis_table = toString(gis_table, to_string_fields)
+        gis_portal = toString(gis_portal, to_string_fields)
 
         ## 1. StatusLA =0 -> StatusLA = empty
         id = rap_table.index[rap_table[rap_status_field] == 0]
@@ -2938,13 +2886,11 @@ class CheckMissingIsfIDs(object):
                 collect.append(x)
             return(collect)
         
-        def toString(table, to_string_fields): # list of fields to be converted to string
+        def toString(table, to_string_fields):
             for field in to_string_fields:
-                ## Need to convert string first, then apply space removal, and then convert to string again
-                ## If you do not apply string conversion twice, it will fail to join with the GIS attribute table
                 table[field] = table[field].astype(str)
-                table[field] = table[field].apply(lambda x: x.replace(r'\s+', ''))
-                table[field] = table[field].astype(str)
+                table[field] = table[field].replace(r'\s+|^\w\s$','',regex=True)
+            return table
         
         rap_table = pd.read_excel(rap_table_ml) # for checking NVS3, do not use default_na = false
         gis_table = pd.read_excel(gis_table_ml)
@@ -2966,9 +2912,9 @@ class CheckMissingIsfIDs(object):
 
         # Convert to strings
         to_string_fields = [join_field, municipality_field]
-        toString(rap_table, to_string_fields)
-        toString(gis_table, to_string_fields)
-        toString(gis_portal, to_string_fields)
+        rap_table = toString(rap_table, to_string_fields)
+        gis_table = toString(gis_table, to_string_fields)
+        gis_portal = toString(gis_portal, to_string_fields)
 
         ## 1. StatusLA =0 -> StatusLA = empty
         id = rap_table.index[rap_table[rap_status_field] == 0]

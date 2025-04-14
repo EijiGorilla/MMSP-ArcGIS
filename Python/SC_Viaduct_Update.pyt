@@ -212,7 +212,7 @@ class UpdateExcelML(object):
                 if via_type[sheet] == 1: # only for bored piles
                     # Remove the first row with 'SAMPLE' in Remarks column
                     id = table.index[table['Remarks'] == 'SAMPLE']
-                    table = table.drop(id)
+                    table = table.drop(id).reset_index(drop=True)
                     
                     # Delete this later
                     # x1 = table.query(f"{civil_pier_field} == 'P685'")
@@ -220,7 +220,7 @@ class UpdateExcelML(object):
 
                     # Drop rows with empty 'No'
                     id = table.index[table[No_field].isnull()]
-                    table = table.drop(id)
+                    table = table.drop(id).reset_index(drop=True)
                     
                     # Create ID ('Pier" + '-' + 'No')
                     ## Make sure to have no hypen for P. (e.g., P684-2 (O), P-684-2 (X))
@@ -228,6 +228,9 @@ class UpdateExcelML(object):
                     table[civil_pier_field] = table[civil_pier_field].apply(lambda x: x.replace(r'P-','P'))
                     table[No_field] = table[No_field].astype(str)
                     table[id_field] = table[civil_pier_field].str.cat(table[No_field], sep = "-")
+
+                    # idx = table.index[table[civil_pier_field] == 'P686']
+                    # arcpy.AddMessage(table.loc[idx, id_field])
 
                     # Check duplicated ID
                     ids = table[id_field].duplicated()
@@ -302,8 +305,9 @@ class UpdateExcelML(object):
                     ### start_actual & finish_plan are both empty -> Delete. Default status is entered with '1' in GIS ML = no need
                     #id = civil_table.index[(civil_table[start_actual_field].isnull()) & (civil_table[finish_plan_field].isnull())]
                     ### 'Status' field is empty => drop rows.
-                    id = civil_table.index[(civil_table[status_field].isnull()) | (civil_table[status_field].isna())]
-                    civil_table = civil_table.drop(id)
+                    # id = civil_table.index[(civil_table[status_field].isnull()) | (civil_table[status_field].isna())]
+                    id = civil_table.index[(civil_table[start_actual_field].isnull()) | (civil_table[finish_actual_field].isnull())]
+                    civil_table = civil_table.drop(id).reset_index(drop=True)
 
                     # arcpy.AddMessage(civil_table)
 
@@ -332,7 +336,7 @@ class UpdateExcelML(object):
                     if via_type[sheet] == 1: # only for bored piles
                         # Drop rows with empty 'No'
                         id = civil_table.index[civil_table[No_field].isnull()]
-                        civil_table = civil_table.drop(id)
+                        civil_table = civil_table.drop(id).reset_index(drop=True)
 
                         # To string before concatenating column names
                         civil_table[No_field] = civil_table[No_field].astype(str)
@@ -397,17 +401,21 @@ class UpdateExcelML(object):
                 ## 2.5. Append the merged table to the GIS table
                 final_table = pd.concat([g_table2, merged_table], ignore_index=True)
 
-                ## 2.6. Sort by uniqueID
+                ## 2.6. Return labeling notation for PierNumber (e.g., P-0101, PR-1911)
+                final_table[pier_field] = final_table[pier_field].replace(r'P','P-',regex=True)
+                final_table[pier_field] = final_table[pier_field].replace(r'P-R','PR',regex=True)
+
+                ## 2.7. Sort by uniqueID
                 final_table = final_table.sort_values(by=[unique_id])
 
                 final_table.to_excel(os.path.join(gis_dir, "testTable1.xlsx"), index=False)
 
                 ## Final tweak:
-                ## 2.6. Status = 1 when Status is empty
+                ## 2.8. Status = 1 when Status is empty
                 id = final_table.index[final_table[status_field].isnull()]
                 final_table.loc[id, status_field] = 1
 
-                ## 2.7. The 1st rows of date_fiels are empty -> enter dummy dates
+                ## 2.9. The 1st rows of date_fiels are empty -> enter dummy dates
                 final_table = final_table.reset_index(drop=True)
                 for field in date_fields:
                     date_item = final_table[field].iloc[:1].item()

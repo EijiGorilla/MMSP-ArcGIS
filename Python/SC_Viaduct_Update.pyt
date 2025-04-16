@@ -11,7 +11,9 @@ class Toolbox(object):
     def __init__(self):
         self.label = "UpdateSCViaduct"
         self.alias = "UpdateSCViaduct"
-        self.tools = [UpdateExcelML, UpdateGISTable, ReSortGISTable, CheckUpdatesCivilGIS]
+        self.tools = [UpdateExcelML, UpdateGISTable, 
+                      CreateWorkablePierLayer, UpdateWorkablePierLayer,
+                      ReSortGISTable, CheckUpdatesCivilGIS]
 
 class UpdateExcelML(object):
     def __init__(self):
@@ -440,6 +442,13 @@ class UpdateGISTable(object):
         self.description = "Update SC Viaduct multipatch layer (SC Viaduct)"
 
     def getParameterInfo(self):
+        gis_dir = arcpy.Parameter(
+            displayName = "GIS Masterlist Storage Directory",
+            name = "GIS master-list directory",
+            datatype = "DEWorkspace",
+            parameterType = "Required",
+            direction = "Input"
+        )
         gis_layer = arcpy.Parameter(
             displayName = "GIS Attribute Table (SC Viaduct)",
             name = "GIS Attribute Table (SC Viaduct)",
@@ -456,15 +465,16 @@ class UpdateGISTable(object):
             direction = "Input"
         )
 
-        params = [gis_layer, excel_table]
+        params = [gis_dir, gis_layer, excel_table]
         return params
     
     def updateMessages(self, params):
         return
     
     def execute(self, params, messages):
-        gis_layer = params[0].valueAsText
-        excel_table = params[1].valueAsText
+        gis_dir = params[0].valueAsText
+        gis_layer = params[1].valueAsText
+        excel_table = params[2].valueAsText
 
         def unique_values(table, field):  ##uses list comprehension
             with arcpy.da.SearchCursor(table, [field]) as cursor:
@@ -557,9 +567,320 @@ class UpdateGISTable(object):
         # 5. Append
         arcpy.Append_management(gis_copied, gis_layer, schema_type = 'NO_TEST')
 
+        # 6. Table to Excel
+        # (This ensures that SC_Viaduct_ML.xlsx is always consistent with SC Viaduct GIS attribute table)
+        # Reason: uniqueID is sometimes updated in the GIS attribute table
+        arcpy.conversion.TableToExcel(gis_layer, os.path.join(gis_dir, 'SC_Viaduct_ML.xlsx'))
+        
         # Delete the copied feature layer
         deleteTempLayers = [gis_copied, viaduct_ml]
         arcpy.Delete_management(deleteTempLayers)
+
+class CreateWorkablePierLayer(object):
+    def __init__(self):
+        self.label = "3. Create Pier Workable Layer (Polygon)"
+        self.description = "Create Pier Workable Layer"
+
+    def getParameterInfo(self):
+        # Input Feature Layers
+        workable_pier_layer = arcpy.Parameter(
+            displayName = "GIS Workable Pier Layer (Polygon)",
+            name = "GIS Workable Pier Layer (Polygon)",
+            datatype = "GPFeatureLayer",
+            parameterType = "Required",
+            direction = "Input"
+        )
+
+        via_layer = arcpy.Parameter(
+            displayName = "GIS Viaduct Layer (Multipatch)",
+            name = "GIS Viaduct Layer (Multipatch)",
+            datatype = "GPFeatureLayer",
+            parameterType = "Required",
+            direction = "Input"
+        )
+
+        params = [workable_pier_layer, via_layer]
+        return params
+
+    def updateMessages(self, params):
+        return
+
+    def execute(self, params, messages):
+        workable_pier_layer = params[0].valueAsText
+        via_layer = params[1].valueAsText
+
+        arcpy.env.overwriteOutput = True
+        new_cols = ['AllWorkable','LandWorkable','StrucWorkable','NLOWorkable', 'UtilWorkable', 'OthersWorkable']
+
+        # Filter by Type = 2 and keep only 'CP', 'PierNumber', and 'uniqueID'
+        temp_layer = 'temp_layer'
+        arcpy.management.MakeFeatureLayer(via_layer, temp_layer, '"Type" = 2')
+
+        # 'multipatch footprint'
+        ## new_cols and 'Type' (sting) = 'Pile Cap'
+        new_layer = 'SC_Pier_Workable'
+        arcpy.ddd.MultiPatchFootprint(temp_layer, new_layer)
+
+        ## Delete field
+        arcpy.management.DeleteField(new_layer, ['CP','PierNumber','uniqueID','Status'], "KEEP_FIELDS")
+
+        # Add field
+        new_fields = new_cols + ['Type']
+        for field in new_fields:
+            if field == 'Type':
+                arcpy.management.AddField(new_layer, field, "TEXT", field_alias=field, field_is_nullable="NULLABLE")
+            else:
+                arcpy.management.AddField(new_layer, field, "SHORT", field_alias=field, field_is_nullable="NULLABLE")
+
+        with arcpy.da.UpdateCursor(new_layer, ['Type', 'Status', 'AllWorkable','LandWorkable','StrucWorkable','NLOWorkable', 'UtilWorkable', 'OthersWorkable']) as cursor:
+            # 0: Non-workable, 1: Workable, 2: Completed
+            for row in cursor:
+                row[0] = 'Pile Cap'
+                if row[1] == 4:
+                    row[2] = 2
+                    row[3] = 2
+                    row[4] = 2
+                    row[5] = 2
+                    row[6] = 2
+                    row[7] = 2
+                cursor.updateRow(row)
+        
+        # Truncate old polygon
+        arcpy.management.TruncateTable(workable_pier_layer)
+
+        # Append the new one to the old one
+        arcpy.management.Append(new_layer, workable_pier_layer, schema_type = 'NO_TEST')
+
+        # delete
+        deleteTempLayers = [new_layer, temp_layer]
+        arcpy.Delete_management(deleteTempLayers)
+
+class UpdateWorkablePierLayer(object):
+    def __init__(self):
+        self.label = "4. Update Pier Workable Layer (Polygon)"
+        self.description = "Update Pier Workable Layer (Polygon)"
+
+    def getParameterInfo(self):
+        gis_viaduct_dir = arcpy.Parameter(
+            displayName = "GIS Masterlist Storage Directory for Viaduct",
+            name = "GIS master-list directory",
+            datatype = "DEWorkspace",
+            parameterType = "Required",
+            direction = "Input"
+        )
+
+        gis_workable_layer = arcpy.Parameter(
+            displayName = "GIS Pier Workable Layer (Polygon)",
+            name = "GIS Pier Workable Layer (Polygon)",
+            datatype = "GPFeatureLayer",
+            parameterType = "Required",
+            direction = "Input"
+        )
+
+        gis_nlo_ms = arcpy.Parameter(
+            displayName = "GIS NLO (ISF) ML (Excel)",
+            name = "GIS NLO (ISF) ML (Excel)",
+            datatype = "DEFile",
+            parameterType = "Required",
+            direction = "Input"
+        )
+
+        civil_workable_ms = arcpy.Parameter(
+            displayName = "Civil Workable Pier ML (Excel)",
+            name = "Civil Workable Pier ML (Excel)",
+            datatype = "DEFile",
+            parameterType = "Required",
+            direction = "Input"
+        )
+
+        params = [gis_viaduct_dir, gis_workable_layer, gis_nlo_ms, civil_workable_ms]
+        return params
+
+    def updateMessages(self, params):
+        return
+
+    def execute(self, params, messages):
+        gis_via_dir = params[0].valueAsText
+        gis_workable_layer = params[1].valueAsText
+        gis_nlo_ms = params[2].valueAsText
+        civil_workable_ms = params[3].valueAsText
+
+        arcpy.env.overwriteOutput = True
+        #arcpy.env.addOutputsToMap = True
+
+        def Workable_Pier_Table_Update():
+            def unique(lists):
+                collect = []
+                unique_list = pd.Series(lists).drop_duplicates().tolist()
+                for x in unique_list:
+                    collect.append(x)
+                return(collect)
+            
+            def non_match_elements(list_a, list_b):
+                non_match = []
+                for i in list_a:
+                    if i not in list_b:
+                        non_match.append(i)
+                return non_match
+            
+            # Read as xlsx
+            # gis_via_t = pd.read_excel(gis_via_ms)
+            gis_nlo_t = pd.read_excel(gis_nlo_ms)
+            civil_workable_t = pd.read_excel(civil_workable_ms,sheet_name='(S01)',skiprows=3)
+
+            # List of fields
+            cp_field = 'CP'
+            type_field = 'Type'
+            status_field = 'Status'
+            pier_number_field = 'PierNumber'
+            workability_field = 'workability'
+            unique_id_field = 'uniqueID'
+            lot_id_field = 'LotID'
+            struc_id_field = 'StrucID'
+
+
+            # 1. Clean fields
+            ## cps = ['S-01','S-02','S-03a','S-03b','S-03c','S-04','S-05','S-06','S-07']
+            ## for i, cp in enumerate(cps):
+            civil_workable_t = civil_workable_t.iloc[:,[14,19,22,23,24,25,26,27,28,30,32,34,35,47,50]]
+            col_names = [pier_number_field,'via_construct_status','workability',
+                        'util1','util2','util3','util4','util5','ISF_pnr','land','structure','pnr_station','others',
+                        lot_id_field, struc_id_field] # 'lot_id','struc_id'
+
+            for i, col in enumerate(col_names):
+                civil_workable_t = civil_workable_t.rename(columns={civil_workable_t.columns[i]: col})
+
+            # create workable columns for pre-construction work
+            new_cols = ['AllWorkable','LandWorkable','StrucWorkable','NLOWorkable', 'UtilWorkable', 'OthersWorkable']
+            for i, col in enumerate(new_cols):
+                civil_workable_t[col] = np.nan
+                # x[col] = x[col].astype(str)
+
+            ## Clean column names
+            # x[col_names[0]] = x[col_names[0]].replace(r'\s+|[^\w\s]','',regex=True)
+            civil_workable_t[col_names[0]] = civil_workable_t[col_names[0]].replace(r'\s+','',regex=True)
+
+            # Remove empty space
+            ids = civil_workable_t.index[civil_workable_t[col_names[0]].isna()]
+            civil_workable_t = civil_workable_t.drop(ids).reset_index(drop=True)
+
+            civil_workable_t[cp_field] = 'S-01'
+
+            ##################################
+            # A. Update Pier Workable Layer using Civil table ##
+            ##################################
+
+            ## 1. Workable Pile Cap
+            ## Status of Workable Pier
+            ### 0: Non-Workable
+            ### 1: Workable
+            ### 2: Completedd
+
+            ### 1.2. Workable Pile Cap
+            # Make sure to exclude PierNumber with completed piers
+            ids_workable = civil_workable_t.index[(civil_workable_t[workability_field] == 'Workable') & (civil_workable_t[new_cols[0]] != 2)]
+            for col in new_cols:
+                civil_workable_t.loc[ids_workable,col] = 1
+
+            ## 2.0. Enter Workable (1) else non-Workable (1) for AllWorkable
+            completed_piers = []
+            with arcpy.da.SearchCursor(gis_workable_layer, [pier_number_field, new_cols[0]]) as cursor:
+                for row in cursor:
+                    if row[1] == 2:
+                        completed_piers.append(row[0])
+
+            # from civil pier workable database
+            id_piers = civil_workable_t.index[civil_workable_t['workability'] == 'Workable']
+            workable_piers = civil_workable_t.loc[id_piers, pier_number_field].values
+
+            incomp_workable_piers = non_match_elements(workable_piers, completed_piers)
+
+            with arcpy.da.UpdateCursor(gis_workable_layer, [pier_number_field,'AllWorkable','LandWorkable','StrucWorkable','NLOWorkable', 'UtilWorkable', 'OthersWorkable']) as cursor:
+                for row in cursor:
+                    if row[0] in tuple(incomp_workable_piers):
+                        row[1] = 1
+                        row[2] = 1
+                        row[3] = 1
+                        row[4] = 1
+                        row[5] = 1
+                        row[6] = 1
+                    else:
+                        row[1] = 0
+                    cursor.updateRow(row)
+
+            ## 2.1 LandWorkable
+            # Note that when 'land' == 1, this automatically exlucdes workable and completed piers.
+            ids = civil_workable_t.index[civil_workable_t['land'] == 1]
+
+            land_nonwork_piers = civil_workable_t.loc[ids, pier_number_field].values
+            with arcpy.da.UpdateCursor(gis_workable_layer, [pier_number_field, new_cols[1]]) as cursor:
+                for row in cursor:
+                    if row[0] in tuple(land_nonwork_piers):
+                        row[1] = 0
+                    cursor.updateRow(row)
+
+            ## 2.2 StrucWorkable
+            ids = civil_workable_t.index[civil_workable_t['structure'] == 1]
+            struc_nonwork_piers = civil_workable_t.loc[ids, pier_number_field].values
+            with arcpy.da.UpdateCursor(gis_workable_layer, [pier_number_field, new_cols[2]]) as cursor:
+                for row in cursor:
+                    if row[0] in tuple(struc_nonwork_piers):
+                        row[1] = 0
+                    cursor.updateRow(row)
+
+            ## 2.3 NLOWorkable
+            ### Not all non-workable structures have NLOs. So, to decide the workable status of 'NLOWorkable':
+            ### 2.3.1. identify StrucID of non-workable structures
+            civil_workable_t[struc_id_field] = civil_workable_t[struc_id_field].str.replace('\n',',')
+            civil_workable_t[struc_id_field] = civil_workable_t[struc_id_field].replace(r'\s+','',regex=True)
+            civil_workable_t[struc_id_field] = civil_workable_t[struc_id_field].str.upper()
+            civil_workable_t[struc_id_field] = civil_workable_t[struc_id_field].replace(r'[(]PNR[)]','',regex=True)
+            
+            ids_nonna = civil_workable_t.index[civil_workable_t['structure'] == 1]
+            c_t2 = civil_workable_t.loc[ids_nonna, ]
+
+            ### 2.3.2. identify any NLOs falling under the identified non-workable structures
+            nlo_obstruc_piers = []
+            for i in c_t2.index:
+                obstruc_struc_ids = c_t2.loc[i, struc_id_field]
+                test = [e for e in gis_nlo_t[struc_id_field] if e in obstruc_struc_ids.split(',')]
+                if len(test) > 0:
+                    # idenfity pier numbers with obstructing NLOs
+                    nlo_obstruc_piers.append(civil_workable_t.loc[i, pier_number_field])
+            
+            ### 2.3.3. Enter NLOWorkable = 0 with identified pier numbers
+            with arcpy.da.UpdateCursor(gis_workable_layer, [pier_number_field, new_cols[3]]) as cursor:
+                for row in cursor:
+                    if row[0] in tuple(nlo_obstruc_piers):
+                        row[1] = 0
+                    cursor.updateRow(row)
+
+            ## 2.4. UtilWorkable
+            ids = civil_workable_t.index[(civil_workable_t['util1'] == 1) | 
+                                         (civil_workable_t['util2'] == 1) | 
+                                         (civil_workable_t['util3'] == 1) | 
+                                         (civil_workable_t['util4'] == 1)| 
+                                         (civil_workable_t['util5'] == 1)]
+            util_obstruc_piers = civil_workable_t.loc[ids, pier_number_field]
+            with arcpy.da.UpdateCursor(gis_workable_layer, [pier_number_field, new_cols[4]]) as cursor:
+                for row in cursor:
+                    if row[0] in tuple(util_obstruc_piers):
+                        row[1] = 0
+                    cursor.updateRow(row)
+
+            ## 2.5. OthersWorkable 
+            ids = civil_workable_t.index[civil_workable_t['others'] == 1]
+            others_obstruc_piers = civil_workable_t.loc[ids, pier_number_field]
+            with arcpy.da.UpdateCursor(gis_workable_layer, [pier_number_field, new_cols[5]]) as cursor:
+                for row in cursor:
+                    if row[0] in tuple(others_obstruc_piers):
+                        row[1] = 0
+                    cursor.updateRow(row)
+
+            ## Export this layer to excel
+            arcpy.conversion.TableToExcel(gis_via_dir, "SC_Workable_Pier.xls")
+
+        Workable_Pier_Table_Update()
 
 class ReSortGISTable(object):
     def __init__(self):
@@ -692,7 +1013,7 @@ class ReSortGISTable(object):
 
 class CheckUpdatesCivilGIS(object):
     def __init__(self):
-        self.label = "3. Check Update between Civil and GIS Maser List (SC Viaduct)"
+        self.label = "5. Check Update between Civil and GIS Maser List (SC Viaduct)"
         self.description = "Check Update between Civil and GIS Maser List (SC Viaduct)"
 
     def getParameterInfo(self):

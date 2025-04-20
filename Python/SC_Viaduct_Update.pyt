@@ -271,9 +271,6 @@ class UpdateExcelML(object):
                     arcpy.AddMessage(sheet)
                     civil_table = pd.read_excel(civil_dir, sheet_name=sheet)
 
-                    # Drop no 'finish_actual'
-                    civil_table = civil_table.query(f"{finish_actual_field}.notna()").reset_index(drop=True)
-
                     # Remove the first row with 'SAMPLE' in Remarks column
                     id = civil_table.index[civil_table['Remarks'] == 'SAMPLE']
                     civil_table = civil_table.drop(id)
@@ -301,30 +298,10 @@ class UpdateExcelML(object):
                     # 3. Update and add status
                     civil_table[status1_field] = np.nan
 
-                    # arcpy.AddMessage(civil_table) OK
-                   
-                    ## Status = 1:
-                    ### start_actual & finish_plan are both empty -> Delete. Default status is entered with '1' in GIS ML = no need
-                    #id = civil_table.index[(civil_table[start_actual_field].isnull()) & (civil_table[finish_plan_field].isnull())]
-                    ### 'Status' field is empty => drop rows.
-                    # id = civil_table.index[(civil_table[status_field].isnull()) | (civil_table[status_field].isna())]
-                    id = civil_table.index[(civil_table[start_actual_field].isnull()) | (civil_table[finish_actual_field].isnull())]
-                    civil_table = civil_table.drop(id).reset_index(drop=True)
-
-                    # arcpy.AddMessage(civil_table)
-
-                    ### start_actual is empty & finish_plan > today (construction has not started but target date is future)
-                    id = civil_table.index[civil_table[start_actual_field].isnull() & (civil_table[finish_plan_field] > today)]
-                    civil_table.loc[id, status1_field] = 1
-                    
                     ##finish_actual exists -> Status = 4 (Completed)
                     id = civil_table.index[civil_table[finish_actual_field].notna()]
                     civil_table.loc[id,status1_field] = 4
 
-                    ## finish_actual empty but Status = cast/Cast/casted/Casted
-                    # id = civil_table.index[civil_table[finish_actual_field].isna() | civil_table[status_field].str.contains(r'cast|casted|Cast|Casted',regex=True)]
-                    # civil_table.loc[id, status1_field] = 4
-                    
                     ### start_actual & empty finish_actual -> 2 (under construction)
                     id = civil_table.index[(civil_table[start_actual_field].notna()) & (civil_table[finish_actual_field].isnull())]
                     civil_table.loc[id,status1_field] = 2
@@ -333,7 +310,9 @@ class UpdateExcelML(object):
                     id = civil_table.index[(civil_table[finish_actual_field].isnull()) & (civil_table[finish_plan_field].notna()) & (civil_table[finish_plan_field] < today)]
                     civil_table.loc[id,status1_field] = 3
 
-                    # arcpy.AddMessage(civil_table)
+                    ### else 1
+                    id = civil_table.index[civil_table[status1_field].isnull()]
+                    civil_table.loc[id, status1_field] = 1
                     
                     if via_type[sheet] == 1: # only for bored piles
                         # Drop rows with empty 'No'
@@ -374,7 +353,7 @@ class UpdateExcelML(object):
 
                     # Column bind 
                     civil_table2 = pd.concat([civil_table2,civil_table1])
-                    civil_table2.to_excel(os.path.join(gis_dir, "check_civil_table2" + ".xlsx"), index=False)
+                    # civil_table2.to_excel(os.path.join(gis_dir, "check_civil_table2" + ".xlsx"), index=False)
                 
                 # Re-index the compiled table
                 civil_table2 = civil_table2.reset_index(drop=True)
@@ -410,10 +389,10 @@ class UpdateExcelML(object):
                 ## 2.7. Sort by uniqueID
                 final_table = final_table.sort_values(by=[unique_id])
 
-                final_table.to_excel(os.path.join(gis_dir, "testTable1.xlsx"), index=False)
+                # final_table.to_excel(os.path.join(gis_dir, "testTable1.xlsx"), index=False)
 
                 ## Final tweak:
-                ## 2.8. Status = 1 when Status is empty
+                ## 2.8. Status = 1 when Status is emptyc
                 id = final_table.index[final_table[status_field].isnull()]
                 final_table.loc[id, status_field] = 1
 

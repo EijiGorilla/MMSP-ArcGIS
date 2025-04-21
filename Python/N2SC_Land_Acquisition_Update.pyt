@@ -1417,14 +1417,6 @@ class UpdateWorkablePierLandTable(object):
             direction = "Input"
         )
 
-        gis_via_dir = arcpy.Parameter(
-            displayName = "GIS Masterlist Storage Directory for Viaduct",
-            name = "GIS Masterlist Storage Directory for Viaduct",
-            datatype = "DEWorkspace",
-            parameterType = "Required",
-            direction = "Input"
-        )
-
         gis_lot_ms = arcpy.Parameter(
             displayName = "GIS Land Status ML (Excel)",
             name = "GIS Land Status ML (Excel))",
@@ -1441,15 +1433,23 @@ class UpdateWorkablePierLandTable(object):
             direction = "Input"
         )
 
+        gis_via_dir = arcpy.Parameter(
+            displayName = "GIS Masterlist Storage Directory for Viaduct",
+            name = "GIS Masterlist Storage Directory for Viaduct",
+            datatype = "DEWorkspace",
+            parameterType = "Required",
+            direction = "Input"
+        )
+
         civil_workable_ms = arcpy.Parameter(
-            displayName = "Civil Pier Workable ML (Excel)",
-            name = "Civil Pier Workable ML (Excel))",
+            displayName = "SC Civil Pier Workable ML (Excel)",
+            name = "SC Civil Pier Workable ML (Excel))",
             datatype = "DEFile",
             parameterType = "Required",
             direction = "Input"
         )
 
-        params = [gis_rap_dir, gis_via_dir, gis_lot_ms, gis_lot_portal, civil_workable_ms]
+        params = [gis_rap_dir, gis_lot_ms, gis_lot_portal, gis_via_dir, civil_workable_ms]
         return params
 
     def updateMessages(self, params):
@@ -1457,9 +1457,9 @@ class UpdateWorkablePierLandTable(object):
 
     def execute(self, params, messages):
         gis_rap_dir = params[0].valueAsText
-        gis_via_dir = params[1].valueAsText
-        gis_lot_ms = params[2].valueAsText
-        gis_lot_portal = params[3].valueAsText
+        gis_lot_ms = params[1].valueAsText
+        gis_lot_portal = params[2].valueAsText
+        gis_via_dir = params[3].valueAsText
         civil_workable_ms = params[4].valueAsText
 
         arcpy.env.overwriteOutput = True
@@ -1483,7 +1483,6 @@ class UpdateWorkablePierLandTable(object):
             # Read as xlsx
             gis_lot_t = pd.read_excel(gis_lot_ms)
             gis_lot_portal_t = pd.read_excel(gis_lot_portal)
-            civil_workable_t = pd.read_excel(civil_workable_ms,sheet_name='(S01)',skiprows=3)
 
             # List of fields
             obstruc_field = 'Obstruction' ## ('Yes' or 'No')
@@ -1493,64 +1492,71 @@ class UpdateWorkablePierLandTable(object):
             struc_id_field = 'StrucID'
 
             # 1. Clean fields
-            ## cps = ['S-01','S-02','S-03a','S-03b','S-03c','S-04','S-05','S-06','S-07']
-            ## for i, cp in enumerate(cps):
-            civil_workable_t = civil_workable_t.iloc[:,[14,19,22,23,24,25,26,27,28,30,32,34,35,47,50]]
-            col_names = [pier_number_field,'via_construct_status','workability',
-                        'util1','util2','util3','util4','util5','ISF_pnr','land','structure','pnr_station','others',
-                        lot_id_field, struc_id_field] # 'lot_id','struc_id'
+            # cps = ['S-01','S-02','S-03a','S-03b','S-03c','S-04','S-05','S-06','S-07']
+            cps = ['S-01']
+            for i, cp in enumerate(cps):
+                civil_workable_t = pd.read_excel(civil_workable_ms,sheet_name='(S01)',skiprows=3)
+                civil_workable_t = civil_workable_t.iloc[:,[14,19,22,23,24,25,26,27,28,30,32,34,35,47,50]]
+                col_names = [pier_number_field,'via_construct_status','workability',
+                            'util1','util2','util3','util4','util5','ISF_pnr','land','structure','pnr_station','others',
+                            lot_id_field, struc_id_field] # 'lot_id','struc_id'
 
-            for i, col in enumerate(col_names):
-                civil_workable_t = civil_workable_t.rename(columns={civil_workable_t.columns[i]: col})
+                for j, col in enumerate(col_names):
+                    civil_workable_t = civil_workable_t.rename(columns={civil_workable_t.columns[j]: col})
 
-            # create workable columns for pre-construction work
-            new_cols = ['AllWorkable','LandWorkable','StrucWorkable','NLOWorkable', 'UtilWorkable', 'OthersWorkable']
-            for i, col in enumerate(new_cols):
-                civil_workable_t[col] = np.nan
-                # x[col] = x[col].astype(str)
+                # create workable columns for pre-construction work
+                new_cols = ['AllWorkable','LandWorkable','StrucWorkable','NLOWorkable', 'UtilWorkable', 'OthersWorkable']
+                for k, col in enumerate(new_cols):
+                    civil_workable_t[col] = np.nan
+                    # x[col] = x[col].astype(str)
 
-            ## Clean column names
-            # x[col_names[0]] = x[col_names[0]].replace(r'\s+|[^\w\s]','',regex=True)
-            civil_workable_t[col_names[0]] = civil_workable_t[col_names[0]].replace(r'\s+','',regex=True)
+                ## Clean column names
+                # x[col_names[0]] = x[col_names[0]].replace(r'\s+|[^\w\s]','',regex=True)
+                civil_workable_t[col_names[0]] = civil_workable_t[col_names[0]].replace(r'\s+','',regex=True)
 
-            # Remove empty space
-            ids = civil_workable_t.index[civil_workable_t[col_names[0]].isna()]
-            civil_workable_t = civil_workable_t.drop(ids).reset_index(drop=True)
+                # Remove empty space
+                ids = civil_workable_t.index[civil_workable_t[col_names[0]].isna()]
+                civil_workable_t = civil_workable_t.drop(ids).reset_index(drop=True)
 
-            civil_workable_t[cp_field] = 'S-01'
-            ################################################################
-            ## B. Identify Obstruction (Yes' or 'No') to GIS master list ###
-            ################################################################
-            #### Note that Civil table may have duplicated LotIDs or Structure IDs, as some pile caps
-            #### are obstructed by the same lots or structures.
+                civil_workable_t[cp_field] = cp
+                ################################################################
+                ## B. Identify Obstruction (Yes' or 'No') to GIS master list ###
+                ################################################################
+                #### Note that Civil table may have duplicated LotIDs or Structure IDs, as some pile caps
+                #### are obstructed by the same lots or structures.
 
-            ### 1. Land
-            ids = civil_workable_t.index[civil_workable_t['land'] == 1]
-            lot_obs = civil_workable_t.loc[ids,lot_id_field]
-            civil_workable_t[lot_id_field] = civil_workable_t[lot_id_field].str.replace('\n',',')
-            civil_workable_t[lot_id_field] = civil_workable_t[lot_id_field].replace(r'\s+','',regex=True)
-            civil_workable_t[lot_id_field] = civil_workable_t[lot_id_field].str.upper()
-            ids = civil_workable_t.index[civil_workable_t[lot_id_field].notna()]
-            lot_ids = civil_workable_t.loc[ids,lot_id_field].str.split(',').values.flatten()
-            x_lot_ids = np.concatenate(lot_ids)
+                ### 1. Land
+                ids = civil_workable_t.index[civil_workable_t['land'] == 1]
+                lot_obs = civil_workable_t.loc[ids,lot_id_field]
+                civil_workable_t[lot_id_field] = civil_workable_t[lot_id_field].str.replace('\n',',')
+                civil_workable_t[lot_id_field] = civil_workable_t[lot_id_field].replace(r'\s+','',regex=True)
+                civil_workable_t[lot_id_field] = civil_workable_t[lot_id_field].str.upper()
+                ids = civil_workable_t.index[civil_workable_t[lot_id_field].notna()]
+                lot_ids = civil_workable_t.loc[ids,lot_id_field].str.split(',').values.flatten()
+                x_lot_ids = np.concatenate(lot_ids)
 
-            ##### Remove any empty ones and duplicated LotIDs
-            id_drop = np.where(x_lot_ids == '')
-            x_lot_ids = np.delete(x_lot_ids, id_drop)
-            x_lot_ids = np.unique(x_lot_ids)
+                ##### Remove any empty ones and duplicated LotIDs
+                id_drop = np.where(x_lot_ids == '')
+                x_lot_ids = np.delete(x_lot_ids, id_drop)
+                x_lot_ids = np.unique(x_lot_ids)
 
-            ### Add these obstructing LotIDs to GIS Structure master list
-            gis_lot_t[obstruc_field] = 'No'
-            ids = gis_lot_t.index[gis_lot_t[lot_id_field].isin(x_lot_ids)]
-            y_lot_ids = gis_lot_t.loc[ids,lot_id_field].values
-            gis_lot_t.loc[ids, obstruc_field] = 'Yes'
+                ### Add these obstructing LotIDs to GIS Structure master list
+                #### First, reset 'obstruction' field
+                gis_lot_t[obstruc_field] = np.nan
+                idcp = gis_lot_t.index[gis_lot_t[cp_field] == cp]
+                gis_lot_t.loc[idcp, obstruc_field] = 'No'
 
-            #### Extract obstructing LotIDs from the GIS Attribute table (GIS_portal)
-            ids_portal = gis_lot_portal_t.index[gis_lot_portal_t[lot_id_field].isin(x_lot_ids)]
-            y_lot_portal_ids = gis_lot_portal_t.loc[ids_portal,lot_id_field].values
+                ids = gis_lot_t.loc[idcp, ].index[gis_lot_t.loc[idcp, lot_id_field].isin(x_lot_ids)]
+                y_lot_ids = gis_lot_t.loc[ids, lot_id_field].values
+                gis_lot_t.loc[ids, obstruc_field] = 'Yes'
 
-            ### Overwrite existing GIS_Lot_ML and GIS_Structure_ML with the updated tables
-            gis_lot_t.to_excel(os.path.join(gis_rap_dir, 'SC_Land_Status.xlsx'), index=False) ## gis_land
+                # #### Extract obstructing LotIDs from the GIS Attribute table (GIS_portal)
+                ids_portal = gis_lot_portal_t.loc[idcp, ].index[gis_lot_portal_t.loc[idcp, lot_id_field].isin(x_lot_ids)]
+                y_lot_portal_ids = gis_lot_portal_t.loc[ids_portal, lot_id_field].values
+
+                ### Overwrite existing GIS_Lot_ML and GIS_Structure_ML with the updated tables
+                gis_lot_t.to_excel(os.path.join(gis_rap_dir, 'SC_Land_Status.xlsx'), index=False) ## gis_land
+            ########### End of Updating Obstruction for Land  ####################################
 
             ## 01: Summary statistics to check the number of obstructing lots and structures
             ## among Civil table, GIS Excel ML, and GIS Portal table.
@@ -1599,14 +1605,6 @@ class UpdateWorkablePierStructureTable(object):
             direction = "Input"
         )
 
-        gis_via_dir = arcpy.Parameter(
-            displayName = "GIS Masterlist Storage Directory for Viaduct",
-            name = "GIS Masterlist Storage Directory for Viaduct",
-            datatype = "DEWorkspace",
-            parameterType = "Required",
-            direction = "Input"
-        )
-
         gis_struc_ms = arcpy.Parameter(
             displayName = "GIS Structure Status ML (Excel)",
             name = "GIS Structure Status ML (Excel))",
@@ -1631,15 +1629,23 @@ class UpdateWorkablePierStructureTable(object):
             direction = "Input"
         )
 
+        gis_via_dir = arcpy.Parameter(
+            displayName = "SC GIS Masterlist Storage Directory for Viaduct",
+            name = "GIS Masterlist Storage Directory for Viaduct",
+            datatype = "DEWorkspace",
+            parameterType = "Required",
+            direction = "Input"
+        )
+
         civil_workable_ms = arcpy.Parameter(
-            displayName = "Civil Pier Workable ML (Excel)",
+            displayName = "SC Civil Pier Workable ML (Excel)",
             name = "Civil Pier Workable ML (Excel))",
             datatype = "DEFile",
             parameterType = "Required",
             direction = "Input"
         )
 
-        params = [gis_rap_dir, gis_via_dir, gis_struc_ms, gis_struc_portal, gis_nlo_ms, civil_workable_ms]
+        params = [gis_rap_dir, gis_struc_ms, gis_struc_portal, gis_nlo_ms, gis_via_dir, civil_workable_ms]
         return params
 
     def updateMessages(self, params):
@@ -1647,10 +1653,10 @@ class UpdateWorkablePierStructureTable(object):
 
     def execute(self, params, messages):
         gis_rap_dir = params[0].valueAsText
-        gis_via_dir = params[1].valueAsText
-        gis_struc_ms = params[2].valueAsText
-        gis_struc_portal = params[3].valueAsText
-        gis_nlo_ms = params[4].valueAsText
+        gis_struc_ms = params[1].valueAsText
+        gis_struc_portal = params[2].valueAsText
+        gis_nlo_ms = params[3].valueAsText
+        gis_via_dir = params[4].valueAsText
         civil_workable_ms = params[5].valueAsText
 
         arcpy.env.overwriteOutput = True
@@ -1675,7 +1681,6 @@ class UpdateWorkablePierStructureTable(object):
             gis_struc_t = pd.read_excel(gis_struc_ms)
             gis_struc_portal_t = pd.read_excel(gis_struc_portal)
             gis_nlo_t = pd.read_excel(gis_nlo_ms)
-            civil_workable_t = pd.read_excel(civil_workable_ms,sheet_name='(S01)',skiprows=3)
 
             # List of fields
             obstruc_field = 'Obstruction' ## ('Yes' or 'No')
@@ -1686,70 +1691,76 @@ class UpdateWorkablePierStructureTable(object):
 
             # 1. Clean fields
             ## cps = ['S-01','S-02','S-03a','S-03b','S-03c','S-04','S-05','S-06','S-07']
-            ## for i, cp in enumerate(cps):
-            civil_workable_t = civil_workable_t.iloc[:,[14,19,22,23,24,25,26,27,28,30,32,34,35,47,50]]
-            col_names = [pier_number_field,'via_construct_status','workability',
-                        'util1','util2','util3','util4','util5','ISF_pnr','land','structure','pnr_station','others',
-                        lot_id_field, struc_id_field] # 'lot_id','struc_id'
+            cps = ['S-01']
+            for i, cp in enumerate(cps):
+                civil_workable_t = pd.read_excel(civil_workable_ms,sheet_name='(S01)',skiprows=3)
+                civil_workable_t = civil_workable_t.iloc[:,[14,19,22,23,24,25,26,27,28,30,32,34,35,47,50]]
+                col_names = [pier_number_field,'via_construct_status','workability',
+                            'util1','util2','util3','util4','util5','ISF_pnr','land','structure','pnr_station','others',
+                            lot_id_field, struc_id_field] # 'lot_id','struc_id'
 
-            for i, col in enumerate(col_names):
-                civil_workable_t = civil_workable_t.rename(columns={civil_workable_t.columns[i]: col})
+                for j, col in enumerate(col_names):
+                    civil_workable_t = civil_workable_t.rename(columns={civil_workable_t.columns[j]: col})
 
-            # create workable columns for pre-construction work
-            new_cols = ['AllWorkable','LandWorkable','StrucWorkable','NLOWorkable', 'UtilWorkable', 'OthersWorkable']
-            for i, col in enumerate(new_cols):
-                civil_workable_t[col] = np.nan
-                # x[col] = x[col].astype(str)
+                # create workable columns for pre-construction work
+                new_cols = ['AllWorkable','LandWorkable','StrucWorkable','NLOWorkable', 'UtilWorkable', 'OthersWorkable']
+                for k, col in enumerate(new_cols):
+                    civil_workable_t[col] = np.nan
+                    # x[col] = x[col].astype(str)
 
-            ## Clean column names
-            # x[col_names[0]] = x[col_names[0]].replace(r'\s+|[^\w\s]','',regex=True)
-            civil_workable_t[col_names[0]] = civil_workable_t[col_names[0]].replace(r'\s+','',regex=True)
+                ## Clean column names
+                # x[col_names[0]] = x[col_names[0]].replace(r'\s+|[^\w\s]','',regex=True)
+                civil_workable_t[col_names[0]] = civil_workable_t[col_names[0]].replace(r'\s+','',regex=True)
 
-            # Remove empty space
-            ids = civil_workable_t.index[civil_workable_t[col_names[0]].isna()]
-            civil_workable_t = civil_workable_t.drop(ids).reset_index(drop=True)
+                # Remove empty space
+                ids = civil_workable_t.index[civil_workable_t[col_names[0]].isna()]
+                civil_workable_t = civil_workable_t.drop(ids).reset_index(drop=True)
 
-            civil_workable_t[cp_field] = 'S-01'
+                civil_workable_t[cp_field] = cp
 
-            ################################################################
-            ## B. Identify Obstruction (Yes' or 'No') to GIS master list ###
-            ################################################################
-            #### Note that Civil table may have duplicated LotIDs or Structure IDs, as some pile caps
-            #### are obstructed by the same lots or structures.
+                ################################################################
+                ## B. Identify Obstruction (Yes' or 'No') to GIS master list ###
+                ################################################################
+                #### Note that Civil table may have duplicated LotIDs or Structure IDs, as some pile caps
+                #### are obstructed by the same lots or structures.
 
-            ### 2. Structure and ISF
-            ids = civil_workable_t.index[civil_workable_t['structure'] == 1]
-            # struc_obs = civil_workable_t.loc[ids,struc_id_field]
-            civil_workable_t[struc_id_field] = civil_workable_t[struc_id_field].str.replace('\n',',')
-            civil_workable_t[struc_id_field] = civil_workable_t[struc_id_field].replace(r'\s+','',regex=True)
-            civil_workable_t[struc_id_field] = civil_workable_t[struc_id_field].str.upper()
-            civil_workable_t[struc_id_field] = civil_workable_t[struc_id_field].replace(r'[(]PNR[)]','',regex=True)
-            ids = civil_workable_t.index[civil_workable_t[struc_id_field].notna()]
-            struc_ids = civil_workable_t.loc[ids,struc_id_field].str.split(',').values.flatten()
-            x_struc_ids = np.concatenate(struc_ids)
-            ##### Remove any empty ones
-            id_drop = np.where(x_struc_ids == '')
-            x_struc_ids = np.delete(x_struc_ids, id_drop)
-            x_struc_ids = np.unique(x_struc_ids)
+                ### 2. Structure and ISF
+                ids = civil_workable_t.index[civil_workable_t['structure'] == 1]
+                # struc_obs = civil_workable_t.loc[ids,struc_id_field]
+                civil_workable_t[struc_id_field] = civil_workable_t[struc_id_field].str.replace('\n',',')
+                civil_workable_t[struc_id_field] = civil_workable_t[struc_id_field].replace(r'\s+','',regex=True)
+                civil_workable_t[struc_id_field] = civil_workable_t[struc_id_field].str.upper()
+                civil_workable_t[struc_id_field] = civil_workable_t[struc_id_field].replace(r'[(]PNR[)]','',regex=True)
+                ids = civil_workable_t.index[civil_workable_t[struc_id_field].notna()]
+                struc_ids = civil_workable_t.loc[ids,struc_id_field].str.split(',').values.flatten()
+                x_struc_ids = np.concatenate(struc_ids)
+                
+                ##### Remove any empty ones
+                id_drop = np.where(x_struc_ids == '')
+                x_struc_ids = np.delete(x_struc_ids, id_drop)
+                x_struc_ids = np.unique(x_struc_ids)
 
-            ### Add these obstructing StrucIDs to GIS Structure master list
-            gis_struc_t[obstruc_field] = 'No'
-            ids = gis_struc_t.index[gis_struc_t[struc_id_field].isin(x_struc_ids)]
-            y_struc_ids = gis_struc_t.loc[ids,struc_id_field].values
-            gis_struc_t.loc[ids, obstruc_field] = 'Yes'
+                ### Add these obstructing StrucIDs to GIS Structure master list
+                gis_struc_t[obstruc_field] = np.nan
+                idcp = gis_struc_t.index[gis_struc_t[cp_field] == cp]
+                gis_struc_t.loc[idcp, obstruc_field] = 'No'
 
-            #### Extract obstructing StrucIDs from the GIS Attribute table (GIS_portal)
-            ids_portal = gis_struc_portal_t.index[gis_struc_portal_t[struc_id_field].isin(x_struc_ids)]
-            y_struc_portal_ids = gis_struc_portal_t.loc[ids_portal,struc_id_field].values
+                ids = gis_struc_t.loc[idcp, ].index[gis_struc_t.loc[idcp, struc_id_field].isin(x_struc_ids)]
+                y_struc_ids = gis_struc_t.loc[ids,struc_id_field].values
+                gis_struc_t.loc[ids, obstruc_field] = 'Yes'
 
-            ### Add these obstructing StrucIDs to GIS ISF master list
-            #### Note that regardless of NLO' status, all the NLOs falling under obstructing structures must be visualized.
-            ids = gis_nlo_t.index[gis_nlo_t[struc_id_field].isin(x_struc_ids)]
-            gis_nlo_t.loc[ids, obstruc_field] = 'Yes'
+                #### Extract obstructing StrucIDs from the GIS Attribute table (GIS_portal)
+                ids_portal = gis_struc_portal_t.index[gis_struc_portal_t[struc_id_field].isin(x_struc_ids)]
+                y_struc_portal_ids = gis_struc_portal_t.loc[ids_portal,struc_id_field].values
 
-            ### Overwrite existing GIS_Lot_ML and GIS_Structure_ML with the updated tables
-            gis_struc_t.to_excel(os.path.join(gis_rap_dir, 'SC_Structure_Status.xlsx'), index=False) ## gis_struc
-            gis_nlo_t.to_excel(os.path.join(gis_rap_dir, 'SC_ISF_Relocation_Status.xlsx'), index=False) ## gis_isf
+                ### Add these obstructing StrucIDs to GIS ISF master list
+                #### Note that regardless of NLO' status, all the NLOs falling under obstructing structures must be visualized.
+                ids = gis_nlo_t.index[gis_nlo_t[struc_id_field].isin(x_struc_ids)]
+                gis_nlo_t.loc[ids, obstruc_field] = 'Yes'
+
+                ### Overwrite existing GIS_Lot_ML and GIS_Structure_ML with the updated tables
+                gis_struc_t.to_excel(os.path.join(gis_rap_dir, 'SC_Structure_Status.xlsx'), index=False) ## gis_struc
+                gis_nlo_t.to_excel(os.path.join(gis_rap_dir, 'SC_ISF_Relocation_Status.xlsx'), index=False) ## gis_isf
 
             ## 01: Summary statistics to check the number of obstructing lots and structures
             ## among Civil table, GIS Excel ML, and GIS Portal table.

@@ -663,14 +663,22 @@ class UpdateISF(object):
                 rap_table[field] = rap_table[field].astype(str)
                 rap_table_stats[field] = rap_table_stats[field].astype(str)
 
-            # Reformat CP
+            # Re-format CP
+            rap_table[cp_field] = rap_table[cp_field].replace(r'03A|3A|3a', '03a',regex=True)
+            rap_table[cp_field] = rap_table[cp_field].replace(r'03B|3B|3b', '03b',regex=True)
+            rap_table[cp_field] = rap_table[cp_field].replace(r'03C|3C|3c', '03c',regex=True)
+
+            rap_table_stats[cp_field] = rap_table_stats[cp_field].replace(r'03A|3A|3a', '03a',regex=True)
+            rap_table_stats[cp_field] = rap_table_stats[cp_field].replace(r'03B|3B|3b', '03b',regex=True)
+            rap_table_stats[cp_field] = rap_table_stats[cp_field].replace(r'03C|3C|3c', '03c',regex=True)
+
+            ## If Projec is N2
             if proj == 'N2':
-                rap_table[cp_field] = rap_table[cp_field].str[-2:]       
-                rap_table[cp_field] = cp_suffix + rap_table[cp_field]
-                
-                # For summary stats
-                rap_table_stats[cp_field] = rap_table_stats[cp_field].str[-2:]       
-                rap_table_stats[cp_field] = cp_suffix + rap_table_stats[cp_field]
+                rap_table[cp_field] = rap_table[cp_field].replace(r'N', 'N-',regex=True)
+                rap_table_stats[cp_field] = rap_table_stats[cp_field].replace(r'N', 'N-',regex=True)
+
+            # Conver join field (StrucID) to upper case
+            rap_table[structure_id_field] = rap_table[structure_id_field].str.upper()
 
             # Convert to numeric
             to_numeric_fields = [nlo_status_field, "TypeRC", "HandOver"]
@@ -950,6 +958,7 @@ class UpdateStructure(object):
                         arcpy.AddMessage('Did you select {0} master list for updating contractors submission status.'.format('SC1_Structure_Status '))
                         arcpy.AddMessage('Or some geoprocessing process failed. Please check again.')
 
+
                 # Rename column names
                 colname_change = rap_table.columns[rap_table.columns.str.contains('|'.join(search_names_city))]
                 rap_table = rap_table.rename(columns={str(colname_change[0]): municipality_field})
@@ -976,25 +985,21 @@ class UpdateStructure(object):
                     to_string_fields = common_fields + [structure_use_field]
                 else:
                     to_string_fields = common_fields
-                rap_table = toString(rap_table, to_string_fields)
-                rap_table_stats = toString(rap_table_stats, to_string_fields)
+                for field in to_string_fields:
+                    rap_table[field] = rap_table[field].astype(str)
+                    rap_table_stats[field] = rap_table_stats[field].astype(str)
                 
-                # Reformat CP
-                rap_table[cp_field] = rap_table[cp_field].str[-2:]    
-                rap_table[cp_field] = cp_suffix + rap_table[cp_field]
+                # If Project is SC
+                rap_table[cp_field] = rap_table[cp_field].replace(r'03A|3A|3a', '03a',regex=True)
+                rap_table[cp_field] = rap_table[cp_field].replace(r'03B|3B|3b', '03b',regex=True)
+                rap_table[cp_field] = rap_table[cp_field].replace(r'03C|3C|3c', '03c',regex=True)
 
-                rap_table_stats[cp_field] = rap_table_stats[cp_field].str[-2:]       
-                rap_table_stats[cp_field] = cp_suffix + rap_table_stats[cp_field] 
-            
-                ## Convert to uppercase letters for StructureUse and StrucID
-                try:
-                    match_col = match_elements(cols, structure_use_field)
-                    if len(match_col) > 0:
-                        rap_table[structure_use_field] = rap_table[structure_use_field].apply(lambda x: x.upper())
-                except:
-                    pass
-                
-                rap_table[joinField] = rap_table[joinField].apply(lambda x: x.upper())
+                if proj == 'N2':
+                    rap_table[cp_field] = rap_table[cp_field].replace(r'N', 'N-',regex=True)
+                    rap_table_stats[cp_field] = rap_table_stats[cp_field].replace(r'N', 'N-',regex=True)
+
+                # Conver join field (StrucID) to upper case
+                rap_table[joinField] = rap_table[joinField].str.upper()
 
                 # Check and Fix StatusStruc, 
                 ## 1. StatusStruc =0 -> StatusStruc = empty
@@ -1527,6 +1532,7 @@ class UpdateWorkablePierLandTable(object):
 
                 ### 1. Land
                 ids = civil_workable_t.index[civil_workable_t['land'] == 1]
+                civil_workable_t[lot_id_field] = civil_workable_t[lot_id_field].astype(str)
                 lot_obs = civil_workable_t.loc[ids,lot_id_field]
                 civil_workable_t[lot_id_field] = civil_workable_t[lot_id_field].str.replace('\n',',')
                 civil_workable_t[lot_id_field] = civil_workable_t[lot_id_field].replace(r'\s+','',regex=True)
@@ -1726,6 +1732,7 @@ class UpdateWorkablePierStructureTable(object):
 
                 ### 2. Structure and ISF
                 ids = civil_workable_t.index[civil_workable_t['structure'] == 1]
+                civil_workable_t[struc_id_field] = civil_workable_t[struc_id_field].astype(str)
                 # struc_obs = civil_workable_t.loc[ids,struc_id_field]
                 civil_workable_t[struc_id_field] = civil_workable_t[struc_id_field].str.replace('\n',',')
                 civil_workable_t[struc_id_field] = civil_workable_t[struc_id_field].replace(r'\s+','',regex=True)
@@ -1755,7 +1762,11 @@ class UpdateWorkablePierStructureTable(object):
 
                 ### Add these obstructing StrucIDs to GIS ISF master list
                 #### Note that regardless of NLO' status, all the NLOs falling under obstructing structures must be visualized.
-                ids = gis_nlo_t.index[gis_nlo_t[struc_id_field].isin(x_struc_ids)]
+                gis_nlo_t[obstruc_field] = np.nan
+                idcp = gis_nlo_t.index[gis_nlo_t[cp_field] == cp]
+                gis_nlo_t.loc[idcp, obstruc_field] = 'No'
+
+                ids = gis_nlo_t.loc[idcp, ].index[gis_nlo_t.loc[idcp, struc_id_field].isin(x_struc_ids)]
                 gis_nlo_t.loc[ids, obstruc_field] = 'Yes'
 
                 ### Overwrite existing GIS_Lot_ML and GIS_Structure_ML with the updated tables

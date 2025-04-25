@@ -1500,8 +1500,11 @@ class UpdateWorkablePierLandTable(object):
             # cps = ['S-01','S-02','S-03a','S-03b','S-03c','S-04','S-05','S-06','S-07']
             cps = ['S-01']
             for i, cp in enumerate(cps):
-                civil_workable_t = pd.read_excel(civil_workable_ms,sheet_name='(S01)',skiprows=3)
-                civil_workable_t = civil_workable_t.iloc[:,[14,19,22,23,24,25,26,27,28,30,32,34,35,47,50]]
+                cp_civil_name = "(" + cp.replace('-','') + ")"
+                civil_workable_t = pd.read_excel(civil_workable_ms,sheet_name=cp_civil_name)
+                civil_workable_t = civil_workable_t.iloc[:,[14,19,22,23,24,25,26,27,28,30,32,34,35,48,51]]
+                ids = civil_workable_t.index[civil_workable_t.iloc[:, 0].str.contains(r'^P-',regex=True,na=False)]
+                civil_workable_t = civil_workable_t.loc[ids[0]:, ]
                 col_names = [pier_number_field,'via_construct_status','workability',
                             'util1','util2','util3','util4','util5','ISF_pnr','land','structure','pnr_station','others',
                             lot_id_field, struc_id_field] # 'lot_id','struc_id'
@@ -1520,7 +1523,8 @@ class UpdateWorkablePierLandTable(object):
                 civil_workable_t[col_names[0]] = civil_workable_t[col_names[0]].replace(r'\s+','',regex=True)
 
                 # Remove empty space
-                ids = civil_workable_t.index[civil_workable_t[col_names[0]].isna()]
+                ids = civil_workable_t.index[(civil_workable_t[col_names[0]].isna()) | (civil_workable_t[col_names[0]].isnull()) | (civil_workable_t[col_names[0]] == '')]
+                # ids = civil_workable_t.index[civil_workable_t[col_names[0]].isna()]
                 civil_workable_t = civil_workable_t.drop(ids).reset_index(drop=True)
 
                 civil_workable_t[cp_field] = cp
@@ -1533,12 +1537,12 @@ class UpdateWorkablePierLandTable(object):
                 ### 1. Land
                 ids = civil_workable_t.index[civil_workable_t['land'] == 1]
                 civil_workable_t[lot_id_field] = civil_workable_t[lot_id_field].astype(str)
-                lot_obs = civil_workable_t.loc[ids,lot_id_field]
+                
                 civil_workable_t[lot_id_field] = civil_workable_t[lot_id_field].str.replace('\n',',')
                 civil_workable_t[lot_id_field] = civil_workable_t[lot_id_field].replace(r'\s+','',regex=True)
                 civil_workable_t[lot_id_field] = civil_workable_t[lot_id_field].str.upper()
-                ids = civil_workable_t.index[civil_workable_t[lot_id_field].notna()]
-                lot_ids = civil_workable_t.loc[ids,lot_id_field].str.split(',').values.flatten()
+                # ids = civil_workable_t.index[civil_workable_t[lot_id_field].notna()]
+                lot_ids = civil_workable_t.loc[ids, lot_id_field].str.split(',').values.flatten()
                 x_lot_ids = np.concatenate(lot_ids)
 
                 ##### Remove any empty ones and duplicated LotIDs
@@ -1557,6 +1561,7 @@ class UpdateWorkablePierLandTable(object):
                 gis_lot_t.loc[ids, obstruc_field] = 'Yes'
 
                 # #### Extract obstructing LotIDs from the GIS Attribute table (GIS_portal)
+                idcp = gis_lot_portal_t.index[gis_lot_portal_t[cp_field] == cp]
                 ids_portal = gis_lot_portal_t.loc[idcp, ].index[gis_lot_portal_t.loc[idcp, lot_id_field].isin(x_lot_ids)]
                 y_lot_portal_ids = gis_lot_portal_t.loc[ids_portal, lot_id_field].values
 
@@ -1699,8 +1704,12 @@ class UpdateWorkablePierStructureTable(object):
             ## cps = ['S-01','S-02','S-03a','S-03b','S-03c','S-04','S-05','S-06','S-07']
             cps = ['S-01']
             for i, cp in enumerate(cps):
-                civil_workable_t = pd.read_excel(civil_workable_ms,sheet_name='(S01)',skiprows=3)
-                civil_workable_t = civil_workable_t.iloc[:,[14,19,22,23,24,25,26,27,28,30,32,34,35,47,50]]
+                cp_civil_name = "(" + cp.replace('-','') + ")"
+                civil_workable_t = pd.read_excel(civil_workable_ms,sheet_name=cp_civil_name)
+                civil_workable_t = civil_workable_t.iloc[:,[14,19,22,23,24,25,26,27,28,30,32,34,35,48,51]]
+                ids = civil_workable_t.index[civil_workable_t.iloc[:, 0].str.contains(r'^P-',regex=True,na=False)]
+                civil_workable_t = civil_workable_t.loc[ids[0]:, ]
+
                 col_names = [pier_number_field,'via_construct_status','workability',
                             'util1','util2','util3','util4','util5','ISF_pnr','land','structure','pnr_station','others',
                             lot_id_field, struc_id_field] # 'lot_id','struc_id'
@@ -1719,7 +1728,7 @@ class UpdateWorkablePierStructureTable(object):
                 civil_workable_t[col_names[0]] = civil_workable_t[col_names[0]].replace(r'\s+','',regex=True)
 
                 # Remove empty space
-                ids = civil_workable_t.index[civil_workable_t[col_names[0]].isna()]
+                ids = civil_workable_t.index[(civil_workable_t[col_names[0]].isna()) | (civil_workable_t[col_names[0]].isnull()) | (civil_workable_t[col_names[0]] == '')]
                 civil_workable_t = civil_workable_t.drop(ids).reset_index(drop=True)
 
                 civil_workable_t[cp_field] = cp
@@ -1732,14 +1741,15 @@ class UpdateWorkablePierStructureTable(object):
 
                 ### 2. Structure and ISF
                 ids = civil_workable_t.index[civil_workable_t['structure'] == 1]
+
                 civil_workable_t[struc_id_field] = civil_workable_t[struc_id_field].astype(str)
                 # struc_obs = civil_workable_t.loc[ids,struc_id_field]
                 civil_workable_t[struc_id_field] = civil_workable_t[struc_id_field].str.replace('\n',',')
                 civil_workable_t[struc_id_field] = civil_workable_t[struc_id_field].replace(r'\s+','',regex=True)
                 civil_workable_t[struc_id_field] = civil_workable_t[struc_id_field].str.upper()
                 civil_workable_t[struc_id_field] = civil_workable_t[struc_id_field].replace(r'[(]PNR[)]','',regex=True)
-                ids = civil_workable_t.index[civil_workable_t[struc_id_field].notna()]
-                struc_ids = civil_workable_t.loc[ids,struc_id_field].str.split(',').values.flatten()
+                # ids = civil_workable_t.index[civil_workable_t[struc_id_field].notna()]
+                struc_ids = civil_workable_t.loc[ids, struc_id_field].str.split(',').values.flatten()
                 x_struc_ids = np.concatenate(struc_ids)
                 
                 ##### Remove any empty ones

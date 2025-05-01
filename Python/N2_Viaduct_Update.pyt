@@ -11,7 +11,7 @@ class Toolbox(object):
     def __init__(self):
         self.label = "UpdateN2Viaduct"
         self.alias = "UpdateN2Viaduct"
-        self.tools = [CreateWorkablePierLayer, UpdateWorkablePierLayer, CheckPierNumbers]
+        self.tools = [CreateWorkablePierLayer, UpdatePierWorkableTrackerML, UpdateWorkablePierLayer, CheckPierNumbers]
 
 class CreateWorkablePierLayer(object):
     def __init__(self):
@@ -36,7 +36,15 @@ class CreateWorkablePierLayer(object):
             direction = "Input"
         )
 
-        params = [workable_pier_layer, via_layer]
+        pier_number_layer = arcpy.Parameter(
+            displayName = "GIS Pier Number Layer (Point)",
+            name = "GIS Pier Number Layer (Point)",
+            datatype = "GPFeatureLayer",
+            parameterType = "Optional",
+            direction = "Input"
+        )
+
+        params = [workable_pier_layer, via_layer,pier_number_layer]
         return params
 
     def updateMessages(self, params):
@@ -45,6 +53,7 @@ class CreateWorkablePierLayer(object):
     def execute(self, params, messages):
         workable_pier_layer = params[0].valueAsText
         via_layer = params[1].valueAsText
+        pier_pt_layer = params[2].valueAsText
 
         arcpy.env.overwriteOutput = True
         status_field = 'Status'
@@ -94,13 +103,232 @@ class CreateWorkablePierLayer(object):
         # Append the new one to the old one
         arcpy.management.Append(new_layer, workable_pier_layer, schema_type = 'NO_TEST')
 
+        ## Delete field
+        # arcpy.management.DeleteField(new_layer, ['CP','PierNumber','uniqueID','Status'], "KEEP_FIELDS")
+        
         # delete
         deleteTempLayers = [new_layer, temp_layer]
         arcpy.Delete_management(deleteTempLayers)
+        
+        ########################################
+        ##### Update N2 Pier Point Layer #######
+        ########################################
+        try:
+            temp_layer = 'temp_layer'
+            arcpy.management.MakeFeatureLayer(via_layer, temp_layer, '"Type" = 2')
+        
+            # 'multipatch footprint'
+            ## new_cols and 'Type' (sting) = 'Pile Cap'
+            new_layer = 'N2_Pier_Point'
+            arcpy.ddd.MultiPatchFootprint(temp_layer, new_layer)
+
+            ## Feature to Point
+            new_point_layer = 'N2_new_Pier_Point'
+            arcpy.management.FeatureToPoint(new_layer, new_point_layer)
+
+            ## Truncate original point layer
+            arcpy.management.TruncateTable(pier_pt_layer)
+
+            ## Append a new point layer to the original
+            arcpy.management.Append(new_point_layer, pier_pt_layer, schema_type = 'NO_TEST')
+
+            # delete
+            deleteTempLayers = [new_layer, new_point_layer, temp_layer]
+            arcpy.Delete_management(deleteTempLayers)
+
+        except:
+            pass
+
+class UpdatePierWorkableTrackerML(object):
+    def __init__(self):
+        self.label = "2. Update Pier Workable Tracker ML (Excel)"
+        self.description = "Update Pier Workable Tracker ML (Excel)"
+
+    def getParameterInfo(self):
+        pier_workablet_dir = arcpy.Parameter(
+            displayName = "N2 GIS Pier Tracker Masterlist Storage Directory",
+            name = "GIS Pier Tracker Masterlist Storage Directory",
+            datatype = "DEWorkspace",
+            parameterType = "Required",
+            direction = "Input"
+        )
+
+        civil_workable_ms = arcpy.Parameter(
+            displayName = "N2 Civil Workable Pier ML (Excel)",
+            name = "Civil Workable Pier ML (Excel)",
+            datatype = "DEFile",
+            parameterType = "Required",
+            direction = "Input"
+        )
+
+        pier_workable_tracker_ms = arcpy.Parameter(
+            displayName = "N2 Pier Workable Tracker ML (Excel)",
+            name = "Pier Workable Tracker ML (Excel)",
+            datatype = "DEFile",
+            parameterType = "Required",
+            direction = "Input"
+        )
+
+        rap_obstruction_ms = arcpy.Parameter(
+            displayName = "RAP Obstructing Lot and Structure ML (Excel)",
+            name = "RAP Obstructing Lot and Structure ML (Excel)",
+            datatype = "DEFile",
+            parameterType = "Optional",
+            direction = "Input"
+        )
+
+        params = [pier_workablet_dir, civil_workable_ms, pier_workable_tracker_ms, rap_obstruction_ms]
+        return params
+
+    def updateMessages(self, params):
+        return
+
+    def execute(self, params, messages):
+        pier_workablet_dir = params[0].valueAsText
+        civil_table = params[1].valueAsText
+        pier_tracker_table = params[2].valueAsText
+        rap_obst_table = params[3].valueAsText
+
+        def Workable_Pier_Tracker_Update():
+            def unique(lists):
+                collect = []
+                unique_list = pd.Series(lists).drop_duplicates().tolist()
+                for x in unique_list:
+                    collect.append(x)
+                return(collect)
+            
+            def non_match_elements(list_a, list_b):
+                non_match = []
+                for i in list_a:
+                    if i not in list_b:
+                        non_match.append(i)
+                return non_match
+            
+            # Define field names
+            cp_field = 'CP'
+            type_field = 'Type'
+            status_field = 'Status'
+            pier_num_field = 'PierNumber'
+            unique_id_field = 'uniqueID'
+            workability_field = 'Workability'
+            land_field = 'Land'
+            land1_field = 'Land.1'
+            struc_field = 'Structure'
+            struc1_field = 'Structure.1'
+            others_field = 'Others'
+            pier_num_field_c = 'Pier No. (P)'
+            util_obstruc_field = 'Utility'
+
+            #**************************************************************************************************#
+            #*********************  Update Pier Workable Tracker ML using Civil Team's ML *********************#
+            #**************************************************************************************************#
+            # Update N2 Pier Workability Tracker
+            new_cols = ['PierNumber', 'CP', 'util1', 'util2', 'Others', 'Workability']
+            civil_t = pd.read_excel(os.path.join(pier_workablet_dir, civil_table), skiprows=2)
+            ids = civil_t.columns[civil_t.columns.str.contains(r'^Pier No.*|Contract P.*|^Name of Utilities|^Others|^Pile Cap Workable.*',regex=True,na=False)]
+            civil_t = civil_t.loc[:, ids]
+            for i, col in enumerate(ids):
+                civil_t = civil_t.rename(columns={col: new_cols[i]})
+                
+            ## change CP notation
+            civil_t[new_cols[1]] = civil_t[new_cols[1]].replace(r'CPN','N-',regex=True)
+
+            ## Compile utility
+            civil_t[util_obstruc_field] = np.nan
+            ids = civil_t.index[(civil_t[new_cols[2]].notna()) | (civil_t[new_cols[3]].notna())]
+            civil_t.loc[ids, util_obstruc_field] = 1
+            civil_t = civil_t.drop([new_cols[2],new_cols[3]], axis=1)
+
+            ## Change labels for Workability (No = Non-workable, Yes = Workable)
+            ids = civil_t.index[civil_t[new_cols[5]] == 'Yes']
+            civil_t.loc[ids, new_cols[5]] = 'Workable'
+            ids = civil_t.index[civil_t[new_cols[5]] == 'No']
+            civil_t.loc[ids, new_cols[5]] = 'Non-workable'
+            ids = civil_t.index[civil_t[new_cols[5]] == 'Partial']
+            civil_t.loc[ids, new_cols[5]] = 'Non-workable'
+
+            # tracker fields ordered
+            tracker_fields_ordered = [pier_num_field,
+                                    type_field,
+                                    unique_id_field,
+                                    status_field,
+                                    cp_field,
+                                    workability_field,
+                                    util_obstruc_field,
+                                    land_field,
+                                    struc_field,
+                                    others_field,
+                                    land1_field,
+                                    struc1_field]
+
+            cps = ['N-01', 'N-02', 'N-03']
+            comp_table = pd.DataFrame()
+            for cp in cps:
+                print('Contract Package: ', cp)
+                ## Merge civil pier workability ML to GIS N2 Pier Workability Tracker
+                gis_tracker = pd.read_excel(os.path.join(pier_workablet_dir, pier_tracker_table), skiprows = 1, sheet_name = cp)
+                gis_tracker = gis_tracker.loc[:, [pier_num_field,
+                                                type_field,
+                                                unique_id_field,
+                                                status_field,
+                                                # cp_field,
+                                                land_field,
+                                                struc_field,
+                                                land1_field,
+                                                struc1_field]]
+                gis_tracker = gis_tracker.rename(columns={gis_tracker.columns[0]: pier_num_field}) 
+                
+                # filter civil ML using pier numbers (not CP)
+                gis_piers = gis_tracker[pier_num_field].values
+                civil_piers = civil_t[pier_num_field].values
+                match_piers = [e for e in civil_piers if e in gis_piers]
+
+                c_t = civil_t.query(f"{pier_num_field} in {match_piers}").reset_index(drop=True)
+                c_t_piers = c_t[pier_num_field].values
+
+                # Identify pile caps with missing 'Workability' information
+                ids = c_t.index[c_t['Workability'].isnull()]
+                miss_info_piers = c_t.loc[ids, pier_num_field].values
+                if (len(ids) > 0):
+                    print(f"The following piers have no information on Workability: {miss_info_piers}")
+
+                # Finally, merge
+                new_tracker = pd.merge(left=gis_tracker, right=c_t, how='left', on=pier_num_field)
+                new_tracker = new_tracker.loc[:, tracker_fields_ordered]
+                # print(new_tracker.dtypes)
+
+                # Summary statistics between Civil ML and GIS pier workability tracker ML
+                ## 'Workable' 
+                xw = pd.DataFrame()
+                xw.loc[0, cp_field] = cp
+
+                xw.loc[0, 'Workable_civil'] = len(c_t.index[c_t['Workability'] == 'Workable'])
+                xw.loc[0, 'Workable_new'] = len(new_tracker.index[new_tracker['Workability'] == 'Workable'])
+                xw.loc[0, 'Difference'] = xw.loc[0, 'Workable_civil'] - xw.loc[0, 'Workable_new']
+
+                if (xw.loc[0, 'Difference'] > 0):
+                    print(xw)
+                                        
+                # Compile for CPs
+                comp_table = pd.concat([comp_table, new_tracker], ignore_index=False)
+
+            # Export as a new tracker
+            to_excel_file0 = os.path.join(pier_workablet_dir, "UPDATED_" + os.path.basename(pier_tracker_table))
+            with pd.ExcelWriter(to_excel_file0) as writer:
+                comp_table.query(f"{cp_field} == 'N-01'").reset_index(drop=True).to_excel(writer, sheet_name='N-01', index=False)
+                comp_table.query(f"{cp_field} == 'N-02'").reset_index(drop=True).to_excel(writer, sheet_name='N-02', index=False)
+                comp_table.query(f"{cp_field} == 'N-03'").reset_index(drop=True).to_excel(writer, sheet_name='N-03', index=False)
+
+            #**************************************************************************************************#
+            #*********************  Update Pier Workable Tracker ML using RAP Team's ML *********************#
+            #**************************************************************************************************#
+            ## Add obstructing Lot and structure IDs to pier workable tracker ML
+
+        Workable_Pier_Tracker_Update()
 
 class UpdateWorkablePierLayer(object):
     def __init__(self):
-        self.label = "2. Update Pier Workable Layer (Polygon)"
+        self.label = "3. Update Pier Workable Layer (Polygon)"
         self.description = "Update Pier Workable Layer (Polygon)"
 
     def getParameterInfo(self):

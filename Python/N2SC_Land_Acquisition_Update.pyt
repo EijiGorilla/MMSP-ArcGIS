@@ -13,7 +13,7 @@ class Toolbox(object):
         self.label = "UpdateLandAcquisition"
         self.alias = "UpdateLandAcquisition"
         self.tools = [RestoreScaleForLot, JustMessage1, UpdateLot, UpdateISF, UpdateStructure, UpdateBarangay, UpdatePier,
-                      JustMessage10, UpdateWorkablePierLandTable, UpdateWorkablePierStructureTable,
+                      JustMessage10, N2UpdateWorkablePierLandTable, N2UpdateWorkablePierStructureTable, SCUpdateWorkablePierLandTable, SCUpdateWorkablePierStructureTable,
                       JustMessage2, UpdateLotGIS, UpdateStructureGIS, UpdatePierGIS, UpdateBarangayGIS,
                       JustMessage3, CheckLotUpdatedStatusGIS, CheckStructureUpdatedStatusGIS, CheckIsfUpdatedStatusGIS,
                       JustMessage4, CheckMissingLotIDs, CheckMissingStructureIDs, CheckMissingIsfIDs
@@ -1405,13 +1405,333 @@ class UpdatePier(object):
 
 class JustMessage10(object):
     def __init__(self):
-        self.label = "1.6. ----- Update Land & Structure for Workable Pier -----"
+        self.label = "1.6.0 ----- Update Land & Structure for Workable Pier -----"
         self.description = "Update Excel Master List"
 
-class UpdateWorkablePierLandTable(object):
+class N2UpdateWorkablePierLandTable(object):
     def __init__(self):
-        self.label = "1.6. Add Obstruction to Excel Master List (Lot)"
-        self.description = "Add Obstruction to Excel Master List (Lot)"
+        self.label = "1.6.1 (N2) Add Obstruction to Excel Master List (Lot)"
+        self.description = "(N2) Add Obstruction to Excel Master List (Lot)"
+
+    def getParameterInfo(self):
+        gis_rap_dir = arcpy.Parameter(
+            displayName = "N2 GIS Masterlist Storage Directory for RAP",
+            name = "N2 GIS Masterlist Storage Directory for RAP",
+            datatype = "DEWorkspace",
+            parameterType = "Required",
+            direction = "Input"
+        )
+
+        gis_lot_ms = arcpy.Parameter(
+            displayName = "N2 GIS Land Status ML (Excel)",
+            name = "N2 GIS Land Status ML (Excel))",
+            datatype = "DEFile",
+            parameterType = "Required",
+            direction = "Input"
+        )
+
+        gis_lot_portal = arcpy.Parameter(
+            displayName = "N2 GIS Land Portal ML (Excel)",
+            name = "N2 GIS Land Portal ML (Excel)",
+            datatype = "DEFile",
+            parameterType = "Required",
+            direction = "Input"
+        )
+
+        gis_via_dir = arcpy.Parameter(
+            displayName = "N2 GIS Masterlist Storage Directory for Viaduct",
+            name = "N2 GIS Masterlist Storage Directory for Viaduct",
+            datatype = "DEWorkspace",
+            parameterType = "Required",
+            direction = "Input"
+        )
+
+        pier_workable_tracker = arcpy.Parameter(
+            displayName = "N2 Pier Workable Tracker (Excel)",
+            name = "N2 Pier Workability Tracker (Excel))",
+            datatype = "DEFile",
+            parameterType = "Required",
+            direction = "Input"
+        )
+
+        params = [gis_rap_dir, gis_lot_ms, gis_lot_portal, gis_via_dir, pier_workable_tracker]
+        return params
+
+    def updateMessages(self, params):
+        return
+
+    def execute(self, params, messages):
+        gis_rap_dir = params[0].valueAsText
+        gis_lot_ms = params[1].valueAsText
+        gis_lot_portal = params[2].valueAsText
+        gis_via_dir = params[3].valueAsText
+        pier_workable_tracker = params[4].valueAsText
+
+        arcpy.env.overwriteOutput = True
+        #arcpy.env.addOutputsToMap = True
+
+        def Obstruction_Land_ML_Update():           
+            def non_match_elements(list_a, list_b):
+                non_match = []
+                for i in list_a:
+                    if i not in list_b:
+                        non_match.append(i)
+                return non_match
+            
+            # Define field names
+            cp_field = 'CP'
+            land1_field = 'Land.1'
+            obstruc_field = 'Obstruction'
+            lot_id_field = 'LotID'
+
+            # Read as xlsx
+            gis_lot_t = pd.read_excel(gis_lot_ms)
+            gis_lot_portal_t = pd.read_excel(gis_lot_portal)
+            pier_wtracker_t = pd.read_excel(pier_workable_tracker)
+
+            # 1. Clean fields
+            # cps = ['N-01','N-02','N-03']
+            cps = ['N-01']
+            for i, cp in enumerate(cps):
+                pier_wtracker_t = pd.read_excel(pier_workable_tracker, sheet_name=cp)
+
+                ################################################################
+                ## B. Identify Obstruction (Yes' or 'No') to GIS master list ###
+                ################################################################
+                #### Note that Civil table may have duplicated LotIDs or Structure IDs, as some pile caps
+                #### are obstructed by the same lots or structures.
+
+                ### 1. Land
+                ids = pier_wtracker_t.index[pier_wtracker_t[land1_field].notna()]
+                # lot_ids = pier_wtracker_t.loc[ids, land1_field].str.split(',').values.flatten()
+                lot_ids = pier_wtracker_t.loc[ids, land1_field].str.split("\n").values
+                x_lot_ids = np.concatenate(lot_ids)
+
+                ##### Remove any empty ones and duplicated LotIDs
+                id_drop = np.where(x_lot_ids == '')
+                x_lot_ids = np.delete(x_lot_ids, id_drop)
+                x_lot_ids = np.unique(x_lot_ids)
+
+                arcpy.AddMessage(x_lot_ids)
+
+                ### Add these obstructing LotIDs to GIS Structure master list
+                #### First, reset 'obstruction' field
+                gis_lot_t[obstruc_field] = np.nan
+                idcp = gis_lot_t.index[gis_lot_t[cp_field] == cp]
+                gis_lot_t.loc[idcp, obstruc_field] = 'No'
+
+                ids = gis_lot_t.loc[idcp, ].index[gis_lot_t.loc[idcp, lot_id_field].isin(x_lot_ids)]
+                y_lot_ids = gis_lot_t.loc[ids, lot_id_field].values
+                gis_lot_t.loc[ids, obstruc_field] = 'Yes'
+
+                # #### Extract obstructing LotIDs from the GIS Attribute table (GIS_portal)
+                idcp = gis_lot_portal_t.index[gis_lot_portal_t[cp_field] == cp]
+                ids_portal = gis_lot_portal_t.loc[idcp, ].index[gis_lot_portal_t.loc[idcp, lot_id_field].isin(x_lot_ids)]
+                y_lot_portal_ids = gis_lot_portal_t.loc[ids_portal, lot_id_field].values
+
+                ### Overwrite existing GIS_Lot_ML and GIS_Structure_ML with the updated tables
+                gis_lot_t.to_excel(os.path.join(gis_rap_dir, 'N2_Land_Status.xlsx'), index=False)
+
+            ########### End of Updating Obstruction for Land  ####################################
+
+            ## 01: Summary statistics to check the number of obstructing lots and structures
+            ## among Civil table, GIS Excel ML, and GIS Portal table.
+            #### Land
+            sum_lot_compile = pd.DataFrame()
+
+            # When looping through CPs, use for i, xx enumerate().
+            # Count the number of obstructing LotIDs among civil table, GIS excel ML, and GIS Portal
+            for i, cp in enumerate(cps):
+                sum_lot = pd.DataFrame()
+                sum_cols = ['CP',
+                            'Civil',
+                            'GIS_ML',
+                            'GIS_Portal',
+                            'Diff_Civil_GISML',
+                            'Diff_Civil_GISPortal',
+                            'Miss_IDs_Civil_GISML',
+                            'Miss_IDs_Civil_GISPortal']
+                sum_lot.loc[0,sum_cols[0]] = cp
+                sum_lot.loc[0,sum_cols[1]] = len(x_lot_ids)
+                sum_lot.loc[0,sum_cols[2]] = len(y_lot_ids)
+                sum_lot.loc[0,sum_cols[3]] = len(y_lot_portal_ids)
+                sum_lot.loc[0,sum_cols[4]] = sum_lot.loc[0,sum_cols[1]] - sum_lot.loc[0,sum_cols[2]]
+                sum_lot.loc[0,sum_cols[5]] = sum_lot.loc[0,sum_cols[1]] - sum_lot.loc[0,sum_cols[3]]
+
+                # Identify unmatched obstructing LotIDs in reference to the civil table
+                sum_lot.loc[0,sum_cols[6]] = ",".join(non_match_elements(x_lot_ids,y_lot_ids))
+                sum_lot.loc[0,sum_cols[7]] = ",".join(non_match_elements(x_lot_ids,y_lot_portal_ids))
+                sum_lot_compile = pd.concat([sum_lot_compile, sum_lot], ignore_index=False)
+
+            ## Compile in one excel sheet
+            sum_lot_compile.to_excel(os.path.join(gis_via_dir, 'N2_Pier_Workable_Obstruction_Land_summaryStats.xlsx'), sheet_name='Land', index=False)
+
+        Obstruction_Land_ML_Update()
+
+class N2UpdateWorkablePierStructureTable(object):
+    def __init__(self):
+        self.label = "1.6.1 (N2) Add Obstruction to Excel Master List (Structure)"
+        self.description = "(N2) Add Obstruction to Excel Master List (Structure)"
+
+    def getParameterInfo(self):
+        gis_rap_dir = arcpy.Parameter(
+            displayName = "N2 GIS Masterlist Storage Directory for RAP",
+            name = "N2 GIS Masterlist Storage Directory for RAP",
+            datatype = "DEWorkspace",
+            parameterType = "Required",
+            direction = "Input"
+        )
+
+        gis_struc_ms = arcpy.Parameter(
+            displayName = "N2 GIS Structure Status ML (Excel)",
+            name = "N2 GIS Structure Status ML (Excel))",
+            datatype = "DEFile",
+            parameterType = "Required",
+            direction = "Input"
+        )
+
+        gis_struc_portal = arcpy.Parameter(
+            displayName = "N2 GIS Structure Portal ML (Excel)",
+            name = "N2 GIS Structure Portal ML (Excel)",
+            datatype = "DEFile",
+            parameterType = "Required",
+            direction = "Input"
+        )
+
+        gis_via_dir = arcpy.Parameter(
+            displayName = "N2 GIS Masterlist Storage Directory for Viaduct",
+            name = "N2 GIS Masterlist Storage Directory for Viaduct",
+            datatype = "DEWorkspace",
+            parameterType = "Required",
+            direction = "Input"
+        )
+
+        pier_workable_tracker = arcpy.Parameter(
+            displayName = "N2 Pier Workability Tracker (Excel)",
+            name = "N2 Pier Workability Tracker (Excel))",
+            datatype = "DEFile",
+            parameterType = "Required",
+            direction = "Input"
+        )
+
+        params = [gis_rap_dir, gis_struc_ms, gis_struc_portal, gis_via_dir, pier_workable_tracker]
+        return params
+
+    def updateMessages(self, params):
+        return
+
+    def execute(self, params, messages):
+        gis_rap_dir = params[0].valueAsText
+        gis_struc_ms = params[1].valueAsText
+        gis_struc_portal = params[2].valueAsText
+        gis_via_dir = params[3].valueAsText
+        pier_workable_tracker = params[4].valueAsText
+
+        arcpy.env.overwriteOutput = True
+        #arcpy.env.addOutputsToMap = True
+
+        def Obstruction_Structure_ML_Update():           
+            def non_match_elements(list_a, list_b):
+                non_match = []
+                for i in list_a:
+                    if i not in list_b:
+                        non_match.append(i)
+                return non_match
+            
+            # Define field names
+            cp_field = 'CP'
+            struc1_field = 'Structure.1'
+            obstruc_field = 'Obstruction'
+            struc_id_field = 'StrucID'
+
+            # Read as xlsx
+            gis_struc_t = pd.read_excel(gis_struc_ms)
+            gis_struc_portal_t = pd.read_excel(gis_struc_portal)
+            pier_wtracker_t = pd.read_excel(pier_workable_tracker)
+
+            # 1. Clean fields
+            # cps = ['N-01','N-02','N-03']
+            cps = ['N-01']
+            for i, cp in enumerate(cps):
+                pier_wtracker_t = pd.read_excel(pier_workable_tracker, sheet_name=cp)
+
+                ################################################################
+                ## B. Identify Obstruction (Yes' or 'No') to GIS master list ###
+                ################################################################
+                #### Note that Civil table may have duplicated LotIDs or Structure IDs, as some pile caps
+                #### are obstructed by the same lots or structures.
+
+                ### 1. Structure
+                ids = pier_wtracker_t.index[pier_wtracker_t[struc1_field].notna()]
+                # lot_ids = pier_wtracker_t.loc[ids, struc1_field].str.split(',').values.flatten()
+                struc_ids = pier_wtracker_t.loc[ids, struc1_field].str.split("\n").values
+                x_struc_ids = np.concatenate(struc_ids)
+
+                ##### Remove any empty ones and duplicated LotIDs
+                id_drop = np.where(x_struc_ids == '')
+                x_struc_ids = np.delete(x_struc_ids, id_drop)
+                x_struc_ids = np.unique(x_struc_ids)
+
+                arcpy.AddMessage(x_struc_ids)
+
+                ### Add these obstructing LotIDs to GIS Structure master list
+                #### First, reset 'obstruction' field
+                gis_struc_t[obstruc_field] = np.nan
+                idcp = gis_struc_t.index[gis_struc_t[cp_field] == cp]
+                gis_struc_t.loc[idcp, obstruc_field] = 'No'
+
+                ids = gis_struc_t.loc[idcp, ].index[gis_struc_t.loc[idcp, struc_id_field].isin(x_struc_ids)]
+                y_struc_ids = gis_struc_t.loc[ids, struc_id_field].values
+                gis_struc_t.loc[ids, obstruc_field] = 'Yes'
+
+                # #### Extract obstructing LotIDs from the GIS Attribute table (GIS_portal)
+                idcp = gis_struc_portal_t.index[gis_struc_portal_t[cp_field] == cp]
+                ids_portal = gis_struc_portal_t.loc[idcp, ].index[gis_struc_portal_t.loc[idcp, struc_id_field].isin(x_struc_ids)]
+                y_struc_portal_ids = gis_struc_portal_t.loc[ids_portal, struc_id_field].values
+
+                ### Overwrite existing GIS_Lot_ML and GIS_Structure_ML with the updated tables
+                gis_struc_t.to_excel(os.path.join(gis_rap_dir, 'N2_Structure_Status.xlsx'), index=False)
+
+            ########### End of Updating Obstruction for Land  ####################################
+
+            ## 01: Summary statistics to check the number of obstructing lots and structures
+            ## among Civil table, GIS Excel ML, and GIS Portal table.
+            #### Land
+            sum_struc_compile = pd.DataFrame()
+
+            # When looping through CPs, use for i, xx enumerate().
+            # Count the number of obstructing LotIDs among civil table, GIS excel ML, and GIS Portal
+            for i, cp in enumerate(cps):
+                sum_struc = pd.DataFrame()
+                sum_cols = ['CP',
+                            'Civil',
+                            'GIS_ML',
+                            'GIS_Portal',
+                            'Diff_Civil_GISML',
+                            'Diff_Civil_GISPortal',
+                            'Miss_IDs_Civil_GISML',
+                            'Miss_IDs_Civil_GISPortal']
+                sum_struc.loc[0,sum_cols[0]] = cp
+                sum_struc.loc[0,sum_cols[1]] = len(x_struc_ids)
+                sum_struc.loc[0,sum_cols[2]] = len(y_struc_ids)
+                sum_struc.loc[0,sum_cols[3]] = len(y_struc_portal_ids)
+                sum_struc.loc[0,sum_cols[4]] = sum_struc.loc[0,sum_cols[1]] - sum_struc.loc[0,sum_cols[2]]
+                sum_struc.loc[0,sum_cols[5]] = sum_struc.loc[0,sum_cols[1]] - sum_struc.loc[0,sum_cols[3]]
+
+                # Identify unmatched obstructing LotIDs in reference to the civil table
+                sum_struc.loc[0,sum_cols[6]] = ",".join(non_match_elements(x_struc_ids, y_struc_ids))
+                sum_struc.loc[0,sum_cols[7]] = ",".join(non_match_elements(x_struc_ids, y_struc_portal_ids))
+                sum_struc_compile = pd.concat([sum_struc_compile, sum_struc], ignore_index=False)
+
+            ## Compile in one excel sheet
+            sum_struc_compile.to_excel(os.path.join(gis_via_dir, 'N2_Pier_Workable_Obstruction_Structure_summaryStats.xlsx'), sheet_name='Structure', index=False)
+
+        Obstruction_Structure_ML_Update()
+
+class SCUpdateWorkablePierLandTable(object):
+    def __init__(self):
+        self.label = "1.6.2 (SC) Add Obstruction to Excel Master List (Lot)"
+        self.description = "(SC) Add Obstruction to Excel Master List (Lot)"
 
     def getParameterInfo(self):
         gis_rap_dir = arcpy.Parameter(
@@ -1576,36 +1896,39 @@ class UpdateWorkablePierLandTable(object):
 
             # When looping through CPs, use for i, xx enumerate().
             # Count the number of obstructing LotIDs among civil table, GIS excel ML, and GIS Portal
-            sum_lot = pd.DataFrame()
-            sum_cols = ['CP',
-                        'Civil',
-                        'GIS_ML',
-                        'GIS_Portal',
-                        'Diff_Civil_GISML',
-                        'Diff_Civil_GISPortal',
-                        'Miss_IDs_Civil_GISML',
-                        'Miss_IDs_Civil_GISPortal']
-            sum_lot.loc[0,sum_cols[0]] = 'S-01'
-            sum_lot.loc[0,sum_cols[1]] = len(x_lot_ids)
-            sum_lot.loc[0,sum_cols[2]] = len(y_lot_ids)
-            sum_lot.loc[0,sum_cols[3]] = len(y_lot_portal_ids)
-            sum_lot.loc[0,sum_cols[4]] = sum_lot.loc[0,sum_cols[1]] - sum_lot.loc[0,sum_cols[2]]
-            sum_lot.loc[0,sum_cols[5]] = sum_lot.loc[0,sum_cols[1]] - sum_lot.loc[0,sum_cols[3]]
+            # cps = ['S-01','S-02','S-03a','S-03b','S-03c','S-04','S-05','S-06','S-07']
+            cps = ['S-01']
+            for i, cp in enumerate(cps):
+                sum_lot = pd.DataFrame()
+                sum_cols = ['CP',
+                            'Civil',
+                            'GIS_ML',
+                            'GIS_Portal',
+                            'Diff_Civil_GISML',
+                            'Diff_Civil_GISPortal',
+                            'Miss_IDs_Civil_GISML',
+                            'Miss_IDs_Civil_GISPortal']
+                sum_lot.loc[0,sum_cols[0]] = cp
+                sum_lot.loc[0,sum_cols[1]] = len(x_lot_ids)
+                sum_lot.loc[0,sum_cols[2]] = len(y_lot_ids)
+                sum_lot.loc[0,sum_cols[3]] = len(y_lot_portal_ids)
+                sum_lot.loc[0,sum_cols[4]] = sum_lot.loc[0,sum_cols[1]] - sum_lot.loc[0,sum_cols[2]]
+                sum_lot.loc[0,sum_cols[5]] = sum_lot.loc[0,sum_cols[1]] - sum_lot.loc[0,sum_cols[3]]
 
-            # Identify unmatched obstructing LotIDs in reference to the civil table
-            sum_lot.loc[0,sum_cols[6]] = ",".join(non_match_elements(x_lot_ids,y_lot_ids))
-            sum_lot.loc[0,sum_cols[7]] = ",".join(non_match_elements(x_lot_ids,y_lot_portal_ids))
-            sum_lot_compile = pd.concat([sum_lot_compile, sum_lot], ignore_index=False)
+                # Identify unmatched obstructing LotIDs in reference to the civil table
+                sum_lot.loc[0,sum_cols[6]] = ",".join(non_match_elements(x_lot_ids,y_lot_ids))
+                sum_lot.loc[0,sum_cols[7]] = ",".join(non_match_elements(x_lot_ids,y_lot_portal_ids))
+                sum_lot_compile = pd.concat([sum_lot_compile, sum_lot], ignore_index=False)
 
             ## Compile in one excel sheet
-            sum_lot_compile.to_excel(os.path.join(gis_via_dir, 'SC_Workable_Pier_obstructing_lot_summaryStats.xlsx'), sheet_name='Land', index=False)
+            sum_lot_compile.to_excel(os.path.join(gis_via_dir, 'SC_Pier_Workable_Obstruction_Land_summaryStats.xlsx'), sheet_name='Land', index=False)
 
         Obstruction_Land_ML_Update()
 
-class UpdateWorkablePierStructureTable(object):
+class SCUpdateWorkablePierStructureTable(object):
     def __init__(self):
-        self.label = "1.7. Add Obstruction to Excel Master List (Structure & NLO)"
-        self.description = "Add Obstruction to Excel Master List (Structure & NLO)"
+        self.label = "1.6.3 (SC) Add Obstruction to Excel Master List (Structure & NLO)"
+        self.description = "(SC) Add Obstruction to Excel Master List (Structure & NLO)"
 
     def getParameterInfo(self):
         gis_rap_dir = arcpy.Parameter(

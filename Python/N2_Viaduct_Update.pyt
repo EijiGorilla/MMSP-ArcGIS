@@ -173,7 +173,7 @@ class UpdatePierWorkableTrackerML(object):
             displayName = "RAP Obstructing Lot and Structure ML (Excel)",
             name = "RAP Obstructing Lot and Structure ML (Excel)",
             datatype = "DEFile",
-            parameterType = "Optional",
+            parameterType = "Required",
             direction = "Input"
         )
 
@@ -313,16 +313,49 @@ class UpdatePierWorkableTrackerML(object):
                 comp_table = pd.concat([comp_table, new_tracker], ignore_index=False)
 
             # Export as a new tracker
-            to_excel_file0 = os.path.join(pier_workablet_dir, "UPDATED_" + os.path.basename(pier_tracker_table))
-            with pd.ExcelWriter(to_excel_file0) as writer:
-                comp_table.query(f"{cp_field} == 'N-01'").reset_index(drop=True).to_excel(writer, sheet_name='N-01', index=False)
-                comp_table.query(f"{cp_field} == 'N-02'").reset_index(drop=True).to_excel(writer, sheet_name='N-02', index=False)
-                comp_table.query(f"{cp_field} == 'N-03'").reset_index(drop=True).to_excel(writer, sheet_name='N-03', index=False)
+            # to_excel_file0 = os.path.join(pier_workablet_dir, "UPDATED_" + os.path.basename(pier_tracker_table))
+            # with pd.ExcelWriter(to_excel_file0) as writer:
+            #     comp_table.query(f"{cp_field} == 'N-01'").reset_index(drop=True).to_excel(writer, sheet_name='N-01', index=False)
+            #     comp_table.query(f"{cp_field} == 'N-02'").reset_index(drop=True).to_excel(writer, sheet_name='N-02', index=False)
+            #     comp_table.query(f"{cp_field} == 'N-03'").reset_index(drop=True).to_excel(writer, sheet_name='N-03', index=False)
 
             #**************************************************************************************************#
             #*********************  Update Pier Workable Tracker ML using RAP Team's ML *********************#
             #**************************************************************************************************#
             ## Add obstructing Lot and structure IDs to pier workable tracker ML
+            ### 1. Read the RAP table
+
+            comp_table2 = pd.DataFrame()
+            for cp in cps:
+                rap_t = pd.read_excel(os.path.join(pier_workablet_dir, rap_obst_table), skiprows = 1, sheet_name = cp)
+                rap_t = rap_t.loc[:, [pier_num_field,
+                                    land_field,
+                                    struc_field,
+                                    land1_field,
+                                    struc1_field]]
+                
+                ### 2. Update Pier Tracker ML
+                #### Remove column names to be merged from the RAP Team
+                comp_table_temp = comp_table.loc[:, [pier_num_field,
+                                                    type_field,
+                                                    unique_id_field,
+                                                    status_field,
+                                                    cp_field,
+                                                    workability_field,
+                                                    util_obstruc_field,
+                                                    others_field
+                                                    ]]
+                comp_table_temp = comp_table_temp.query(f"{cp_field} == '{cp}'").reset_index(drop=True)
+                merged_table = pd.merge(left=comp_table_temp, right=rap_t, how='left', on=pier_num_field)
+                merged_table = merged_table.loc[:, tracker_fields_ordered]
+                comp_table2 = pd.concat([comp_table2, merged_table], ignore_index=False)
+
+            # Export as a new tracker
+            to_excel_file0 = os.path.join(pier_workablet_dir, "UPDATED_" + os.path.basename(pier_tracker_table))
+            with pd.ExcelWriter(to_excel_file0) as writer:
+                comp_table2.query(f"{cp_field} == 'N-01'").reset_index(drop=True).to_excel(writer, sheet_name='N-01', index=False)
+                comp_table2.query(f"{cp_field} == 'N-02'").reset_index(drop=True).to_excel(writer, sheet_name='N-02', index=False)
+                comp_table2.query(f"{cp_field} == 'N-03'").reset_index(drop=True).to_excel(writer, sheet_name='N-03', index=False)
 
         Workable_Pier_Tracker_Update()
 

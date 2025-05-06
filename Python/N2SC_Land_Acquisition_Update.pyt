@@ -353,22 +353,21 @@ class UpdateLot(object):
                 # Reformat CP
                 # if proj == 'N2':
                 if proj == 'N2':
-                    rap_table[package_field] = rap_table[package_field].str[-2:]       
-                    rap_table[package_field] = cp_suffix + rap_table[package_field]
+                    rap_table[package_field] = rap_table[package_field].str.replace(r'N','N-',regex=True)
+
                 else:
-                    ids_abc = rap_table.index[rap_table[package_field].str.contains(r'.*[abc]$',regex=True,na=False)] # For S-03abc
-                    ids = rap_table.index[rap_table[package_field].str.contains(r'-0[1-9]$',regex=True,na=False)] # For S-03/N-01..
-                
-                    rap_table.loc[ids, package_field] = rap_table.loc[ids, package_field].str[-2:]
-                    rap_table.loc[ids_abc, package_field] = rap_table.loc[ids_abc, package_field].str[-3:]
-                    rap_table[package_field] = cp_suffix + rap_table[package_field]
+                    # rap_table[package_field] = rap_table[package_field].str.replace(r'S','S-',regex=True)
+                    rap_table[package_field] = rap_table[package_field].replace(r'3A|3A|3a', '3a',regex=True)
+                    rap_table[package_field] = rap_table[package_field].replace(r'3B|3B|3b', '3b',regex=True)
+                    rap_table[package_field] = rap_table[package_field].replace(r'3C|3C|3c', '3c',regex=True)
 
+                rap_table[package_field] = rap_table[package_field].apply(lambda x: re.sub(r',.*','',x))
 
-                ids_abc = rap_table_stats.index[rap_table_stats[package_field].str.contains(r'.*[abc]$',regex=True,na=False)] # For S-03abc
-                ids = rap_table_stats.index[rap_table_stats[package_field].str.contains(r'-0[1-9]$',regex=True,na=False)] # For S-03/N-01..
-                rap_table_stats.loc[ids, package_field] = rap_table_stats.loc[ids, package_field].str[-2:]
-                rap_table_stats.loc[ids_abc, package_field] = rap_table_stats.loc[ids_abc, package_field].str[-3:]
-                rap_table_stats[package_field] = cp_suffix + rap_table_stats[package_field] 
+                ## for stats
+                rap_table_stats[package_field] = rap_table_stats[package_field].replace(r'3A|3A|3a', '3a',regex=True)
+                rap_table_stats[package_field] = rap_table_stats[package_field].replace(r'3B|3B|3b', '3b',regex=True)
+                rap_table_stats[package_field] = rap_table_stats[package_field].replace(r'3C|3C|3c', '3c',regex=True)
+                rap_table_stats[package_field] = rap_table_stats[package_field].apply(lambda x: re.sub(r',.*','',x))
                     
                 # Conver to date   
                 to_date_fields = [handover_date_field, handedover_date_field]
@@ -989,15 +988,16 @@ class UpdateStructure(object):
                     rap_table[field] = rap_table[field].astype(str)
                     rap_table_stats[field] = rap_table_stats[field].astype(str)
                 
-                # If Project is SC
-                rap_table[cp_field] = rap_table[cp_field].replace(r'03A|3A|3a', '03a',regex=True)
-                rap_table[cp_field] = rap_table[cp_field].replace(r'03B|3B|3b', '03b',regex=True)
-                rap_table[cp_field] = rap_table[cp_field].replace(r'03C|3C|3c', '03c',regex=True)
-
                 if proj == 'N2':
                     rap_table[cp_field] = rap_table[cp_field].replace(r'N', 'N-',regex=True)
-                    rap_table_stats[cp_field] = rap_table_stats[cp_field].replace(r'N', 'N-',regex=True)
+                else: ## SC
+                    rap_table[cp_field] = rap_table[cp_field].replace(r'03A|3A|3a', '03a',regex=True)
+                    rap_table[cp_field] = rap_table[cp_field].replace(r'03B|3B|3b', '03b',regex=True)
+                    rap_table[cp_field] = rap_table[cp_field].replace(r'03C|3C|3c', '03c',regex=True)
 
+                rap_table[cp_field] = rap_table[cp_field].apply(lambda x: re.sub(r',.*','',x))
+                rap_table_stats[cp_field] = rap_table_stats[cp_field].apply(lambda x: re.sub(r',.*','',x))
+                
                 # Conver join field (StrucID) to upper case
                 rap_table[joinField] = rap_table[joinField].str.upper()
 
@@ -1439,8 +1439,8 @@ class N2UpdateWorkablePierLandTable(object):
         )
 
         gis_via_dir = arcpy.Parameter(
-            displayName = "N2 GIS Masterlist Storage Directory for Viaduct",
-            name = "N2 GIS Masterlist Storage Directory for Viaduct",
+            displayName = "N2 Pier Tracker Masterlist Storage Directory",
+            name = "N2 Pier Tracker Masterlist Storage Directory",
             datatype = "DEWorkspace",
             parameterType = "Required",
             direction = "Input"
@@ -1478,21 +1478,32 @@ class N2UpdateWorkablePierLandTable(object):
                         non_match.append(i)
                 return non_match
             
+            def flatten_extend(matrix):
+                flat_list = []
+                for row in matrix:
+                    row = [re.sub(r'\s+','',e) for e in row]
+                    flat_list.extend(row)
+                return flat_list
+            
             # Define field names
             cp_field = 'CP'
             land1_field = 'Land.1'
             obstruc_field = 'Obstruction'
             lot_id_field = 'LotID'
+            pier_num_field = 'PierNumber'
 
             # Read as xlsx
-            gis_lot_t = pd.read_excel(gis_lot_ms)
+            gis_lot_table = pd.read_excel(gis_lot_ms)
             gis_lot_portal_t = pd.read_excel(gis_lot_portal)
-            pier_wtracker_t = pd.read_excel(pier_workable_tracker)
 
             # 1. Clean fields
-            # cps = ['N-01','N-02','N-03']
-            cps = ['N-01']
+            compile_land = pd.DataFrame()
+            sum_lot_compile = pd.DataFrame()
+
+            cps = ['N-01','N-02','N-03']
             for i, cp in enumerate(cps):
+                gis_lot_t = gis_lot_table.query(f"{cp_field} == '{cp}'").reset_index(drop=True)
+                
                 pier_wtracker_t = pd.read_excel(pier_workable_tracker, sheet_name=cp)
 
                 ################################################################
@@ -1502,16 +1513,13 @@ class N2UpdateWorkablePierLandTable(object):
                 #### are obstructed by the same lots or structures.
 
                 ### 1. Land
-                ids = pier_wtracker_t.index[pier_wtracker_t[land1_field].notna()]
-                # lot_ids = pier_wtracker_t.loc[ids, land1_field].str.split(',').values.flatten()
-                lot_ids = pier_wtracker_t.loc[ids, land1_field].str.split("\n").values
-                x_lot_ids = np.concatenate(lot_ids)
-
+                pier_wtracker_t = pier_wtracker_t.dropna(subset=[land1_field]).reset_index(drop=True)
+                pier_wtracker_t[land1_field] = pier_wtracker_t[land1_field].astype(str)
+                lot_ids = pier_wtracker_t[land1_field].str.split(',')
+                arcpy.AddMessage(lot_ids)
+               
                 ##### Remove any empty ones and duplicated LotIDs
-                id_drop = np.where(x_lot_ids == '')
-                x_lot_ids = np.delete(x_lot_ids, id_drop)
-                x_lot_ids = np.unique(x_lot_ids)
-
+                x_lot_ids = flatten_extend(lot_ids)
                 arcpy.AddMessage(x_lot_ids)
 
                 ### Add these obstructing LotIDs to GIS Structure master list
@@ -1522,6 +1530,7 @@ class N2UpdateWorkablePierLandTable(object):
 
                 ids = gis_lot_t.loc[idcp, ].index[gis_lot_t.loc[idcp, lot_id_field].isin(x_lot_ids)]
                 y_lot_ids = gis_lot_t.loc[ids, lot_id_field].values
+                arcpy.AddMessage(y_lot_ids)
                 gis_lot_t.loc[ids, obstruc_field] = 'Yes'
 
                 # #### Extract obstructing LotIDs from the GIS Attribute table (GIS_portal)
@@ -1529,19 +1538,10 @@ class N2UpdateWorkablePierLandTable(object):
                 ids_portal = gis_lot_portal_t.loc[idcp, ].index[gis_lot_portal_t.loc[idcp, lot_id_field].isin(x_lot_ids)]
                 y_lot_portal_ids = gis_lot_portal_t.loc[ids_portal, lot_id_field].values
 
-                ### Overwrite existing GIS_Lot_ML and GIS_Structure_ML with the updated tables
-                gis_lot_t.to_excel(os.path.join(gis_rap_dir, 'N2_Land_Status.xlsx'), index=False)
+                ## compile for cps
+                compile_land = pd.concat([compile_land, gis_lot_t])
 
-            ########### End of Updating Obstruction for Land  ####################################
-
-            ## 01: Summary statistics to check the number of obstructing lots and structures
-            ## among Civil table, GIS Excel ML, and GIS Portal table.
-            #### Land
-            sum_lot_compile = pd.DataFrame()
-
-            # When looping through CPs, use for i, xx enumerate().
-            # Count the number of obstructing LotIDs among civil table, GIS excel ML, and GIS Portal
-            for i, cp in enumerate(cps):
+                ############################# Summary Statistics ################################
                 sum_lot = pd.DataFrame()
                 sum_cols = ['CP',
                             'Civil',
@@ -1562,6 +1562,15 @@ class N2UpdateWorkablePierLandTable(object):
                 sum_lot.loc[0,sum_cols[6]] = ",".join(non_match_elements(x_lot_ids,y_lot_ids))
                 sum_lot.loc[0,sum_cols[7]] = ",".join(non_match_elements(x_lot_ids,y_lot_portal_ids))
                 sum_lot_compile = pd.concat([sum_lot_compile, sum_lot], ignore_index=False)
+
+            #################################################################################
+            ### Overwrite existing GIS_Lot_ML and GIS_Structure_ML with the updated tables ##
+            #################################################################################
+            ##### N-04 & N-05
+            gis_lot_tn04 = gis_lot_table.query(f"{cp_field} in ('N-04', 'N-05')")
+            gis_lot_tn04[obstruc_field] = 'No'
+            compile_land = pd.concat([compile_land, gis_lot_tn04])
+            compile_land.to_excel(os.path.join(gis_rap_dir, 'N2_Land_Status.xlsx'), index=False)
 
             ## Compile in one excel sheet
             sum_lot_compile.to_excel(os.path.join(gis_via_dir, 'N2_Pier_Workable_Obstruction_Land_summaryStats.xlsx'), sheet_name='Land', index=False)
@@ -1599,8 +1608,8 @@ class N2UpdateWorkablePierStructureTable(object):
         )
 
         gis_via_dir = arcpy.Parameter(
-            displayName = "N2 GIS Masterlist Storage Directory for Viaduct",
-            name = "N2 GIS Masterlist Storage Directory for Viaduct",
+            displayName = "N2 Pier Tracker Masterlist Storage Directory",
+            name = "N2 Pier Tracker Masterlist Storage Directory",
             datatype = "DEWorkspace",
             parameterType = "Required",
             direction = "Input"
@@ -1638,6 +1647,13 @@ class N2UpdateWorkablePierStructureTable(object):
                         non_match.append(i)
                 return non_match
             
+            def flatten_extend(matrix):
+                flat_list = []
+                for row in matrix:
+                    row = [re.sub(r'\s+','',e) for e in row]
+                    flat_list.extend(row)
+                return flat_list
+            
             # Define field names
             cp_field = 'CP'
             struc1_field = 'Structure.1'
@@ -1645,14 +1661,20 @@ class N2UpdateWorkablePierStructureTable(object):
             struc_id_field = 'StrucID'
 
             # Read as xlsx
-            gis_struc_t = pd.read_excel(gis_struc_ms)
+            gis_struc_table = pd.read_excel(gis_struc_ms)
             gis_struc_portal_t = pd.read_excel(gis_struc_portal)
-            pier_wtracker_t = pd.read_excel(pier_workable_tracker)
+
+            # Define how obstructing lot and structure IDs are entered for each pier
+            ## '\n' or ','
+            split_mark = ","
 
             # 1. Clean fields
-            # cps = ['N-01','N-02','N-03']
-            cps = ['N-01']
+            compile_struc = pd.DataFrame()
+            sum_struc_compile = pd.DataFrame()
+            cps = ['N-01','N-02','N-03']
+
             for i, cp in enumerate(cps):
+                gis_struc_t = gis_struc_table.query(f"{cp_field} == '{cp}'").reset_index(drop=True)
                 pier_wtracker_t = pd.read_excel(pier_workable_tracker, sheet_name=cp)
 
                 ################################################################
@@ -1662,17 +1684,12 @@ class N2UpdateWorkablePierStructureTable(object):
                 #### are obstructed by the same lots or structures.
 
                 ### 1. Structure
-                ids = pier_wtracker_t.index[pier_wtracker_t[struc1_field].notna()]
-                # lot_ids = pier_wtracker_t.loc[ids, struc1_field].str.split(',').values.flatten()
-                struc_ids = pier_wtracker_t.loc[ids, struc1_field].str.split("\n").values
-                x_struc_ids = np.concatenate(struc_ids)
+                pier_wtracker_t = pier_wtracker_t.dropna(subset=[struc1_field]).reset_index(drop=True)
+                pier_wtracker_t[struc1_field] = pier_wtracker_t[struc1_field].astype(str)
+                struc_ids = pier_wtracker_t[struc1_field].str.split(",")
 
                 ##### Remove any empty ones and duplicated LotIDs
-                id_drop = np.where(x_struc_ids == '')
-                x_struc_ids = np.delete(x_struc_ids, id_drop)
-                x_struc_ids = np.unique(x_struc_ids)
-
-                arcpy.AddMessage(x_struc_ids)
+                x_struc_ids = flatten_extend(struc_ids)
 
                 ### Add these obstructing LotIDs to GIS Structure master list
                 #### First, reset 'obstruction' field
@@ -1689,19 +1706,10 @@ class N2UpdateWorkablePierStructureTable(object):
                 ids_portal = gis_struc_portal_t.loc[idcp, ].index[gis_struc_portal_t.loc[idcp, struc_id_field].isin(x_struc_ids)]
                 y_struc_portal_ids = gis_struc_portal_t.loc[ids_portal, struc_id_field].values
 
-                ### Overwrite existing GIS_Lot_ML and GIS_Structure_ML with the updated tables
-                gis_struc_t.to_excel(os.path.join(gis_rap_dir, 'N2_Structure_Status.xlsx'), index=False)
+                ## compile for cps
+                compile_struc = pd.concat([compile_struc, gis_struc_t])
 
-            ########### End of Updating Obstruction for Land  ####################################
-
-            ## 01: Summary statistics to check the number of obstructing lots and structures
-            ## among Civil table, GIS Excel ML, and GIS Portal table.
-            #### Land
-            sum_struc_compile = pd.DataFrame()
-
-            # When looping through CPs, use for i, xx enumerate().
-            # Count the number of obstructing LotIDs among civil table, GIS excel ML, and GIS Portal
-            for i, cp in enumerate(cps):
+                ######################################## Summary Stats ###################################
                 sum_struc = pd.DataFrame()
                 sum_cols = ['CP',
                             'Civil',
@@ -1723,7 +1731,17 @@ class N2UpdateWorkablePierStructureTable(object):
                 sum_struc.loc[0,sum_cols[7]] = ",".join(non_match_elements(x_struc_ids, y_struc_portal_ids))
                 sum_struc_compile = pd.concat([sum_struc_compile, sum_struc], ignore_index=False)
 
-            ## Compile in one excel sheet
+                
+            ###################################################################################
+            ### Overwrite existing GIS_Lot_ML and GIS_Structure_ML with the updated tables ####
+            ###################################################################################
+            ##### N-04 & N-05
+            gis_struc_tn04 = gis_struc_table.query(f"{cp_field} in ('N-04', 'N-05')")
+            gis_struc_tn04[obstruc_field] = 'No'
+            compile_struc = pd.concat([compile_struc, gis_struc_tn04])
+            compile_struc.to_excel(os.path.join(gis_rap_dir, 'N2_Structure_Status.xlsx'), index=False)
+
+            ## Compile SummaryStatus in one excel sheet
             sum_struc_compile.to_excel(os.path.join(gis_via_dir, 'N2_Pier_Workable_Obstruction_Structure_summaryStats.xlsx'), sheet_name='Structure', index=False)
 
         Obstruction_Structure_ML_Update()

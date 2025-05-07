@@ -404,8 +404,8 @@ class UpdateWorkablePierLayer(object):
 
     def getParameterInfo(self):
         gis_viaduct_dir = arcpy.Parameter(
-            displayName = "N2 GIS Pier Tracker Masterlist Storage Directory",
-            name = "N2 GIS Pier Tracker Masterlist Storage Directory",
+            displayName = "N2 Pier Tracker Masterlist Storage Directory",
+            name = "N2 Pier Tracker Masterlist Storage Directory",
             datatype = "DEWorkspace",
             parameterType = "Required",
             direction = "Input"

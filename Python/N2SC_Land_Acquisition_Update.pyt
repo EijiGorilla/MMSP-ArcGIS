@@ -1485,6 +1485,13 @@ class N2UpdateWorkablePierLandTable(object):
                     flat_list.extend(row)
                 return flat_list
             
+            def unique(lists):
+                collect = []
+                unique_list = pd.Series(lists).drop_duplicates().tolist()
+                for x in unique_list:
+                    collect.append(x)
+                return(collect)
+            
             # Define field names
             cp_field = 'CP'
             land1_field = 'Land.1'
@@ -1567,13 +1574,19 @@ class N2UpdateWorkablePierLandTable(object):
             ### Overwrite existing GIS_Lot_ML and GIS_Structure_ML with the updated tables ##
             #################################################################################
             ##### N-04 & N-05
-            gis_lot_tn04 = gis_lot_table.query(f"{cp_field} in ('N-04', 'N-05')")
-            gis_lot_tn04[obstruc_field] = 'No'
-            compile_land = pd.concat([compile_land, gis_lot_tn04])
+            # gis_lot_tn04 = gis_lot_table.query(f"{cp_field} in ('N-04', 'N-05')")
+            compile_cps = unique(compile_land[cp_field])
+            gis_cps = unique(gis_lot_table[cp_field])
+            miss_cp = tuple(non_match_elements(gis_cps, compile_cps))
+            arcpy.AddMessage(miss_cp)
+            if len(miss_cp) > 0:
+                gis_lot_misst = gis_lot_table.query(f"{cp_field} in {miss_cp}")
+                gis_lot_misst[obstruc_field] = 'No'
+                compile_land = pd.concat([compile_land, gis_lot_misst])
             compile_land.to_excel(os.path.join(gis_rap_dir, 'N2_Land_Status.xlsx'), index=False)
 
-            ## Compile in one excel sheet
-            sum_lot_compile.to_excel(os.path.join(gis_via_dir, 'N2_Pier_Workable_Obstruction_Land_summaryStats.xlsx'), sheet_name='Land', index=False)
+            ## Export summary table
+            sum_lot_compile.to_excel(os.path.join(gis_via_dir, '99-N2_Pier_Workable_Obstruction_Land_summaryStats.xlsx'), sheet_name='Land', index=False)
 
         Obstruction_Land_ML_Update()
 
@@ -1607,6 +1620,14 @@ class N2UpdateWorkablePierStructureTable(object):
             direction = "Input"
         )
 
+        gis_nlo_ms = arcpy.Parameter(
+            displayName = "GIS Structure NLO (ISF) ML (Excel)",
+            name = "GIS Structure NLO (ISF) ML (Excel)",
+            datatype = "DEFile",
+            parameterType = "Required",
+            direction = "Input"
+        )
+
         gis_via_dir = arcpy.Parameter(
             displayName = "N2 Pier Tracker Masterlist Storage Directory",
             name = "N2 Pier Tracker Masterlist Storage Directory",
@@ -1623,7 +1644,7 @@ class N2UpdateWorkablePierStructureTable(object):
             direction = "Input"
         )
 
-        params = [gis_rap_dir, gis_struc_ms, gis_struc_portal, gis_via_dir, pier_workable_tracker]
+        params = [gis_rap_dir, gis_struc_ms, gis_struc_portal, gis_nlo_ms ,gis_via_dir, pier_workable_tracker]
         return params
 
     def updateMessages(self, params):
@@ -1633,8 +1654,9 @@ class N2UpdateWorkablePierStructureTable(object):
         gis_rap_dir = params[0].valueAsText
         gis_struc_ms = params[1].valueAsText
         gis_struc_portal = params[2].valueAsText
-        gis_via_dir = params[3].valueAsText
-        pier_workable_tracker = params[4].valueAsText
+        gis_nlo_ms = params[3].valueAsText
+        gis_via_dir = params[4].valueAsText
+        pier_workable_tracker = params[5].valueAsText
 
         arcpy.env.overwriteOutput = True
         #arcpy.env.addOutputsToMap = True
@@ -1654,6 +1676,13 @@ class N2UpdateWorkablePierStructureTable(object):
                     flat_list.extend(row)
                 return flat_list
             
+            def unique(lists):
+                collect = []
+                unique_list = pd.Series(lists).drop_duplicates().tolist()
+                for x in unique_list:
+                    collect.append(x)
+                return(collect)
+            
             # Define field names
             cp_field = 'CP'
             struc1_field = 'Structure.1'
@@ -1663,6 +1692,7 @@ class N2UpdateWorkablePierStructureTable(object):
             # Read as xlsx
             gis_struc_table = pd.read_excel(gis_struc_ms)
             gis_struc_portal_t = pd.read_excel(gis_struc_portal)
+            gis_nlo_table = pd.read_excel(gis_nlo_ms)
 
             # Define how obstructing lot and structure IDs are entered for each pier
             ## '\n' or ','
@@ -1670,11 +1700,14 @@ class N2UpdateWorkablePierStructureTable(object):
 
             # 1. Clean fields
             compile_struc = pd.DataFrame()
+            compile_nlo = pd.DataFrame()
             sum_struc_compile = pd.DataFrame()
             cps = ['N-01','N-02','N-03']
 
             for i, cp in enumerate(cps):
                 gis_struc_t = gis_struc_table.query(f"{cp_field} == '{cp}'").reset_index(drop=True)
+                gis_nlo_t = gis_nlo_table.query(f"{cp_field} == '{cp}'").reset_index(drop=True)
+
                 pier_wtracker_t = pd.read_excel(pier_workable_tracker, sheet_name=cp)
 
                 ################################################################
@@ -1706,8 +1739,19 @@ class N2UpdateWorkablePierStructureTable(object):
                 ids_portal = gis_struc_portal_t.loc[idcp, ].index[gis_struc_portal_t.loc[idcp, struc_id_field].isin(x_struc_ids)]
                 y_struc_portal_ids = gis_struc_portal_t.loc[ids_portal, struc_id_field].values
 
-                ## compile for cps
+                ### 2. NLO
+                #### Add these obstructing StrucIDs to GIS ISF master list
+                #### Note that regardless of NLO' status, all the NLOs falling under obstructing structures must be visualized.
+                gis_nlo_t[obstruc_field] = np.nan
+                idcp = gis_nlo_t.index[gis_nlo_t[cp_field] == cp]
+                gis_nlo_t.loc[idcp, obstruc_field] = 'No'
+
+                ids = gis_nlo_t.loc[idcp, ].index[gis_nlo_t.loc[idcp, struc_id_field].isin(x_struc_ids)]
+                gis_nlo_t.loc[ids, obstruc_field] = 'Yes'
+
+                ### 3. Compile for cps
                 compile_struc = pd.concat([compile_struc, gis_struc_t])
+                compile_nlo = pd.concat([compile_nlo, gis_nlo_t])
 
                 ######################################## Summary Stats ###################################
                 sum_struc = pd.DataFrame()
@@ -1735,14 +1779,32 @@ class N2UpdateWorkablePierStructureTable(object):
             ###################################################################################
             ### Overwrite existing GIS_Lot_ML and GIS_Structure_ML with the updated tables ####
             ###################################################################################
-            ##### N-04 & N-05
-            gis_struc_tn04 = gis_struc_table.query(f"{cp_field} in ('N-04', 'N-05')")
-            gis_struc_tn04[obstruc_field] = 'No'
-            compile_struc = pd.concat([compile_struc, gis_struc_tn04])
-            compile_struc.to_excel(os.path.join(gis_rap_dir, 'N2_Structure_Status.xlsx'), index=False)
+            #### Structure
+            compile_cps = unique(compile_struc[cp_field])
+            gis_cps = unique(gis_struc_table[cp_field])
+            miss_cp = tuple(non_match_elements(gis_cps, compile_cps))
+            arcpy.AddMessage(miss_cp)
+            if len(miss_cp) > 0:
+                gis_struc_misst = gis_struc_table.query(f"{cp_field} in {miss_cp}")
+                gis_struc_misst[obstruc_field] = 'No'
+                compile_struc = pd.concat([compile_struc, gis_struc_misst])
+
+            compile_struc.to_excel(os.path.join(gis_rap_dir, 'N2_Structure_Status.xlsx'), index=False) ## gis_struc
+           
+            #### NLO
+            compile_cps = unique(compile_nlo[cp_field])
+            gis_cps = unique(gis_nlo_table[cp_field])
+            miss_cp = tuple(non_match_elements(gis_cps, compile_cps))
+            arcpy.AddMessage(miss_cp)
+            if len(miss_cp) > 0:
+                gis_nlo_misst = gis_nlo_table.query(f"{cp_field} in {miss_cp}")
+                gis_nlo_misst[obstruc_field] = 'No'
+                compile_nlo = pd.concat([compile_nlo, gis_nlo_misst])
+           
+            compile_nlo.to_excel(os.path.join(gis_rap_dir, 'N2_ISF_Relocation_Status_temp.xlsx'), index=False) ## gis_isf
 
             ## Compile SummaryStatus in one excel sheet
-            sum_struc_compile.to_excel(os.path.join(gis_via_dir, 'N2_Pier_Workable_Obstruction_Structure_summaryStats.xlsx'), sheet_name='Structure', index=False)
+            sum_struc_compile.to_excel(os.path.join(gis_via_dir, '99-N2_Pier_Workable_Obstruction_Structure_summaryStats.xlsx'), sheet_name='Structure', index=False)
 
         Obstruction_Structure_ML_Update()
 
@@ -1824,7 +1886,7 @@ class SCUpdateWorkablePierLandTable(object):
                 return non_match
             
             # Read as xlsx
-            gis_lot_t = pd.read_excel(gis_lot_ms)
+            gis_lot_table = pd.read_excel(gis_lot_ms)
             gis_lot_portal_t = pd.read_excel(gis_lot_portal)
 
             # List of fields
@@ -1835,9 +1897,14 @@ class SCUpdateWorkablePierLandTable(object):
             struc_id_field = 'StrucID'
 
             # 1. Clean fields
+            compile_land = pd.DataFrame()
+            sum_lot_compile = pd.DataFrame()
+            
             # cps = ['S-01','S-02','S-03a','S-03b','S-03c','S-04','S-05','S-06','S-07']
             cps = ['S-01']
             for i, cp in enumerate(cps):
+                gis_lot_t = gis_lot_table.query(f"{cp_field} == '{cp}'").reset_index(drop=True)
+
                 cp_civil_name = "(" + cp.replace('-','') + ")"
                 civil_workable_t = pd.read_excel(civil_workable_ms,sheet_name=cp_civil_name)
                 civil_workable_t = civil_workable_t.iloc[:,[14,19,22,23,24,25,26,27,28,30,32,34,35,48,51]]
@@ -1903,29 +1970,19 @@ class SCUpdateWorkablePierLandTable(object):
                 ids_portal = gis_lot_portal_t.loc[idcp, ].index[gis_lot_portal_t.loc[idcp, lot_id_field].isin(x_lot_ids)]
                 y_lot_portal_ids = gis_lot_portal_t.loc[ids_portal, lot_id_field].values
 
-                ### Overwrite existing GIS_Lot_ML and GIS_Structure_ML with the updated tables
-                gis_lot_t.to_excel(os.path.join(gis_rap_dir, 'SC_Land_Status.xlsx'), index=False) ## gis_land
-            ########### End of Updating Obstruction for Land  ####################################
+                ## compile for cps
+                compile_land = pd.concat([compile_land, gis_lot_t])
 
-            ## 01: Summary statistics to check the number of obstructing lots and structures
-            ## among Civil table, GIS Excel ML, and GIS Portal table.
-            #### Land
-            sum_lot_compile = pd.DataFrame()
-
-            # When looping through CPs, use for i, xx enumerate().
-            # Count the number of obstructing LotIDs among civil table, GIS excel ML, and GIS Portal
-            # cps = ['S-01','S-02','S-03a','S-03b','S-03c','S-04','S-05','S-06','S-07']
-            cps = ['S-01']
-            for i, cp in enumerate(cps):
+               ############################# Summary Statistics ################################
                 sum_lot = pd.DataFrame()
                 sum_cols = ['CP',
-                            'Civil',
-                            'GIS_ML',
-                            'GIS_Portal',
-                            'Diff_Civil_GISML',
-                            'Diff_Civil_GISPortal',
-                            'Miss_IDs_Civil_GISML',
-                            'Miss_IDs_Civil_GISPortal']
+                    'Civil',
+                    'GIS_ML',
+                    'GIS_Portal',
+                    'Diff_Civil_GISML',
+                    'Diff_Civil_GISPortal',
+                    'Miss_IDs_Civil_GISML',
+                    'Miss_IDs_Civil_GISPortal']
                 sum_lot.loc[0,sum_cols[0]] = cp
                 sum_lot.loc[0,sum_cols[1]] = len(x_lot_ids)
                 sum_lot.loc[0,sum_cols[2]] = len(y_lot_ids)
@@ -1938,8 +1995,21 @@ class SCUpdateWorkablePierLandTable(object):
                 sum_lot.loc[0,sum_cols[7]] = ",".join(non_match_elements(x_lot_ids,y_lot_portal_ids))
                 sum_lot_compile = pd.concat([sum_lot_compile, sum_lot], ignore_index=False)
 
-            ## Compile in one excel sheet
-            sum_lot_compile.to_excel(os.path.join(gis_via_dir, 'SC_Pier_Workable_Obstruction_Land_summaryStats.xlsx'), sheet_name='Land', index=False)
+            #################################################################################
+            ### Overwrite existing GIS_Lot_ML with the updated tables ##
+            #################################################################################
+            compile_cps = unique(compile_land[cp_field])
+            gis_cps = unique(gis_lot_table[cp_field])
+            miss_cp = tuple(non_match_elements(gis_cps, compile_cps))
+            arcpy.AddMessage(miss_cp)
+            if len(miss_cp) > 0:
+                gis_lot_misst = gis_lot_table.query(f"{cp_field} in {miss_cp}")
+                gis_lot_misst[obstruc_field] = 'No'
+                compile_land = pd.concat([compile_land, gis_lot_misst])
+            compile_land.to_excel(os.path.join(gis_rap_dir, 'SC_Land_Status.xlsx'), index=False) ## gis_land
+ 
+            ## Export summary table
+            sum_lot_compile.to_excel(os.path.join(gis_via_dir, '99-SC_Pier_Workable_Obstruction_Land_summaryStats.xlsx'), sheet_name='Land', index=False)
 
         Obstruction_Land_ML_Update()
 
@@ -2030,9 +2100,9 @@ class SCUpdateWorkablePierStructureTable(object):
                 return non_match
             
             # Read as xlsx
-            gis_struc_t = pd.read_excel(gis_struc_ms)
+            gis_struc_table = pd.read_excel(gis_struc_ms)
             gis_struc_portal_t = pd.read_excel(gis_struc_portal)
-            gis_nlo_t = pd.read_excel(gis_nlo_ms)
+            gis_nlo_table = pd.read_excel(gis_nlo_ms)
 
             # List of fields
             obstruc_field = 'Obstruction' ## ('Yes' or 'No')
@@ -2042,9 +2112,16 @@ class SCUpdateWorkablePierStructureTable(object):
             struc_id_field = 'StrucID'
 
             # 1. Clean fields
+            compile_struc = pd.DataFrame()
+            compile_nlo = pd.DataFrame()
+            sum_struc_compile = pd.DataFrame()
             ## cps = ['S-01','S-02','S-03a','S-03b','S-03c','S-04','S-05','S-06','S-07']
             cps = ['S-01']
+
             for i, cp in enumerate(cps):
+                gis_struc_t = gis_struc_table.query(f"{cp_field} == '{cp}'").reset_index(drop=True)
+                gis_nlo_t = gis_nlo_table.query(f"{cp_field} == '{cp}'").reset_index(drop=True)
+
                 cp_civil_name = "(" + cp.replace('-','') + ")"
                 civil_workable_t = pd.read_excel(civil_workable_ms,sheet_name=cp_civil_name)
                 civil_workable_t = civil_workable_t.iloc[:,[14,19,22,23,24,25,26,27,28,30,32,34,35,48,51]]
@@ -2120,38 +2197,64 @@ class SCUpdateWorkablePierStructureTable(object):
                 ids = gis_nlo_t.loc[idcp, ].index[gis_nlo_t.loc[idcp, struc_id_field].isin(x_struc_ids)]
                 gis_nlo_t.loc[ids, obstruc_field] = 'Yes'
 
-                ### Overwrite existing GIS_Lot_ML and GIS_Structure_ML with the updated tables
-                gis_struc_t.to_excel(os.path.join(gis_rap_dir, 'SC_Structure_Status.xlsx'), index=False) ## gis_struc
-                gis_nlo_t.to_excel(os.path.join(gis_rap_dir, 'SC_ISF_Relocation_Status.xlsx'), index=False) ## gis_isf
+                ## Compile for cps
+                compile_struc = pd.concat([compile_struc, gis_struc_t])
+                compile_nlo = pd.concat([compile_nlo, gis_nlo_t])
 
-            ## 01: Summary statistics to check the number of obstructing lots and structures
-            ## among Civil table, GIS Excel ML, and GIS Portal table.
+                ######################################## Summary Stats ###################################
+                sum_struc_compile = pd.DataFrame()
+                sum_cols = ['CP',
+                            'Civil',
+                            'GIS_ML',
+                            'GIS_Portal',
+                            'Diff_Civil_GISML',
+                            'Diff_Civil_GISPortal',
+                            'Miss_IDs_Civil_GISML',
+                            'Miss_IDs_Civil_GISPortal']
+
+                sum_struc = pd.DataFrame()
+                sum_struc.loc[0,sum_cols[0]] = 'S-01'
+                sum_struc.loc[0,sum_cols[1]] = len(x_struc_ids)
+                sum_struc.loc[0,sum_cols[2]] = len(y_struc_ids)
+                sum_struc.loc[0,sum_cols[3]] = len(y_struc_portal_ids)
+                sum_struc.loc[0,sum_cols[4]] = sum_struc.loc[0,sum_cols[1]] - sum_struc.loc[0,sum_cols[2]]
+                sum_struc.loc[0,sum_cols[5]] = sum_struc.loc[0,sum_cols[1]] - sum_struc.loc[0,sum_cols[3]]
+
+                # Identify unmatched obstructing LotIDs in reference to the civil table
+                sum_struc.loc[0,sum_cols[6]] = ",".join(non_match_elements(x_struc_ids,y_struc_ids))
+                sum_struc.loc[0,sum_cols[7]] = ",".join(non_match_elements(x_struc_ids,y_struc_portal_ids))
+                sum_struc_compile = pd.concat([sum_struc_compile, sum_struc], ignore_index=False)
+
+            ###################################################################################
+            ### Overwrite existing GIS_Structure_ML with the updated tables ####
+            ###################################################################################
+            ### need to missing cps from the original
             #### Structure
-            sum_struc_compile = pd.DataFrame()
-            sum_cols = ['CP',
-                        'Civil',
-                        'GIS_ML',
-                        'GIS_Portal',
-                        'Diff_Civil_GISML',
-                        'Diff_Civil_GISPortal',
-                        'Miss_IDs_Civil_GISML',
-                        'Miss_IDs_Civil_GISPortal']
+            compile_cps = unique(compile_struc[cp_field])
+            gis_cps = unique(gis_struc_table[cp_field])
+            miss_cp = tuple(non_match_elements(gis_cps, compile_cps))
+            arcpy.AddMessage(miss_cp)
+            if len(miss_cp) > 0:
+                gis_struc_misst = gis_struc_table.query(f"{cp_field} in {miss_cp}")
+                gis_struc_misst[obstruc_field] = 'No'
+                compile_struc = pd.concat([compile_struc, gis_struc_misst])
 
-            sum_struc = pd.DataFrame()
-            sum_struc.loc[0,sum_cols[0]] = 'S-01'
-            sum_struc.loc[0,sum_cols[1]] = len(x_struc_ids)
-            sum_struc.loc[0,sum_cols[2]] = len(y_struc_ids)
-            sum_struc.loc[0,sum_cols[3]] = len(y_struc_portal_ids)
-            sum_struc.loc[0,sum_cols[4]] = sum_struc.loc[0,sum_cols[1]] - sum_struc.loc[0,sum_cols[2]]
-            sum_struc.loc[0,sum_cols[5]] = sum_struc.loc[0,sum_cols[1]] - sum_struc.loc[0,sum_cols[3]]
+            compile_struc.to_excel(os.path.join(gis_rap_dir, 'SC_Structure_Status.xlsx'), index=False) ## gis_struc
+           
+            #### NLO
+            compile_cps = unique(compile_nlo[cp_field])
+            gis_cps = unique(gis_nlo_table[cp_field])
+            miss_cp = tuple(non_match_elements(gis_cps, compile_cps))
+            arcpy.AddMessage(miss_cp)
+            if len(miss_cp) > 0:
+                gis_nlo_misst = gis_nlo_table.query(f"{cp_field} in {miss_cp}")
+                gis_nlo_misst[obstruc_field] = 'No'
+                compile_nlo = pd.concat([compile_nlo, gis_nlo_misst])
+           
+            compile_nlo.to_excel(os.path.join(gis_rap_dir, 'SC_ISF_Relocation_Status.xlsx'), index=False) ## gis_isf
 
-            # Identify unmatched obstructing LotIDs in reference to the civil table
-            sum_struc.loc[0,sum_cols[6]] = ",".join(non_match_elements(x_struc_ids,y_struc_ids))
-            sum_struc.loc[0,sum_cols[7]] = ",".join(non_match_elements(x_struc_ids,y_struc_portal_ids))
-            sum_struc_compile = pd.concat([sum_struc_compile, sum_struc], ignore_index=False)
-
-            ## Compile in one excel sheet
-            sum_struc_compile.to_excel(os.path.join(gis_via_dir, 'SC_Workable_Pier_obstructing_structure_summaryStats.xlsx'), sheet_name='Land', index=False)
+            ## Export summary statistics table
+            sum_struc_compile.to_excel(os.path.join(gis_via_dir, '99-SC_Workable_Pier_obstructing_structure_summaryStats.xlsx'), sheet_name='Land', index=False)
 
         Obstruction_Structure_ML_Update()
 

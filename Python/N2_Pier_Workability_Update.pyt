@@ -216,6 +216,13 @@ class UpdatePierWorkableTrackerML(object):
                         non_match.append(i)
                 return non_match
             
+            def flatten_extend(matrix):
+                flat_list = []
+                for row in matrix:
+                    row = [re.sub(r'\s+','',e) for e in row]
+                    flat_list.extend(row)
+                return flat_list
+            
             # Define field names
             cp_field = 'CP'
             type_field = 'Type'
@@ -250,6 +257,11 @@ class UpdatePierWorkableTrackerML(object):
             ids = civil_t.index[(civil_t[new_cols[2]].notna()) | (civil_t[new_cols[3]].notna())]
             civil_t.loc[ids, util_obstruc_field] = 1
             civil_t = civil_t.drop([new_cols[2],new_cols[3]], axis=1)
+
+            ## Convert non-numeric value for 'Others' to numeric (null or '1')
+            idx = civil_t.index[civil_t[new_cols[4]].notna()]
+            civil_t.loc[idx, new_cols[4]] = 1
+            # civil_t[new_cols[4]] = civil_t[new_cols[4]].astype(int)
 
             ## Change labels for Workability (No = Non-workable, Yes = Workable)
             ids = civil_t.index[civil_t[new_cols[5]] == 'Yes']
@@ -301,6 +313,9 @@ class UpdatePierWorkableTrackerML(object):
                 c_t = civil_t.query(f"{pier_num_field} in {match_piers}").reset_index(drop=True)
                 c_t_piers = c_t[pier_num_field].values
 
+                # fix CP (N-01/N-02...)
+                c_t[cp_field] = c_t[cp_field].str.replace(r'/.*','',regex=True)
+
                 # Identify pile caps with missing 'Workability' information
                 ids = c_t.index[c_t['Workability'].isnull()]
                 miss_info_piers = c_t.loc[ids, pier_num_field].values
@@ -311,6 +326,8 @@ class UpdatePierWorkableTrackerML(object):
                 new_tracker = pd.merge(left=gis_tracker, right=c_t, how='left', on=pier_num_field)
                 new_tracker = new_tracker.loc[:, tracker_fields_ordered]
                 # print(new_tracker.dtypes)
+
+                # Civil Tea
 
                 # Summary statistics between Civil ML and GIS pier workability tracker ML
                 ## 'Workable' 
@@ -348,7 +365,31 @@ class UpdatePierWorkableTrackerML(object):
                                     struc_field,
                                     land1_field,
                                     struc1_field]]
-                                
+                
+                ## Fix format for land1_field
+                rap_t[land1_field] = rap_t[land1_field].astype(str)
+                rap_t[land1_field] = rap_t[land1_field].str.replace(r'\n',',',regex=True)
+                rap_t[land1_field] = rap_t[land1_field].str.replace(r';',',',regex=True)
+                rap_t[land1_field] = rap_t[land1_field].str.replace(r';;',',',regex=True)
+                rap_t[land1_field] = rap_t[land1_field].str.replace(r',,',',',regex=True)
+                rap_t[land1_field] = rap_t[land1_field].str.replace(r',,,',',',regex=True)
+                rap_t[land1_field] = rap_t[land1_field].str.replace(r',$','',regex=True)
+                rap_t[land1_field] = rap_t[land1_field].str.replace(r'nan','',regex=True)
+
+                ## Fix format for struc1_field
+                rap_t[struc1_field] = rap_t[struc1_field].astype(str)
+                rap_t[struc1_field] = rap_t[struc1_field].str.replace(r'\n',',',regex=True)
+                rap_t[struc1_field] = rap_t[struc1_field].str.replace(r';',',',regex=True)
+                rap_t[struc1_field] = rap_t[struc1_field].str.replace(r';;',',',regex=True)
+                rap_t[struc1_field] = rap_t[struc1_field].str.replace(r',,',',',regex=True)
+                rap_t[struc1_field] = rap_t[struc1_field].str.replace(r',,,',',',regex=True)
+                rap_t[struc1_field] = rap_t[struc1_field].str.replace(r',$','',regex=True)
+                rap_t[struc1_field] = rap_t[struc1_field].str.replace(r'MCRP=','MCRP-',regex=True)
+                rap_t[struc1_field] = rap_t[struc1_field].str.replace(r'MCRP--','MCRP-',regex=True)
+                rap_t[struc1_field] = rap_t[struc1_field].str.replace(r'MCRO','MCRP',regex=True)
+                rap_t[struc1_field] = rap_t[struc1_field].str.replace(r'nan','',regex=True)
+                
+                           
                 ### 2. Update Pier Tracker ML
                 #### Remove column names to be merged from the RAP Team
                 comp_table_temp = comp_table.loc[:, [pier_num_field,
@@ -371,22 +412,20 @@ class UpdatePierWorkableTrackerML(object):
             ## When obstruction is present (e.g., 'Land' = 1), there should be obstructing lot IDs. 
             ## Identify piers with inconsistent information
             ### Land
-            ids1 = comp_table2.index[((comp_table2[land_field].isnull()) & (comp_table2[land1_field].notna())) |
-                                     ((comp_table2[land_field].notnull()) & (comp_table2[land1_field].isna()))]
+            ids1 = comp_table2.index[((comp_table2[land_field].isna()) & (comp_table2[land1_field].notna())) |
+                                     ((comp_table2[land_field].notna()) & (comp_table2[land1_field].isna()))]
             x_piers = comp_table2.loc[ids1, pier_num_field].values
             if len(x_piers) > 0:
-                comp_table2.loc[ids1, [pier_num_field, land_field, land1_field]].to_excel(os.path.join(pier_workablet_dir, '99-Land_Inconsistent_Piers_for_Obstruction_Civil_vs_RAP.xlsx'), index=False)
+                comp_table2.loc[ids1, [pier_num_field, land_field, land1_field]].to_excel(os.path.join(pier_workablet_dir, '99-Summary_Statistics', '99-N2_Land_Obstruction_Civil_vs_RAP.xlsx'), index=False)
 
             ### Structure
             ids1 = comp_table2.index[((comp_table2[struc_field].isnull()) & (comp_table2[struc1_field].notna())) |
                                      ((comp_table2[struc_field].notnull()) & (comp_table2[struc1_field].isna()))]
             x_piers = comp_table2.loc[ids1, pier_num_field].values
             if len(x_piers) > 0:
-                comp_table2.loc[ids1, [pier_num_field, struc_field, struc1_field]].to_excel(os.path.join(pier_workablet_dir, '99-Structure_Inconsistent_Piers_for_Obstruction_Civil_vs_RAP.xlsx'), index=False)
+                comp_table2.loc[ids1, [pier_num_field, struc_field, struc1_field]].to_excel(os.path.join(pier_workablet_dir, '99-Summary_Statistics', '99-N2_Structure_Obstruction_Civil_vs_RAP.xlsx'), index=False)
 
             # inconsis_t = comp_table2.loc[ids_all, [pier_num_field, unique_id_field, land_field, land1_field, struc_field, struc1_field ]]
-            arcpy.AddMessage("PierNumbers with inconsistent obstructions between Civil and RAP Team")
-            # arcpy.AddMessage(inconsis_t)
 
             # Export as a new tracker
             to_excel_file0 = os.path.join(pier_workablet_dir, os.path.basename(pier_tracker_table))
@@ -664,11 +703,11 @@ class UpdateWorkablePierLayer(object):
 
 class CheckPierNumbers(object):
     def __init__(self):
-        self.label = "4. Check Pier Numbers between Civil and GIS Tables"
-        self.description = "Check Pier Numbers between Civil and GIS Tables"
+        self.label = "4. Check Pier Numbers between Civil, GIS Portal, and RAP ML"
+        self.description = "Check Pier Numbers between Civil, GIS Portal, and RAP ML"
 
     def getParameterInfo(self):
-        gis_viaduct_dir = arcpy.Parameter(
+        pier_tracker_dir = arcpy.Parameter(
             displayName = "N2 GIS Pier Tracker Masterlist Storage Directory",
             name = "N2 GIS Pier Tracker Masterlist Storage Directory",
             datatype = "DEWorkspace",
@@ -685,29 +724,29 @@ class CheckPierNumbers(object):
         )
 
         gis_viaduct_ms = arcpy.Parameter(
-            displayName = "GIS N2 Viaduct Portal (Excel)",
-            name = "GIS N2 Viaduct Portal (Excel)",
+            displayName = "GIS N2 Viaduct ML (Excel)",
+            name = "GIS N2 Viaduct ML (Excel)",
             datatype = "DEFile",
             parameterType = "Required",
             direction = "Input"
         )
 
         gis_pier_tracker_ms = arcpy.Parameter(
-            displayName = "GIS Pier Workable Tracker ML (Excel)",
-            name = "GIS Pier Workable Tracker ML (Excel)",
+            displayName = "N2 Pier Workable Tracker ML (Excel)",
+            name = "N2 Pier Workable Tracker ML (Excel)",
             datatype = "DEFile",
             parameterType = "Required",
             direction = "Input"
         )
 
-        params = [gis_viaduct_dir, civil_workable_ms, gis_viaduct_ms, gis_pier_tracker_ms]
+        params = [pier_tracker_dir, civil_workable_ms, gis_viaduct_ms, gis_pier_tracker_ms]
         return params
 
     def updateMessages(self, params):
         return
 
     def execute(self, params, messages):
-        gis_via_dir = params[0].valueAsText
+        pier_tracker_dir = params[0].valueAsText
         civil_workable_ms = params[1].valueAsText
         gis_viaduct_ms = params[2].valueAsText
         gis_pier_tracker_ms = params[3].valueAsText
@@ -737,49 +776,97 @@ class CheckPierNumbers(object):
             unique_id_field = 'uniqueID'
             pier_num_field_c = 'Pier No. (P)'
 
+            summary_folder = '99-Summary_Statistics'
+
             cps = ['N-01','N-02','N-03']
+
+            compile_all = pd.DataFrame()
             for cp in cps:
                 arcpy.AddMessage("Contract Package: " + cp)
+                compile_t = pd.DataFrame()
+
+                cols = ['CP',
+                        'PierNumber_civil',
+                        'PierNumber_gisportal',
+                        'PierNumber_pierTracker',
+                        'Diff_Civil_vs_GISportal',
+                        'Non-matched_piers_Civil_vs_GISportal',
+                        'Diff_Civil_vs_PierTracker',
+                        'Non-matched_piers_Civil_vs_PierTracker',
+                        'Diff_GISportal_vs_PierTracker',
+                        'Non-matched_piers_GISportal_vs_PierTracker'
+                        ]
 
                 #1. Read table
-                ## N2 Viaduct
+                ## N2 Viaduct portal
                 portal_t = pd.read_excel(gis_viaduct_ms)
                 ids = portal_t.index[(portal_t[cp_field] == cp) & (portal_t[type_field] == 2)]
                 portal_t = portal_t.loc[ids, [pier_num_field, unique_id_field]].reset_index(drop=True)
                 gis_piers = portal_t[pier_num_field].values
                 
                 ## N2 Civil ML
+                new_cols = ['PierNumber', 'CP', 'util1', 'util2', 'Others', 'Workability']
                 civil_t = pd.read_excel(civil_workable_ms, skiprows=2)
-                civil_piers = civil_t[pier_num_field_c].values
+                ids = civil_t.columns[civil_t.columns.str.contains(r'^Pier No.*|Contract P.*|^Name of Utilities|^Others|^Pile Cap Workable.*',regex=True,na=False)]
+                civil_t = civil_t.loc[:, ids]
+                for i, col in enumerate(ids):
+                    civil_t = civil_t.rename(columns={col: new_cols[i]})
+
+                civil_t[cp_field] = civil_t[cp_field].str.replace(r'/.*','',regex=True)
+                civil_t[cp_field] = civil_t[cp_field].str.replace(r'CPN','N-',regex=True)
+                civil_t = civil_t.query(f"{cp_field} == '{cp}'").reset_index(drop=True)
+                arcpy.AddMessage(civil_t.head())
+                
+                arcpy.AddMessage(civil_t[pier_num_field])
+                civil_piers = civil_t[pier_num_field].values
                 
                 ## Pier Workable Tracker (GIS Team prepared)
                 pier_track_t = pd.read_excel(gis_pier_tracker_ms, sheet_name=cp)
-                pier_track_t = pier_track_t.loc[1:, [pier_num_field, unique_id_field]]
+                idx = pier_track_t.iloc[:, 0].index[pier_track_t.iloc[:, 0].str.contains(r'PierNumber',regex=True,na=False)]
+                pier_track_t = pier_track_t.drop(idx).reset_index(drop=True)
+                pier_track_t = pier_track_t.rename(columns={pier_track_t.columns[0]: pier_num_field}) 
                 tracker_piers = pier_track_t[pier_num_field].values
-                
-                #2. Check PierNumber (N2 Viaduct ML and N2 Civil Workable Pier ML)
-                arcpy.AddMessage('Compare Pier Numbers between N2 Viaduct ML and N2 Civil Workable Pier ML')
-                x_piers = [e for e in gis_piers if e not in civil_piers]
-                if (len(x_piers) > 0):
-                    arcpy.AddMessage("The following pier numbers do not match: ", x_piers)
+
+                # 2. Comparing
+                compile_t.loc[0, cols[0]] = cp
+
+                ## 2.1. Civil vs GIS Portal
+                compile_t.loc[0, cols[1]] = len(civil_piers)
+                compile_t.loc[0, cols[2]] = len(gis_piers)
+                compile_t.loc[0, cols[4]] = compile_t.loc[0, cols[1]] - compile_t.loc[0, cols[2]]
+                nonmatch_piers = [e for e in civil_piers if e not in gis_piers]
+                if len(nonmatch_piers) > 0:
+                    compile_t.loc[0, cols[5]] = nonmatch_piers
                 else:
-                    arcpy.AddMessage("No Problem! All pier numbers match!")
-                
-                #3. Check PierNumber (N2 Viaduct ML and N2 Pier Workable Tracker)
-                arcpy.AddMessage('Compare Pier Numbers between N2 Viaduct ML and N2 Pier Workable Tracker')
-                x_piers = [e for e in gis_piers if e not in tracker_piers]
-                if (len(x_piers) > 0):
-                    arcpy.AddMessage("The following pier numbers do not match: ", x_piers)
+                    compile_t.loc[0, cols[5]] = np.nan
+
+                ## 2.2. Civil vs Pier Tracker
+                compile_t.loc[0, cols[3]] = len(tracker_piers)
+                compile_t.loc[0, cols[6]] = compile_t.loc[0, cols[1]] - compile_t.loc[0, cols[3]]
+                nonmatch_piers = [e for e in civil_piers if e not in tracker_piers]
+                if len(nonmatch_piers) > 0:
+                    compile_t.loc[0, cols[7]] = nonmatch_piers
                 else:
-                    arcpy.AddMessage("No Problem! All pier numbers match!")
-                
-                #4. Check PierNumber (N2 Civil Workable Pier ML and N2 Pier Workable Tracker)
-                arcpy.AddMessage('Compare Pier Numbers between N2 Civil Workable Pier ML and N2 Pier Workable Tracker')
-                x_piers = [e for e in tracker_piers if e not in civil_piers]
-                if (len(x_piers) > 0):
-                    arcpy.AddMessage("The following pier numbers do not match: ", x_piers)
+                    compile_t.loc[0, cols[7]] = np.nan
+
+                ## 2.3. GIS Portal vs Pier Tracker
+                compile_t.loc[0, cols[8]] = compile_t.loc[0, cols[2]] - compile_t.loc[0, cols[3]]
+                nonmatch_piers = [e for e in gis_piers if e not in tracker_piers]
+                if len(nonmatch_piers) > 0:
+                    compile_t.loc[0, cols[9]] = nonmatch_piers
                 else:
-                    arcpy.AddMessage("No Problem! All pier numbers match!")
+                    compile_t.loc[0, cols[9]] = np.nan
+
+                # Compile cps
+                compile_all = pd.concat([compile_all, compile_t])
+                compile_all = compile_all.loc[:, cols]
+                arcpy.AddMessage("Table of Non-Matched Piers:")
+                arcpy.AddMessage(compile_all)
+            
+            # Export
+            compile_all.to_excel(os.path.join(pier_tracker_dir, summary_folder,
+                                              '99-N2_PierNumber_Match_Summary_by_CP_Civil_GISportal_pierTracker.xlsx'),
+                                              index=False)
 
         Workable_Pier_Table_Update()
 

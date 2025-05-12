@@ -424,15 +424,20 @@ class UpdatePierWorkableTrackerML(object):
             ## Identify piers with inconsistent information
             ### Land
             #### 'Land.1' field 
-            need_to_check_land = comp_table2.loc[:, [pier_num_field, cp_field, land_field, land1_field]].query(f"((~{land_field}.isna()) & (`{land1_field}`.isna())) | (({land_field}.isna()) & (~`{land1_field}`.isna()))")
-            need_to_check_land.to_excel(os.path.join(pier_workablet_dir, summary_stats_folder, '99-N2_Land_Obstruction_Civil_vs_RAP.xlsx'), index=False)
+            error_land_t = comp_table2.loc[:, [pier_num_field, cp_field, workability_field, land_field, land1_field]].query(f"((~{land_field}.isna()) & (`{land1_field}`.isna())) | (({land_field}.isna()) & (~`{land1_field}`.isna()))")
+            error_land_t.to_excel(os.path.join(pier_workablet_dir, summary_stats_folder, '99-N2_Land_Obstruction_Civil_vs_RAP.xlsx'), index=False)
+            
+            comp_table2['error_land'] = np.nan
+            ids = comp_table2.index[comp_table2[pier_num_field].isin(error_land_t[pier_num_field])]
+            comp_table2.loc[ids, 'error_land'] = 1
 
             ### Structure
-            need_to_check_struc = comp_table2.loc[:, [pier_num_field, cp_field, struc_field, struc1_field]].query(f"((~{struc_field}.isna()) & (`{struc1_field}`.isna())) | (({struc_field}.isna()) & (~`{struc1_field}`.isna()))")
+            error_struc_t = comp_table2.loc[:, [pier_num_field, cp_field, workability_field, struc_field, struc1_field]].query(f"((~{struc_field}.isna()) & (`{struc1_field}`.isna())) | (({struc_field}.isna()) & (~`{struc1_field}`.isna()))")
+            error_struc_t.to_excel(os.path.join(pier_workablet_dir, summary_stats_folder, '99-N2_Structure_Obstruction_Civil_vs_RAP.xlsx'), index=False)
 
-            need_to_check_struc.to_excel(os.path.join(pier_workablet_dir, summary_stats_folder, '99-N2_Structure_Obstruction_Civil_vs_RAP.xlsx'), index=False)
-
-            # inconsis_t = comp_table2.loc[ids_all, [pier_num_field, unique_id_field, land_field, land1_field, struc_field, struc1_field ]]
+            comp_table2['error_struc'] = np.nan
+            ids = comp_table2.index[comp_table2[pier_num_field].isin(error_struc_t[pier_num_field])]
+            comp_table2.loc[ids, 'error_struc'] = 1
 
             # Export as a new tracker
             to_excel_file0 = os.path.join(pier_workablet_dir, os.path.basename(pier_tracker_table))

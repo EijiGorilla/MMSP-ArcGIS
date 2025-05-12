@@ -238,6 +238,8 @@ class UpdatePierWorkableTrackerML(object):
             pier_num_field_c = 'Pier No. (P)'
             util_obstruc_field = 'Utility'
 
+            summary_stats_folder = '99-Summary_Statistics'
+
             #**************************************************************************************************#
             #*********************  Update Pier Workable Tracker ML using Civil Team's ML *********************#
             #**************************************************************************************************#
@@ -258,10 +260,9 @@ class UpdatePierWorkableTrackerML(object):
             civil_t.loc[ids, util_obstruc_field] = 1
             civil_t = civil_t.drop([new_cols[2],new_cols[3]], axis=1)
 
-            ## Convert non-numeric value for 'Others' to numeric (null or '1')
-            idx = civil_t.index[civil_t[new_cols[4]].notna()]
+            ## 'Others' 
+            idx = civil_t.index[~civil_t[new_cols[4]].isna()]
             civil_t.loc[idx, new_cols[4]] = 1
-            # civil_t[new_cols[4]] = civil_t[new_cols[4]].astype(int)
 
             ## Change labels for Workability (No = Non-workable, Yes = Workable)
             ids = civil_t.index[civil_t[new_cols[5]] == 'Yes']
@@ -292,7 +293,12 @@ class UpdatePierWorkableTrackerML(object):
                 ## Merge civil pier workability ML to GIS N2 Pier Workability Tracker
                 gis_tracker = pd.read_excel(pier_tracker_table, sheet_name = cp)
                 idx = gis_tracker.iloc[:, 0].index[gis_tracker.iloc[:, 0].str.contains(r'PierNumber',regex=True,na=False)]
-                gis_tracker = gis_tracker.drop(idx).reset_index(drop=True)
+                # When you have two rows until the first observation
+                if len(idx) > 0:
+                    for i, col in enumerate(tracker_fields_ordered):
+                        gis_tracker = gis_tracker.rename(columns={gis_tracker.columns[i]: col})
+                    col_ids = gis_tracker.columns.get_loc(f"{struc1_field}")
+                    gis_tracker = gis_tracker.drop(idx).reset_index(drop=True).iloc[:, :col_ids+1]
 
                 gis_tracker = gis_tracker.loc[:, [pier_num_field,
                                                 type_field,
@@ -375,6 +381,10 @@ class UpdatePierWorkableTrackerML(object):
                 rap_t[land1_field] = rap_t[land1_field].str.replace(r',,,',',',regex=True)
                 rap_t[land1_field] = rap_t[land1_field].str.replace(r',$','',regex=True)
                 rap_t[land1_field] = rap_t[land1_field].str.replace(r'nan','',regex=True)
+                rap_t[land1_field] = rap_t[land1_field].str.lstrip(',') # remove leading comma
+
+                ids = rap_t.index[rap_t[land1_field] == '']
+                rap_t.loc[ids, land1_field] = np.nan
 
                 ## Fix format for struc1_field
                 rap_t[struc1_field] = rap_t[struc1_field].astype(str)
@@ -388,8 +398,11 @@ class UpdatePierWorkableTrackerML(object):
                 rap_t[struc1_field] = rap_t[struc1_field].str.replace(r'MCRP--','MCRP-',regex=True)
                 rap_t[struc1_field] = rap_t[struc1_field].str.replace(r'MCRO','MCRP',regex=True)
                 rap_t[struc1_field] = rap_t[struc1_field].str.replace(r'nan','',regex=True)
+                rap_t[struc1_field] = rap_t[struc1_field].str.lstrip(',') # remove leading comma
                 
-                           
+                ids = rap_t.index[rap_t[struc1_field] == '']
+                rap_t.loc[ids, struc1_field] = np.nan
+
                 ### 2. Update Pier Tracker ML
                 #### Remove column names to be merged from the RAP Team
                 comp_table_temp = comp_table.loc[:, [pier_num_field,
@@ -405,25 +418,19 @@ class UpdatePierWorkableTrackerML(object):
                 merged_table = pd.merge(left=comp_table_temp, right=rap_t, how='left', on=pier_num_field)
                 merged_table = merged_table.loc[:, tracker_fields_ordered]
                 comp_table2 = pd.concat([comp_table2, merged_table], ignore_index=False).reset_index(drop=True)
-                # comp_table2[land1_field] = comp_table2[land1_field].astype(str)
-                # comp_table2[struc1_field] = comp_table2[struc1_field].astype(str)
 
             ##################### Check consistency between Civil ML and RAP ML ###############################
             ## When obstruction is present (e.g., 'Land' = 1), there should be obstructing lot IDs. 
             ## Identify piers with inconsistent information
             ### Land
-            ids1 = comp_table2.index[((comp_table2[land_field].isna()) & (comp_table2[land1_field].notna())) |
-                                     ((comp_table2[land_field].notna()) & (comp_table2[land1_field].isna()))]
-            x_piers = comp_table2.loc[ids1, pier_num_field].values
-            if len(x_piers) > 0:
-                comp_table2.loc[ids1, [pier_num_field, land_field, land1_field]].to_excel(os.path.join(pier_workablet_dir, '99-Summary_Statistics', '99-N2_Land_Obstruction_Civil_vs_RAP.xlsx'), index=False)
+            #### 'Land.1' field 
+            need_to_check_land = comp_table2.loc[:, [pier_num_field, cp_field, land_field, land1_field]].query(f"((~{land_field}.isna()) & (`{land1_field}`.isna())) | (({land_field}.isna()) & (~`{land1_field}`.isna()))")
+            need_to_check_land.to_excel(os.path.join(pier_workablet_dir, summary_stats_folder, '99-N2_Land_Obstruction_Civil_vs_RAP.xlsx'), index=False)
 
             ### Structure
-            ids1 = comp_table2.index[((comp_table2[struc_field].isnull()) & (comp_table2[struc1_field].notna())) |
-                                     ((comp_table2[struc_field].notnull()) & (comp_table2[struc1_field].isna()))]
-            x_piers = comp_table2.loc[ids1, pier_num_field].values
-            if len(x_piers) > 0:
-                comp_table2.loc[ids1, [pier_num_field, struc_field, struc1_field]].to_excel(os.path.join(pier_workablet_dir, '99-Summary_Statistics', '99-N2_Structure_Obstruction_Civil_vs_RAP.xlsx'), index=False)
+            need_to_check_struc = comp_table2.loc[:, [pier_num_field, cp_field, struc_field, struc1_field]].query(f"((~{struc_field}.isna()) & (`{struc1_field}`.isna())) | (({struc_field}.isna()) & (~`{struc1_field}`.isna()))")
+
+            need_to_check_struc.to_excel(os.path.join(pier_workablet_dir, summary_stats_folder, '99-N2_Structure_Obstruction_Civil_vs_RAP.xlsx'), index=False)
 
             # inconsis_t = comp_table2.loc[ids_all, [pier_num_field, unique_id_field, land_field, land1_field, struc_field, struc1_field ]]
 
@@ -703,7 +710,7 @@ class UpdateWorkablePierLayer(object):
 
 class CheckPierNumbers(object):
     def __init__(self):
-        self.label = "4. Check Pier Numbers between Civil, GIS Portal, and RAP ML"
+        self.label = "0. Check Pier Numbers between Civil, GIS Portal, and RAP ML"
         self.description = "Check Pier Numbers between Civil, GIS Portal, and RAP ML"
 
     def getParameterInfo(self):

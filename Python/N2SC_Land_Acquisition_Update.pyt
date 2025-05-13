@@ -1587,11 +1587,17 @@ class N2UpdateWorkablePierLandTable(object):
                 ### Important to note that when a pier and lots obstruction ids cross between two cps,
                 ### it is not possible to properly assign obstruction ('yes' or 'no') to these LotIDs.
                 ### Simply assign the following non-matched LotIDs to 'Yes' in the obstruction field. 
-                sum_lot.loc[0,sum_cols[6]] = ",".join(non_match_elements(x_lot_ids,y_lot_ids))
-                non_matched_lot_ids.append(non_match_elements(x_lot_ids,y_lot_ids))
+                non_matched_elms = non_match_elements(x_lot_ids,y_lot_ids)
+                sum_lot.loc[0,sum_cols[6]] = ",".join(non_matched_elms)
+                non_matched_lot_ids.append(non_matched_elms)               
                 tnon_matched_lot_ids.append(pd.Series(non_matched_lot_ids)[0]) # pd.Series removes nested list
 
                 sum_lot.loc[0,sum_cols[7]] = ",".join(non_match_elements(x_lot_ids,y_lot_portal_ids))
+
+                ### Add remarks for manually assigned LotIDs due to the problem mentioned above.
+                sum_lot['Remark'] = np.nan
+                if len(non_matched_elms) > 0:
+                    sum_lot['Remark'] = f"**{non_matched_elms} were manually assigned 'Yes' in the Obstruction field of GIS_N2_Land_ML.xlsx."
                 sum_lot_compile = pd.concat([sum_lot_compile, sum_lot], ignore_index=False)
 
             #################################################################################
@@ -1608,28 +1614,25 @@ class N2UpdateWorkablePierLandTable(object):
             gis_lot_misst[obstruc_field] = 'No'
             compile_land = pd.concat([compile_land, gis_lot_misst]).reset_index(drop=True)
 
-            # Assign non-matched lot ids (overlapping CPs and piers) to 'Yes' in the Obstruction field
+            # Manually Assign non-matched lot ids (overlapping CPs and piers) to 'Yes' in the Obstruction field
             # non_matched_lot_ids = flatten_extend(non_matched_lot_ids)
             arcpy.AddMessage(f"The following non-matched LotIDs were assigned to 'Yes' in the Obstruction field separately due to the associated overlapping piers and cps")
             arcpy.AddMessage(unlist_brackets(tnon_matched_lot_ids))
             ids = compile_land.index[compile_land[lot_id_field].isin(unlist_brackets(tnon_matched_lot_ids))]
-            rem_lot_ids_summary = compile_land.loc[ids, ]
             compile_land.loc[ids, obstruc_field] = 'Yes'
 
             # Finally export
             compile_land.to_excel(os.path.join(gis_rap_dir, os.path.basename(gis_lot_ms)), index=False)
 
             ## Export summary table
-            ### Before export, remove LotIDs manually assigned 'Yes' to the Obstruction field above
-
             sum_lot_compile.to_excel(os.path.join(gis_via_dir, summary_folder, '99-N2_Non-Matched_Obstruction_for_Land_RAP_vs_GIS.xlsx'), sheet_name='Land', index=False)
 
         Obstruction_Land_ML_Update()
 
 class N2UpdateWorkablePierStructureTable(object):
     def __init__(self):
-        self.label = "1.6.1 (N2) Add Obstruction to Excel Master List (Structure)"
-        self.description = "(N2) Add Obstruction to Excel Master List (Structure)"
+        self.label = "1.6.1 (N2) Add Obstruction to Excel Master List (Structure/NLO)"
+        self.description = "(N2) Add Obstruction to Excel Master List (Structure/NLO)"
 
     def getParameterInfo(self):
         gis_rap_dir = arcpy.Parameter(

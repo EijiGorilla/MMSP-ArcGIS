@@ -381,7 +381,9 @@ class UpdatePierWorkableTrackerML(object):
                 rap_t[land1_field] = rap_t[land1_field].str.replace(r',,,',',',regex=True)
                 rap_t[land1_field] = rap_t[land1_field].str.replace(r',$','',regex=True)
                 rap_t[land1_field] = rap_t[land1_field].str.replace(r'nan','',regex=True)
+                rap_t[land1_field] = rap_t[land1_field].str.replace(r'\s+','',regex=True)
                 rap_t[land1_field] = rap_t[land1_field].str.lstrip(',') # remove leading comma
+                rap_t[land1_field] = rap_t[land1_field].str.rstrip(',') # remove leading comma
 
                 ids = rap_t.index[rap_t[land1_field] == '']
                 rap_t.loc[ids, land1_field] = np.nan
@@ -398,7 +400,9 @@ class UpdatePierWorkableTrackerML(object):
                 rap_t[struc1_field] = rap_t[struc1_field].str.replace(r'MCRP--','MCRP-',regex=True)
                 rap_t[struc1_field] = rap_t[struc1_field].str.replace(r'MCRO','MCRP',regex=True)
                 rap_t[struc1_field] = rap_t[struc1_field].str.replace(r'nan','',regex=True)
+                rap_t[struc1_field] = rap_t[struc1_field].str.replace(r'\s+','',regex=True)
                 rap_t[struc1_field] = rap_t[struc1_field].str.lstrip(',') # remove leading comma
+                rap_t[struc1_field] = rap_t[struc1_field].str.rstrip(',') # remove leading comma
                 
                 ids = rap_t.index[rap_t[struc1_field] == '']
                 rap_t.loc[ids, struc1_field] = np.nan
@@ -591,6 +595,8 @@ class UpdateWorkablePierLayer(object):
                             row[5] = 1
                             row[6] = 1
                         cursor.updateRow(row)
+                
+                arcpy.AddMessage('Finished entering for workable piers with incomplete construction of pile cap.')
 
                 # Empty cell for AllWorkable = 0 (non-workable)
                 with arcpy.da.UpdateCursor(gis_workable_layer, [pier_number_field,'AllWorkable',cp_field]) as cursor:
@@ -647,14 +653,12 @@ class UpdateWorkablePierLayer(object):
                 c_t2 = pier_tracker_t.loc[ids_nonna, ]
                 ids = c_t2.index[c_t2[struc_obstrucid_field].notna()]
                 c_t2 = c_t2.loc[ids, ]
-                arcpy.AddMessage(c_t2)
-
+ 
                 ### 2.3.2. identify any NLOs falling under the identified non-workable structures
                 nlo_obstruc_piers = []
                 for i in c_t2.index:
                     obstruc_struc_ids = c_t2.loc[i, struc_obstrucid_field]
                     # obstruc_struc_ids = obstruc_struc_ids[~np.isnan(obstruc_struc_ids)]
-                    arcpy.AddMessage(obstruc_struc_ids)
                     test = [e for e in gis_nlo_t[struc_id_field] if e in obstruc_struc_ids.split(',')]
                     
                     if len(test) > 0:

@@ -1485,6 +1485,12 @@ class N2UpdateWorkablePierLandTable(object):
                     flat_list.extend(row)
                 return flat_list
             
+            def remove_empty_strings(string_list):
+                return [string for string in string_list if string]
+            
+            def unlist_brackets(nested_list): ## Remove nested list in a list
+                return [item for sublist in nested_list for item in sublist]
+            
             def unique(lists):
                 collect = []
                 unique_list = pd.Series(lists).drop_duplicates().tolist()
@@ -1509,6 +1515,7 @@ class N2UpdateWorkablePierLandTable(object):
             # 1. Clean fields
             compile_land = pd.DataFrame()
             sum_lot_compile = pd.DataFrame()
+            tnon_matched_lot_ids = []
 
             cps = ['N-01','N-02','N-03']
             for i, cp in enumerate(cps):
@@ -1525,14 +1532,17 @@ class N2UpdateWorkablePierLandTable(object):
                 ### 1. Land
                 pier_wtracker_t = pier_wtracker_t.dropna(subset=[land1_field]).reset_index(drop=True)
                 pier_wtracker_t[land1_field] = pier_wtracker_t[land1_field].astype(str)
-                lot_ids = flatten_extend(pier_wtracker_t[land1_field].str.split(','))                
+                pier_wtracker_t[land1_field] = pier_wtracker_t[land1_field].str.lstrip(',')
+                lot_ids = flatten_extend(pier_wtracker_t[land1_field].str.split(','))          
                 x_lot_ids = unique(lot_ids)
+                x_lot_ids = remove_empty_strings(x_lot_ids)  
+                # arcpy.AddMessage(x_lot_ids)
 
                 ## Remove some
-                id_drop = np.where(x_lot_ids == '')
-                x_lot_ids = np.delete(x_lot_ids, id_drop)
-                id_drop = np.where(x_lot_ids == ' ')
-                x_lot_ids = np.delete(x_lot_ids, id_drop)
+                # id_drop = np.where(x_lot_ids == '')[0]
+                # x_lot_ids = np.delete(x_lot_ids, id_drop)
+                # id_drop = np.where(x_lot_ids == ' ')[0]
+                # x_lot_ids = np.delete(x_lot_ids, id_drop)
                 # arcpy.AddMessage(x_lot_ids)
 
                 ### Add these obstructing LotIDs to GIS Structure master list
@@ -1579,6 +1589,7 @@ class N2UpdateWorkablePierLandTable(object):
                 ### Simply assign the following non-matched LotIDs to 'Yes' in the obstruction field. 
                 sum_lot.loc[0,sum_cols[6]] = ",".join(non_match_elements(x_lot_ids,y_lot_ids))
                 non_matched_lot_ids.append(non_match_elements(x_lot_ids,y_lot_ids))
+                tnon_matched_lot_ids.append(pd.Series(non_matched_lot_ids)[0]) # pd.Series removes nested list
 
                 sum_lot.loc[0,sum_cols[7]] = ",".join(non_match_elements(x_lot_ids,y_lot_portal_ids))
                 sum_lot_compile = pd.concat([sum_lot_compile, sum_lot], ignore_index=False)
@@ -1586,27 +1597,31 @@ class N2UpdateWorkablePierLandTable(object):
             #################################################################################
             ### Overwrite existing GIS_Lot_ML and GIS_Structure_ML with the updated tables ##
             #################################################################################
-            ##### N-04 & N-05
+            ##### Add missing CPs (N-04 & N-05) to the compiled table
             # gis_lot_tn04 = gis_lot_table.query(f"{cp_field} in ('N-04', 'N-05')")
             compile_cps = unique(compile_land[cp_field])
             gis_cps = unique(gis_lot_table[cp_field])
+ 
             miss_cp = tuple(non_match_elements(gis_cps, compile_cps))
             # arcpy.AddMessage(miss_cp)
-            if len(miss_cp) > 0:
-                gis_lot_misst = gis_lot_table.query(f"{cp_field} in {miss_cp}")
-                gis_lot_misst[obstruc_field] = 'No'
-                compile_land = pd.concat([compile_land, gis_lot_misst])
+            gis_lot_misst = gis_lot_table.query(f"{cp_field} in {miss_cp}")
+            gis_lot_misst[obstruc_field] = 'No'
+            compile_land = pd.concat([compile_land, gis_lot_misst]).reset_index(drop=True)
 
             # Assign non-matched lot ids (overlapping CPs and piers) to 'Yes' in the Obstruction field
-            non_matched_lot_ids = flatten_extend(non_matched_lot_ids)
+            # non_matched_lot_ids = flatten_extend(non_matched_lot_ids)
             arcpy.AddMessage(f"The following non-matched LotIDs were assigned to 'Yes' in the Obstruction field separately due to the associated overlapping piers and cps")
-            ids = compile_land.index[compile_land[lot_id_field].isin(non_matched_lot_ids)]
+            arcpy.AddMessage(unlist_brackets(tnon_matched_lot_ids))
+            ids = compile_land.index[compile_land[lot_id_field].isin(unlist_brackets(tnon_matched_lot_ids))]
+            rem_lot_ids_summary = compile_land.loc[ids, ]
             compile_land.loc[ids, obstruc_field] = 'Yes'
 
             # Finally export
             compile_land.to_excel(os.path.join(gis_rap_dir, os.path.basename(gis_lot_ms)), index=False)
 
             ## Export summary table
+            ### Before export, remove LotIDs manually assigned 'Yes' to the Obstruction field above
+
             sum_lot_compile.to_excel(os.path.join(gis_via_dir, summary_folder, '99-N2_Non-Matched_Obstruction_for_Land_RAP_vs_GIS.xlsx'), sheet_name='Land', index=False)
 
         Obstruction_Land_ML_Update()
@@ -1697,6 +1712,12 @@ class N2UpdateWorkablePierStructureTable(object):
                     flat_list.extend(row)
                 return flat_list
             
+            def remove_empty_strings(string_list):
+                return [string for string in string_list if string]
+            
+            def unlist_brackets(nested_list): ## Remove nested list in a list
+                return [item for sublist in nested_list for item in sublist]
+            
             def unique(lists):
                 collect = []
                 unique_list = pd.Series(lists).drop_duplicates().tolist()
@@ -1726,6 +1747,7 @@ class N2UpdateWorkablePierStructureTable(object):
             compile_struc = pd.DataFrame()
             compile_nlo = pd.DataFrame()
             sum_struc_compile = pd.DataFrame()
+            tnon_matched_struc_ids = []
             cps = ['N-01','N-02','N-03']
 
             for i, cp in enumerate(cps):
@@ -1745,14 +1767,15 @@ class N2UpdateWorkablePierStructureTable(object):
                 pier_wtracker_t[struc1_field] = pier_wtracker_t[struc1_field].astype(str)
                 struc_ids = flatten_extend(pier_wtracker_t[struc1_field].str.split(","))
                 x_struc_ids = unique(struc_ids)
+                x_struc_ids = remove_empty_strings(x_struc_ids)  
 
                 ## Remove some
-                id_drop = np.where(x_struc_ids == '')
-                x_struc_ids = np.delete(x_struc_ids, id_drop)
-                id_drop = np.where(x_struc_ids == ' ')
-                x_struc_ids = np.delete(x_struc_ids, id_drop)
+                # id_drop = np.where(x_struc_ids == '')
+                # x_struc_ids = np.delete(x_struc_ids, id_drop)
+                # id_drop = np.where(x_struc_ids == ' ')
+                # x_struc_ids = np.delete(x_struc_ids, id_drop)
   
-                ### Add these obstructing LotIDs to GIS Structure master list
+                ### Add these obstructing StrucIDs to GIS Structure master list
                 #### First, reset 'obstruction' field
                 gis_struc_t[obstruc_field] = np.nan
                 idcp = gis_struc_t.index[gis_struc_t[cp_field] == cp]
@@ -1761,6 +1784,13 @@ class N2UpdateWorkablePierStructureTable(object):
                 ids = gis_struc_t.loc[idcp, ].index[gis_struc_t.loc[idcp, struc_id_field].isin(x_struc_ids)]
                 y_struc_ids = gis_struc_t.loc[ids, struc_id_field].values
                 gis_struc_t.loc[ids, obstruc_field] = 'Yes'
+
+                #### Check if x_struc_ids match StrucIDs in N2_Structure_ML.xlsx
+                # ids = gis_struc_t.index[gis_struc_t[obstruc_field] == 'Yes']
+                # gis_struc_ids = gis_struc_t.loc[ids, struc_id_field].values
+                # # arcpy.AddMessage(gis_struc_ids)
+                # unmatched_struc_ids = non_match_elements(x_struc_ids, gis_struc_ids)
+                # arcpy.AddMessage(unmatched_struc_ids)
 
                 # #### Extract obstructing LotIDs from the GIS Attribute table (GIS_portal)
                 idcp = gis_struc_portal_t.index[gis_struc_portal_t[cp_field] == cp]
@@ -1777,11 +1807,27 @@ class N2UpdateWorkablePierStructureTable(object):
                 ids = gis_nlo_t.loc[idcp, ].index[gis_nlo_t.loc[idcp, struc_id_field].isin(x_struc_ids)]
                 gis_nlo_t.loc[ids, obstruc_field] = 'Yes'
 
-                ### 3. Compile for cps
+                ### 3. Check obstructing StrucIDS between NLO and Structure GIS master list
+                ids = gis_struc_t.index[gis_struc_t[obstruc_field] == 'Yes']
+                gis_struc_ids = gis_struc_t.loc[ids, struc_id_field].values
+
+                ids = gis_nlo_t.index[gis_nlo_t[obstruc_field] == 'Yes']
+                gis_nlo_ids = unique(gis_nlo_t.loc[ids, struc_id_field])    
+                unmatched_struc_ids = non_match_elements(gis_nlo_ids, gis_struc_ids)
+                arcpy.AddMessage(f"Any obstructing StrucIDs in the NLO ML that do not exist in the structure ML for {cp}?")
+                if len(unmatched_struc_ids) > 0:
+                    arcpy.AddMessage('Yes, you have the following unmatched obstructing StrucIDs between these master list tables.')
+                    arcpy.AddMessage(unmatched_struc_ids)
+                    arcpy.AddMessage('Please ensure that these unmatched StrucIDs share the same information on CP.')
+                else:
+                    arcpy.AddMessage('No, everything is fine.')
+
+                ### 4. Compile for cps
                 compile_struc = pd.concat([compile_struc, gis_struc_t])
                 compile_nlo = pd.concat([compile_nlo, gis_nlo_t])
 
                 ######################################## Summary Stats ###################################
+                non_matched_struc_ids = []
                 sum_struc = pd.DataFrame()
                 sum_cols = ['CP',
                             'Civil',
@@ -1800,6 +1846,9 @@ class N2UpdateWorkablePierStructureTable(object):
 
                 # Identify unmatched obstructing LotIDs in reference to the civil table
                 sum_struc.loc[0,sum_cols[6]] = ",".join(non_match_elements(x_struc_ids, y_struc_ids))
+                non_matched_struc_ids.append(non_match_elements(x_struc_ids,y_struc_ids))
+                tnon_matched_struc_ids.append(pd.Series(non_matched_struc_ids)[0])
+                                            
                 sum_struc.loc[0,sum_cols[7]] = ",".join(non_match_elements(x_struc_ids, y_struc_portal_ids))
                 sum_struc_compile = pd.concat([sum_struc_compile, sum_struc], ignore_index=False)
 
@@ -1808,27 +1857,39 @@ class N2UpdateWorkablePierStructureTable(object):
             ### Overwrite existing GIS_Lot_ML and GIS_Structure_ML with the updated tables ####
             ###################################################################################
             #### Structure
+            arcpy.AddMessage('Structure')
+            ##### Add missing CPs to compiled table
             compile_cps = unique(compile_struc[cp_field])
             gis_cps = unique(gis_struc_table[cp_field])
             miss_cp = tuple(non_match_elements(gis_cps, compile_cps))
-            arcpy.AddMessage(miss_cp)
-            if len(miss_cp) > 0:
-                gis_struc_misst = gis_struc_table.query(f"{cp_field} in {miss_cp}")
-                gis_struc_misst[obstruc_field] = 'No'
-                compile_struc = pd.concat([compile_struc, gis_struc_misst])
+            gis_struc_misst = gis_struc_table.query(f"{cp_field} in {miss_cp}")
+            gis_struc_misst[obstruc_field] = 'No'
+            compile_struc = pd.concat([compile_struc, gis_struc_misst])
+
+            #####
+            arcpy.AddMessage(f"The following non-matched StrucIDs were assigned to 'Yes' in the Obstruction field separately due to the associated overlapping piers and cps")
+            arcpy.AddMessage(unlist_brackets(tnon_matched_struc_ids))
+            ids = compile_struc.index[compile_struc[struc_id_field].isin(unlist_brackets(tnon_matched_struc_ids))]
+            compile_struc.loc[ids, obstruc_field] = 'Yes'
 
             compile_struc.to_excel(os.path.join(gis_rap_dir, os.path.basename(gis_struc_ms)), index=False) ## gis_struc
            
             #### NLO
+            arcpy.AddMessage('NLO')
+            ##### Add missing CPs to compiled table
             compile_cps = unique(compile_nlo[cp_field])
             gis_cps = unique(gis_nlo_table[cp_field])
             miss_cp = tuple(non_match_elements(gis_cps, compile_cps))
-            arcpy.AddMessage(miss_cp)
-            if len(miss_cp) > 0:
-                gis_nlo_misst = gis_nlo_table.query(f"{cp_field} in {miss_cp}")
-                gis_nlo_misst[obstruc_field] = 'No'
-                compile_nlo = pd.concat([compile_nlo, gis_nlo_misst])
-           
+            gis_nlo_misst = gis_nlo_table.query(f"{cp_field} in {miss_cp}")
+            gis_nlo_misst[obstruc_field] = 'No'
+            compile_nlo = pd.concat([compile_nlo, gis_nlo_misst])
+
+            #####
+            arcpy.AddMessage(f"The following non-matched StrucIDs were assigned to 'Yes' in the Obstruction field separately due to the associated overlapping piers and cps")
+            arcpy.AddMessage(unlist_brackets(tnon_matched_struc_ids))
+            ids = compile_nlo.index[compile_nlo[struc_id_field].isin(unlist_brackets(tnon_matched_struc_ids))]
+            compile_nlo.loc[ids, obstruc_field] = 'Yes'
+
             compile_nlo.to_excel(os.path.join(gis_rap_dir, os.path.basename(gis_nlo_ms)), index=False) ## gis_isf
 
             ## Compile SummaryStatus in one excel sheet
@@ -2629,9 +2690,7 @@ class UpdateStructureGIS(object):
             ##########################################################################
             ##### STAGE 2: Update Existing Structure (Occupancy) & Structure (ISF) ######
             ###########################################################################
-            ## Copy original feature layer
-            
-            
+            ## Copy original feature layer           
             # STAGE: 2-1. Create Structure (point) for Occupany
             ## 2-1.1. Feature to Point for Occupany
             outFeatureClassPointStruc = 'Structure_point_occupancy_temp'

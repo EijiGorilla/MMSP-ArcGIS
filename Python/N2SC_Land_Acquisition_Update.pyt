@@ -1509,9 +1509,6 @@ class N2UpdateWorkablePierLandTable(object):
             gis_lot_table = pd.read_excel(gis_lot_ms)
             gis_lot_portal_t = pd.read_excel(gis_lot_portal)
 
-            ## Summary statistics folder name
-            summary_folder = '99-Summary_Statistics'
-
             # 1. Clean fields
             compile_land = pd.DataFrame()
             sum_lot_compile = pd.DataFrame()
@@ -1625,7 +1622,7 @@ class N2UpdateWorkablePierLandTable(object):
             compile_land.to_excel(os.path.join(gis_rap_dir, os.path.basename(gis_lot_ms)), index=False)
 
             ## Export summary table
-            sum_lot_compile.to_excel(os.path.join(gis_via_dir, summary_folder, '99-N2_Non-Matched_Obstruction_for_Land_RAP_vs_GIS.xlsx'), sheet_name='Land', index=False)
+            sum_lot_compile.to_excel(os.path.join(gis_via_dir, '99-N2_Non-Matched_Obstruction_for_Land_RAP_vs_GIS.xlsx'), sheet_name='Land', index=False)
 
         Obstruction_Land_ML_Update()
 
@@ -1738,9 +1735,6 @@ class N2UpdateWorkablePierStructureTable(object):
             gis_struc_table = pd.read_excel(gis_struc_ms)
             gis_struc_portal_t = pd.read_excel(gis_struc_portal)
             gis_nlo_table = pd.read_excel(gis_nlo_ms)
-
-            ## Summary statistics folder name
-            summary_folder = '99-Summary_Statistics'
 
             # Define how obstructing lot and structure IDs are entered for each pier
             ## '\n' or ','
@@ -1896,7 +1890,7 @@ class N2UpdateWorkablePierStructureTable(object):
             compile_nlo.to_excel(os.path.join(gis_rap_dir, os.path.basename(gis_nlo_ms)), index=False) ## gis_isf
 
             ## Compile SummaryStatus in one excel sheet
-            sum_struc_compile.to_excel(os.path.join(gis_via_dir, summary_folder, '99-N2_Non-Matched_Obstruction_for_Structure_RAP_vs_GIS.xlsx'), sheet_name='Structure', index=False)
+            sum_struc_compile.to_excel(os.path.join(gis_via_dir, '99-N2_Non-Matched_Obstruction_for_Structure_RAP_vs_GIS.xlsx'), sheet_name='Structure', index=False)
 
         Obstruction_Structure_ML_Update()
 
@@ -2616,6 +2610,13 @@ class UpdateStructureGIS(object):
             with arcpy.da.SearchCursor(table, [field]) as cursor:
                 return sorted({row[0] for row in cursor if row[0] is not None})
             
+        def non_match_elements(list_a, list_b):
+            non_match = []
+            for i in list_a:
+                if i not in list_b:
+                    non_match.append(i)
+            return non_match
+                    
         def check_field_match(target_table, input_table, join_field):
             id1 =  unique_values(target_table[join_field])
             id2 = unique_values(input_table[join_field])
@@ -2631,44 +2632,24 @@ class UpdateStructureGIS(object):
 
         # 1. Copy Original Feature Layers
         join_field = 'StrucID'
-        copied_name = 'Struc_Temp'
+        Struc_Temp = 'Struc_Temp'
 
         # if there are duplicated observations in Portal and exit
         struc_ids_list = [f[0] for f in arcpy.da.SearchCursor(inStruc, [join_field])]
         dup = [x for x in struc_ids_list if struc_ids_list.count(x) > 1]
         if len(dup) == 0:
-            gis_copied = arcpy.CopyFeatures_management(inStruc, copied_name)
-                
+            # 1. Copy structure layer
+            arcpy.management.CopyFeatures(inStruc, Struc_Temp)
             arcpy.AddMessage("Stage 1: Copy feature layer was success")
                     
-            # 2. Delete Field
-            gis_fields = [f.name for f in arcpy.ListFields(gis_copied)]
-                
-            ## 2.1. Identify fields to be dropped
-            gis_drop_fields_check = [e for e in gis_fields if e not in (join_field, 'strucID','Shape','Shape_Length','Shape_Area','Shape.STArea()','Shape.STLength()','OBJECTID','GlobalID')]
-                            
-            ## 2.3. Check if there are fields to be dropped
-            gis_drop_fields = [f for f in gis_fields if f in tuple(gis_drop_fields_check)]
-                
-            arcpy.AddMessage("Stage 1: Checking for Fields to be dropped was success")
-                
-            ## 2.4 Drop               
-            if len(gis_drop_fields) == 0:
-                arcpy.AddMessage("There is no field that can be dropped from the feature layer")
-            else:
-                arcpy.DeleteField_management(gis_copied, gis_drop_fields)   
-                arcpy.AddMessage("Stage 1: Dropping Fields was success")
-                arcpy.AddMessage("Section 2 of Stage 1 was successfully implemented")
+            # 2. Fields to be dropped
+            gis_fields = [f.name for f in arcpy.ListFields(Struc_Temp)]
+            drop_fields = [e for e in gis_fields if e not in (join_field, 'strucID','Shape','Shape_Length','Shape_Area','Shape.STArea()','Shape.STLength()','OBJECTID','GlobalID')]
+            arcpy.management.DeleteField(Struc_Temp, drop_fields)   
 
             # 3. Join Field
             ## 3.1. Convert Excel tables to feature table
             struc_ml = arcpy.conversion.ExportTable(mlStruct, 'structure_ml')
-
-            # Check if StrucID match between ML and GIS
-            try:
-                check_field_match(gis_copied, struc_ml, join_field)
-            except:
-                pass
                 
             ##########################################################################
             ##### STAGE 1: Update Existing Structure Layer ######
@@ -2676,19 +2657,19 @@ class UpdateStructureGIS(object):
             ## 3.2. Gain all fields except 'StrucID'
             struc_ml_fields = [f.name for f in arcpy.ListFields(struc_ml)]
             struc_ml_transfer_fields = [e for e in struc_ml_fields if e not in (join_field, 'strucID','OBJECTID')]
-                
-            ## 3.3. Extract a Field from MasterList and Feature Layer to be used to join two tables
-            gis_join_field = ' '.join(map(str, [f for f in gis_fields if f in (join_field, 'strucID')]))
-            struc_ml_join_field = ' '.join(map(str, [f for f in struc_ml_fields if f in (join_field, 'strucID')]))
-                
+            
+            ## 3.3. Extract a Field from MasterList and Feature Layer to be used to join two tables               
             ## 3.4 Join
-            arcpy.JoinField_management(in_data=gis_copied, in_field=gis_join_field, join_table=struc_ml, join_field=struc_ml_join_field, fields=struc_ml_transfer_fields)
+            arcpy.management.JoinField(in_data=Struc_Temp, in_field=join_field, join_table=struc_ml, join_field=join_field, fields=struc_ml_transfer_fields)
 
             # 4. Trucnate
-            arcpy.TruncateTable_management(inStruc)
+            arcpy.management.TruncateTable(inStruc)
 
             # 5. Append
-            arcpy.Append_management(gis_copied, inStruc, schema_type = 'NO_TEST')
+            schemaType = "NO_TEST"
+            fieldMappings = ""
+            subtype = ""
+            arcpy.management.Append(Struc_Temp, inStruc, schemaType, fieldMappings, subtype)
 
             ##########################################################################
             ##### STAGE 2: Update Existing Structure (Occupancy) & Structure (ISF) ######
@@ -2696,17 +2677,17 @@ class UpdateStructureGIS(object):
             ## Copy original feature layer           
             # STAGE: 2-1. Create Structure (point) for Occupany
             ## 2-1.1. Feature to Point for Occupany
-            outFeatureClassPointStruc = 'Structure_point_occupancy_temp'
-            pointStruc = arcpy.FeatureToPoint_management(inStruc, outFeatureClassPointStruc, "CENTROID")
+            outFeatureClassPointStruc = 'Struc_pt_occupancy_temp'
+            pointStruc = arcpy.management.FeatureToPoint(inStruc, outFeatureClassPointStruc, "CENTROID")
             
             ## 2-1.2. Add XY Coordinates
-            arcpy.AddXY_management(pointStruc)
+            arcpy.management.AddXY(pointStruc)
             
             ## 2-1.3. Truncate original point structure layer (Occupancy)
-            arcpy.TruncateTable_management(inOccup)
+            arcpy.management.TruncateTable(inOccup)
 
             ## 2-1.4. Append to the original FL
-            arcpy.Append_management(pointStruc, inOccup, schema_type = 'NO_TEST')
+            arcpy.management.Append(pointStruc, inOccup, schema_type = 'NO_TEST')
 
             # STAGE: 2-2. Create and Update ISF Feture Layer
             ## 2-2.1. Convert ISF (Relocation excel) to Feature table
@@ -2730,7 +2711,7 @@ class UpdateStructureGIS(object):
             zCoords = "POINT_Z"
 
             # Join only 'POINT_X' and 'POINT_Y' in the 'inputLayerOccupOrigin' to 'MasterListISF'
-            arcpy.JoinField_management(in_data=MasterListISF, in_field=join_fieldISF, join_table=inOccup, join_field=in_fieldISF, fields=[xCoords, yCoords, zCoords])
+            arcpy.management.JoinField(in_data=MasterListISF, in_field=join_fieldISF, join_table=inOccup, join_field=in_fieldISF, fields=[xCoords, yCoords, zCoords])
 
             ## 2-2.3. XY Table to Points (FL)
             out_feature_class = "Status_for_Relocation_ISF_temp"
@@ -2739,7 +2720,7 @@ class UpdateStructureGIS(object):
 
             ### Delete 'POINT_X', 'POINT_Y', 'POINT_Z'; otherwise, it gives error for the next batch
             dropXYZ = [xCoords, yCoords, zCoords]
-            arcpy.DeleteField_management(outLayerISF, dropXYZ)
+            arcpy.management.DeleteField(outLayerISF, dropXYZ)
             
             ## Check if StrucIDs match between ISF excel ML and GIS point feature layer
             arcpy.AddMessage(".\n")
@@ -2749,14 +2730,14 @@ class UpdateStructureGIS(object):
                 pass
 
             ## 2-2.5. Truncate original ISF point FL
-            arcpy.TruncateTable_management(inISF)
+            arcpy.management.TruncateTable(inISF)
 
             ## 2-2.6. Append to the Original ISF
-            arcpy.Append_management(outLayerISF, inISF, schema_type = 'NO_TEST')
+            arcpy.management.Append(outLayerISF, inISF, schema_type = 'NO_TEST')
 
             # Delete the copied feature layer
-            deleteTempLayers = [gis_copied, struc_ml, pointStruc, outLayerISF, MasterListISF]
-            arcpy.Delete_management(deleteTempLayers)
+            deleteTempLayers = [Struc_Temp, struc_ml, pointStruc, outLayerISF, MasterListISF] 
+            arcpy.management.Delete(deleteTempLayers)
 
             #########################################################
             ### Export updated GIS Layers to Excel Sheet (used for summary stats and missing IDs)

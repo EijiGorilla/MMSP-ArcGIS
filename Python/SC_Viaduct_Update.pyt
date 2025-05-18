@@ -12,7 +12,8 @@ class Toolbox(object):
         self.label = "UpdateSCViaduct"
         self.alias = "UpdateSCViaduct"
         self.tools = [UpdateExcelML, UpdateGISTable, 
-                      CreateWorkablePierLayer, UpdateWorkablePierLayer,
+                      CreateWorkablePierLayer, CheckPierNumbers, 
+                      UpdateWorkablePierLayer, UpdatePierPointLayer,
                       ReSortGISTable, CheckUpdatesCivilGIS]
 
 class UpdateExcelML(object):
@@ -70,7 +71,7 @@ class UpdateExcelML(object):
     def execute(self, params, messages):
         gis_dir = params[0].valueAsText
         gis_ml = params[1].valueAsText
-        civil_dir = params[2].valueAsText
+        civil_ml = params[2].valueAsText
         gis_backup_dir = params[3].valueAsText
         lastupdate = params[4].valueAsText
 
@@ -200,16 +201,23 @@ class UpdateExcelML(object):
                 
             arcpy.AddMessage("2.")
             ## choose sheet names for each viaduct
-            temp_table = pd.ExcelFile(civil_dir)
-            sheet_names = temp_table.sheet_names
+            # temp_table = pd.ExcelFile(civil_dir)
+            sheet_names = ['BoredPile', 'PileCap', 'Pier', 'PierHead', 'Precast'] #temp_table.sheet_names
 
             # 0. Check duplicated observations in Civil Table
             dup_compile = []
             for sheet in sheet_names:
-                table = pd.read_excel(civil_dir, sheet_name=sheet)
+                table = pd.read_excel(civil_ml, sheet_name=sheet)
 
                 # Civil table often misses bored pile no, in this case, drop these piers
                 table[id_field] = np.nan
+
+                # Drop rows with empty pier numbers
+                idx = table.index[~table[civil_pier_field].isna()]
+                table = table.loc[idx, ].reset_index(drop=True)
+                table['temp'] = table[civil_pier_field].str.replace(r'[^P]','',regex=True) # Remove all letters except for 'P'
+                idx = table.index[table['temp'] != 'PP']
+                table = table.loc[idx, ]
 
                 if via_type[sheet] == 1: # only for bored piles
                     # Remove the first row with 'SAMPLE' in Remarks column
@@ -230,7 +238,6 @@ class UpdateExcelML(object):
                     table[civil_pier_field] = table[civil_pier_field].apply(lambda x: x.replace(r'P-','P'))
                     table[No_field] = table[No_field].astype(str)
                     table[id_field] = table[civil_pier_field].str.cat(table[No_field], sep = "-")
-
                     # idx = table.index[table[civil_pier_field] == 'P686']
                     # arcpy.AddMessage(table.loc[idx, id_field])
 
@@ -269,7 +276,7 @@ class UpdateExcelML(object):
                 for sheet in sheet_names:    
                     # Read sheet for each viaduct type
                     arcpy.AddMessage(sheet)
-                    civil_table = pd.read_excel(civil_dir, sheet_name=sheet)
+                    civil_table = pd.read_excel(civil_ml, sheet_name=sheet)
 
                     # Remove the first row with 'SAMPLE' in Remarks column
                     id = civil_table.index[civil_table['Remarks'] == 'SAMPLE']
@@ -284,6 +291,13 @@ class UpdateExcelML(object):
 
                     # Re-format 'P-' to 'P'
                     civil_table[civil_pier_field] = civil_table[civil_pier_field].apply(lambda x: x.replace(r'P-','P'))
+
+                    # Drop rows with empty pier numbers
+                    idx = civil_table.index[~civil_table[civil_pier_field].isna()]
+                    civil_table = civil_table.loc[idx, ].reset_index(drop=True)
+                    civil_table['temp'] = civil_table[civil_pier_field].str.replace(r'[^P]','',regex=True) # Remove all letters except for 'P'
+                    idx = civil_table.index[civil_table['temp'] != 'PP']
+                    civil_table = civil_table.loc[idx, ]
 
                     # 1. Convert to date
                     for field in date_fields:
@@ -561,6 +575,14 @@ class CreateWorkablePierLayer(object):
         self.description = "Create Pier Workable Layer"
 
     def getParameterInfo(self):
+        pier_workable_dir = arcpy.Parameter(
+            displayName = "SC GIS Pier Tracker Masterlist Storage Directory",
+            name = "SC GIS Pier Tracker Masterlist Storage Directory",
+            datatype = "DEWorkspace",
+            parameterType = "Required",
+            direction = "Input"
+        )
+
         # Input Feature Layers
         workable_pier_layer = arcpy.Parameter(
             displayName = "GIS Workable Pier Layer (Polygon)",
@@ -578,17 +600,33 @@ class CreateWorkablePierLayer(object):
             direction = "Input"
         )
 
-        params = [workable_pier_layer, via_layer]
+        pier_number_layer = arcpy.Parameter(
+            displayName = "GIS Pier Number Layer (Point)",
+            name = "GIS Pier Number Layer (Point)",
+            datatype = "GPFeatureLayer",
+            parameterType = "Optional",
+            direction = "Input"
+        )
+
+        params = [pier_workable_dir, workable_pier_layer, via_layer,pier_number_layer]
         return params
 
     def updateMessages(self, params):
         return
 
     def execute(self, params, messages):
-        workable_pier_layer = params[0].valueAsText
-        via_layer = params[1].valueAsText
+        workable_dir = params[0].valueAsText
+        workable_pier_layer = params[1].valueAsText
+        via_layer = params[2].valueAsText
+        pier_pt_layer = params[3].valueAsText
 
         arcpy.env.overwriteOutput = True
+        status_field = 'Status'
+        cp_field = 'CP'
+        pier_number_field = 'PierNumber'
+        unique_id_field = 'uniqueID'
+        type_field = 'Type'
+
         new_cols = ['AllWorkable','LandWorkable','StrucWorkable','NLOWorkable', 'UtilWorkable', 'OthersWorkable']
 
         # Filter by Type = 2 and keep only 'CP', 'PierNumber', and 'uniqueID'
@@ -634,15 +672,182 @@ class CreateWorkablePierLayer(object):
         deleteTempLayers = [new_layer, temp_layer]
         arcpy.Delete_management(deleteTempLayers)
 
+        # Export the latest N2 Viaduct layer to excel
+        arcpy.conversion.TableToExcel(via_layer, os.path.join(workable_dir, "SC_Viaduct_MasterList.xlsx"))
+
+        ########################################
+        ##### Update SC Pier Point Layer #######
+        ########################################
+        try:
+            temp_layer = 'temp_layer'
+            arcpy.management.MakeFeatureLayer(via_layer, temp_layer, '"Type" = 2')
+        
+            # 'multipatch footprint'
+            ## new_cols and 'Type' (sting) = 'Pile Cap'
+            new_layer = 'SC_Pier_Point'
+            arcpy.ddd.MultiPatchFootprint(temp_layer, new_layer)
+
+            ## Feature to Point
+            new_point_layer = 'SC_new_Pier_Point'
+            arcpy.management.FeatureToPoint(new_layer, new_point_layer)
+
+            ## Truncate original point layer
+            arcpy.management.TruncateTable(pier_pt_layer)
+
+            ## Append a new point layer to the original
+            arcpy.management.Append(new_point_layer, pier_pt_layer, schema_type = 'NO_TEST')
+
+            # delete
+            deleteTempLayers = [new_layer, new_point_layer, temp_layer]
+            arcpy.Delete_management(deleteTempLayers)
+
+        except:
+            pass        
+
+class CheckPierNumbers(object):
+    def __init__(self):
+        self.label = "4. Check Pier Numbers between Civil and GIS Portal"
+        self.description = "Check Pier Numbers between Civil and GIS Portal"
+
+    def getParameterInfo(self):
+        pier_tracker_dir = arcpy.Parameter(
+            displayName = "Directory for Pier Tracker",
+            name = "Directory for Pier Tracker",
+            datatype = "DEWorkspace",
+            parameterType = "Required",
+            direction = "Input"
+        )
+
+        civil_workable_ms = arcpy.Parameter(
+            displayName = "Civil Workable Pier ML (Excel)",
+            name = "Civil Workable Pier ML (Excel)",
+            datatype = "DEFile",
+            parameterType = "Required",
+            direction = "Input"
+        )
+
+        gis_viaduct_ms = arcpy.Parameter(
+            displayName = "GIS SC Viaduct ML (Excel)",
+            name = "GIS SC Viaduct ML (Excel)",
+            datatype = "DEFile",
+            parameterType = "Required",
+            direction = "Input"
+        )
+
+        params = [pier_tracker_dir, civil_workable_ms, gis_viaduct_ms]
+        return params
+
+    def updateMessages(self, params):
+        return
+
+    def execute(self, params, messages):
+        pier_tracker_dir = params[0].valueAsText
+        civil_workable_ms = params[1].valueAsText
+        gis_viaduct_ms = params[2].valueAsText
+        
+        arcpy.env.overwriteOutput = True
+        #arcpy.env.addOutputsToMap = True
+
+        def Workable_Pier_Table_Update():
+            def unique(lists):
+                collect = []
+                unique_list = pd.Series(lists).drop_duplicates().tolist()
+                for x in unique_list:
+                    collect.append(x)
+                return(collect)
+            
+            def non_match_elements(list_a, list_b):
+                non_match = []
+                for i in list_a:
+                    if i not in list_b:
+                        non_match.append(i)
+                return non_match
+
+            # List of fields
+            cp_field = 'CP'
+            type_field = 'Type'
+            pier_num_field = 'PierNumber'
+            unique_id_field = 'uniqueID'
+            pier_num_field_c = 'Pier No. (P)'
+            lot_id_field = 'LotID'
+            struc_id_field = 'StrucID'
+
+            # cps = ['S-01','S-02','S-03a','S-03b','S-03c','S-04','S-05','S-06','S-07']
+            cps = ['S-01']
+            compile_all = pd.DataFrame()
+            for cp in cps:
+                arcpy.AddMessage("Contract Package: " + cp)
+                compile_t = pd.DataFrame()
+
+                cols = ['CP',
+                        'PierNumber_civil',
+                        'PierNumber_gisportal',
+                        'Diff_Civil_vs_GISportal',
+                        'Non-matched_piers_Civil_vs_GISportal',
+                        ]
+
+                #1. Read table
+                ## N2 Viaduct portal
+                portal_t = pd.read_excel(gis_viaduct_ms)
+                ids = portal_t.index[(portal_t[cp_field] == cp) & (portal_t[type_field] == 2)]
+                portal_t = portal_t.loc[ids, [pier_num_field, unique_id_field]].reset_index(drop=True)
+                gis_piers = portal_t[pier_num_field].values
+                
+                ## N2 Civil ML
+                cp_civil_name = "(" + cp.replace('-','') + ")"
+                civil_workable_t = pd.read_excel(civil_workable_ms,sheet_name=cp_civil_name)
+                civil_workable_t = civil_workable_t.iloc[:,[14,19,22,23,24,25,26,27,28,30,32,34,35,48,51]]
+                ids = civil_workable_t.index[civil_workable_t.iloc[:, 0].str.contains(r'^P-',regex=True,na=False)]
+                civil_workable_t = civil_workable_t.loc[ids[0]:, ]
+                col_names = [pier_num_field,'via_construct_status','workability',
+                            'util1','util2','util3','util4','util5','ISF_pnr','land','structure','pnr_station','others',
+                            lot_id_field, struc_id_field] # 'lot_id','struc_id'
+
+                for j, col in enumerate(col_names):
+                    civil_workable_t = civil_workable_t.rename(columns={civil_workable_t.columns[j]: col})
+
+
+                civil_workable_t[pier_num_field] = civil_workable_t[pier_num_field].str.replace(r'\s+','',regex=True)
+                idx = civil_workable_t.index[~civil_workable_t[pier_num_field].isna()]     
+                civil_piers = civil_workable_t.loc[idx, pier_num_field].values
+                arcpy.AddMessage(civil_piers)
+                # arcpy.AddMessage(civil_piers)
+
+                # 2. Comparing
+                compile_t.loc[0, cols[0]] = cp
+
+                ## 2.1. Civil vs GIS Portal
+                compile_t.loc[0, cols[1]] = len(civil_piers)
+                compile_t.loc[0, cols[2]] = len(gis_piers)
+                compile_t.loc[0, cols[3]] = compile_t.loc[0, cols[1]] - compile_t.loc[0, cols[2]]
+                nonmatch_piers = [e for e in civil_piers if e not in gis_piers]
+                arcpy.AddMessage(nonmatch_piers)
+                if len(nonmatch_piers) > 0:
+                    compile_t.loc[0, cols[4]] = nonmatch_piers
+                else:
+                    compile_t.loc[0, cols[4]] = np.nan
+
+                # Compile cps
+                compile_all = pd.concat([compile_all, compile_t])
+                compile_all = compile_all.loc[:, cols]
+                arcpy.AddMessage("Table of Non-Matched Piers:")
+                arcpy.AddMessage(compile_all)
+            
+            # Export
+            compile_all.to_excel(os.path.join(pier_tracker_dir, '99-CHECK_Summary_SC_PierNumbers_Civil_vs_GISportal.xlsx'),
+                                              index=False)
+
+        Workable_Pier_Table_Update()
+
 class UpdateWorkablePierLayer(object):
     def __init__(self):
-        self.label = "4. Update Pier Workable Layer (Polygon)"
+        self.label = "5. Update Pier Workable Layer (Polygon)"
         self.description = "Update Pier Workable Layer (Polygon)"
 
     def getParameterInfo(self):
         gis_viaduct_dir = arcpy.Parameter(
-            displayName = "GIS Masterlist Storage Directory for Viaduct",
-            name = "GIS master-list directory",
+            displayName = "Directory for Pier Workability",
+            name = "Directory for Pier Workability",
             datatype = "DEWorkspace",
             parameterType = "Required",
             direction = "Input"
@@ -908,6 +1113,83 @@ class UpdateWorkablePierLayer(object):
 
         Workable_Pier_Table_Update()
 
+class UpdatePierPointLayer(object):
+    def __init__(self):
+        self.label = "6. Update Pier Layer (Point)"
+        self.description = "Update Pier Layer (Point)"
+
+    def getParameterInfo(self):
+        pier_point_layer = arcpy.Parameter(
+            displayName = "GIS Pier Layer (Point)",
+            name = "GIS Pier Layer (Point)",
+            datatype = "GPFeatureLayer",
+            parameterType = "Required",
+            direction = "Input"
+        )
+
+        pier_workable_layer = arcpy.Parameter(
+            displayName = "Pier Workability Layer (Polygon)",
+            name = "Pier Workability Layer (Polygon)",
+            datatype = "GPFeatureLayer",
+            parameterType = "Required",
+            direction = "Input"
+        )
+
+        params = [pier_point_layer, pier_workable_layer]
+        return params
+
+    def updateMessages(self, params):
+        return
+
+    def execute(self, params, messages):
+        pier_point_layer = params[0].valueAsText
+        pier_workable_layer = params[1].valueAsText
+        
+        arcpy.env.overwriteOutput = True
+        #arcpy.env.addOutputsToMap = True
+
+        def Pier_Point_Layer_Update():
+            def unique(lists):
+                collect = []
+                unique_list = pd.Series(lists).drop_duplicates().tolist()
+                for x in unique_list:
+                    collect.append(x)
+                return(collect)
+            
+            def non_match_elements(list_a, list_b):
+                non_match = []
+                for i in list_a:
+                    if i not in list_b:
+                        non_match.append(i)
+                return non_match
+            
+            unique_id_field = 'uniqueID'
+            # Create N2 pier point layer from this
+            ## Feature to Point
+            new_point_layer = 'SC_new_Pier_Point'
+            arcpy.management.FeatureToPoint(pier_workable_layer, new_point_layer)
+
+            
+            deleteFieldsList = ['AllWorkable','LandWorkable','StrucWorkable','NLOWorkable', 'UtilWorkable', 'OthersWorkable']
+
+            ## Delete Fields
+            arcpy.management.DeleteField(new_point_layer, deleteFieldsList)
+            
+            ## Join Field
+            arcpy.management.JoinField(new_point_layer, unique_id_field, pier_workable_layer, unique_id_field, deleteFieldsList)
+
+            ## Truncate original point layer
+            arcpy.management.TruncateTable(pier_point_layer)
+
+            ## Append a new point layer to the original
+            arcpy.management.Append(new_point_layer, pier_point_layer, schema_type = 'NO_TEST')
+
+            # delete
+            deleteTempLayers = [new_point_layer]
+            arcpy.Delete_management(deleteTempLayers)
+
+        Pier_Point_Layer_Update()
+
 class ReSortGISTable(object):
     def __init__(self):
         self.label = "(Optional) Re-Sort GIS Attribute Table (SC Viaduct)"
@@ -1039,7 +1321,7 @@ class ReSortGISTable(object):
 
 class CheckUpdatesCivilGIS(object):
     def __init__(self):
-        self.label = "5. Check Update between Civil and GIS Maser List (SC Viaduct)"
+        self.label = "7. Check Update between Civil and GIS Maser List (SC Viaduct)"
         self.description = "Check Update between Civil and GIS Maser List (SC Viaduct)"
 
     def getParameterInfo(self):
@@ -1084,8 +1366,15 @@ class CheckUpdatesCivilGIS(object):
                 return sorted({row[0] for row in cursor if row[0] is not None})
 
         civil_table = pd.ExcelFile(os.path.join(gis_dir,civil_ml))
-        sheet_names = civil_table.sheet_names
+        sheet_names = ['BoredPile', 'PileCap', 'Pier', 'PierHead', 'Precast']
 
+########################
+        # idx = table.index[~table[civil_pier_field].isna()]
+        # table = table.loc[idx, ].reset_index(drop=True)
+        # table['temp'] = table[civil_pier_field].str.replace(r'[^P]','',regex=True) # Remove all letters except for 'P'
+        # idx = table.index[table['temp'] != 'PP']
+        # table = table.loc[idx, ]
+###############################################
         # 1. GIS ML: Count for completed viaduct components
         y = pd.read_excel(os.path.join(gis_dir,gis_ml))
 
@@ -1120,6 +1409,12 @@ class CheckUpdatesCivilGIS(object):
 
         for i, sheet in enumerate(sheet_names):
             x = pd.read_excel(os.path.join(gis_dir,civil_ml),sheet_name=sheet)
+            idx = x.index[~x[pier_field].isna()]
+            x = x.loc[idx, ].reset_index(drop=True)
+            x['temp'] = x[pier_field].str.replace(r'[^P]','',regex=True) # Remove all letters except for 'P'
+            idx = x.index[x['temp'] != 'PP']
+            x = x.loc[idx, ]
+            
             if i == 0:
                 x = x.loc[1:,[pier_field,no_field,cp_field_civil,finish_actual_field]]
             else:

@@ -25,8 +25,8 @@ class CreateWorkablePierLayer(object):
 
     def getParameterInfo(self):
         pier_workable_dir = arcpy.Parameter(
-            displayName = "N2 GIS Pier Tracker Masterlist Storage Directory",
-            name = "N2 GIS Pier Tracker Masterlist Storage Directory",
+            displayName = "N2 Pier Workability Tracker Directory",
+            name = "N2 Pier Workability Tracker Directory",
             datatype = "DEWorkspace",
             parameterType = "Required",
             direction = "Input"
@@ -34,24 +34,24 @@ class CreateWorkablePierLayer(object):
 
         # Input Feature Layers
         workable_pier_layer = arcpy.Parameter(
-            displayName = "GIS Workable Pier Layer (Polygon)",
-            name = "GIS Workable Pier Layer (Polygon)",
+            displayName = "N2 Pier Workability Layer (Polygon)",
+            name = "N2 Pier Workability Layer (Polygon)",
             datatype = "GPFeatureLayer",
             parameterType = "Required",
             direction = "Input"
         )
 
         via_layer = arcpy.Parameter(
-            displayName = "GIS Viaduct Layer (Multipatch)",
-            name = "GIS Viaduct Layer (Multipatch)",
+            displayName = "N2 Viaduct Layer (Multipatch)",
+            name = "N2 Viaduct Layer (Multipatch)",
             datatype = "GPFeatureLayer",
             parameterType = "Required",
             direction = "Input"
         )
 
         pier_number_layer = arcpy.Parameter(
-            displayName = "GIS Pier Number Layer (Point)",
-            name = "GIS Pier Number Layer (Point)",
+            displayName = "N2 Pier Number Layer (Point)",
+            name = "N2 Pier Number Layer (Point)",
             datatype = "GPFeatureLayer",
             parameterType = "Optional",
             direction = "Input"
@@ -163,16 +163,16 @@ class UpdatePierWorkableTrackerML(object):
 
     def getParameterInfo(self):
         pier_workablet_dir = arcpy.Parameter(
-            displayName = "N2 GIS Pier Tracker Masterlist Storage Directory",
-            name = "N2 GIS Pier Tracker Masterlist Storage Directory",
+            displayName = "N2 Pier Workability Tracker Directory",
+            name = "N2 Pier Workability Tracker Directory",
             datatype = "DEWorkspace",
             parameterType = "Required",
             direction = "Input"
         )
 
         civil_workable_ms = arcpy.Parameter(
-            displayName = "N2 Civil Workable Pier ML (Excel)",
-            name = "Civil Workable Pier ML (Excel)",
+            displayName = "N2 Civil Pier Workability ML (Excel)",
+            name = "N2 Civil Pier Workability ML (Excel)",
             datatype = "DEFile",
             parameterType = "Required",
             direction = "Input"
@@ -484,16 +484,16 @@ class UpdateWorkablePierLayer(object):
         )
 
         gis_workable_layer = arcpy.Parameter(
-            displayName = "GIS Pier Workable Layer (Polygon)",
-            name = "GIS Pier Workable Layer (Polygon)",
+            displayName = "N2 Pier Workable Layer (Polygon)",
+            name = "N2 Pier Workable Layer (Polygon)",
             datatype = "GPFeatureLayer",
             parameterType = "Required",
             direction = "Input"
         )
 
         gis_nlo_ms = arcpy.Parameter(
-            displayName = "GIS NLO (ISF) ML (Excel)",
-            name = "GIS NLO (ISF) ML (Excel)",
+            displayName = "N2 GIS Structure NLO (ISF) ML (Excel)",
+            name = "N2 GIS Structure NLO (ISF) ML (Excel)",
             datatype = "DEFile",
             parameterType = "Required",
             direction = "Input"
@@ -733,32 +733,32 @@ class CheckPierNumbers(object):
 
     def getParameterInfo(self):
         pier_tracker_dir = arcpy.Parameter(
-            displayName = "N2 GIS Pier Tracker Masterlist Storage Directory",
-            name = "N2 GIS Pier Tracker Masterlist Storage Directory",
+            displayName = "N2 Pier Workability Tracker Directory",
+            name = "N2 Pier Workability Tracker Directory",
             datatype = "DEWorkspace",
             parameterType = "Required",
             direction = "Input"
         )
 
         civil_workable_ms = arcpy.Parameter(
-            displayName = "Civil Workable Pier ML (Excel)",
-            name = "Civil Workable Pier ML (Excel)",
+            displayName = "N2 Civil Pier Workability ML (Excel)",
+            name = "N2 Civil Pier Workability ML (Excel)",
             datatype = "DEFile",
             parameterType = "Required",
             direction = "Input"
         )
 
         gis_viaduct_ms = arcpy.Parameter(
-            displayName = "GIS N2 Viaduct ML (Excel)",
-            name = "GIS N2 Viaduct ML (Excel)",
+            displayName = "N2 GIS Viaduct ML (Excel)",
+            name = "N2 GIS Viaduct ML (Excel)",
             datatype = "DEFile",
             parameterType = "Required",
             direction = "Input"
         )
 
         gis_pier_tracker_ms = arcpy.Parameter(
-            displayName = "N2 Pier Workable Tracker ML (Excel)",
-            name = "N2 Pier Workable Tracker ML (Excel)",
+            displayName = "N2 Pier Workability Tracker ML (Excel)",
+            name = "N2 Pier Workability Tracker ML (Excel)",
             datatype = "DEFile",
             parameterType = "Required",
             direction = "Input"
@@ -838,9 +838,6 @@ class CheckPierNumbers(object):
                 civil_t[cp_field] = civil_t[cp_field].str.replace(r'/.*','',regex=True)
                 civil_t[cp_field] = civil_t[cp_field].str.replace(r'CPN','N-',regex=True)
                 civil_t = civil_t.query(f"{cp_field} == '{cp}'").reset_index(drop=True)
-                arcpy.AddMessage(civil_t.head())
-                
-                arcpy.AddMessage(civil_t[pier_num_field])
                 civil_piers = civil_t[pier_num_field].values
                 
                 ## Pier Workable Tracker (GIS Team prepared)
@@ -899,16 +896,16 @@ class UpdatePierPointLayer(object):
 
     def getParameterInfo(self):
         pier_point_layer = arcpy.Parameter(
-            displayName = "GIS Pier Layer (Point)",
-            name = "GIS Pier Layer (Point)",
+            displayName = "N2 Pier Layer (Point)",
+            name = "N2 Pier Layer (Point)",
             datatype = "GPFeatureLayer",
             parameterType = "Required",
             direction = "Input"
         )
 
         pier_workable_layer = arcpy.Parameter(
-            displayName = "Pier Workability Layer (Polygon)",
-            name = "Pier Workability Layer (Polygon)",
+            displayName = "N2 Pier Workability Layer (Polygon)",
+            name = "N2 Pier Workability Layer (Polygon)",
             datatype = "GPFeatureLayer",
             parameterType = "Required",
             direction = "Input"
@@ -976,16 +973,16 @@ class UpdateStripMapLayer(object):
 
     def getParameterInfo(self):
         pier_point_layer = arcpy.Parameter(
-            displayName = "GIS Pier Layer (Point)",
-            name = "GIS Pier Layer (Point)",
+            displayName = "N2 Pier Layer (Point)",
+            name = "N2 Pier Layer (Point)",
             datatype = "GPFeatureLayer",
             parameterType = "Required",
             direction = "Input"
         )
 
         strip_map_layer = arcpy.Parameter(
-            displayName = "GIS Strip Map Layer (Polygon)",
-            name = "GGIS Strip Map Layer (Polygon)",
+            displayName = "N2 Strip Map Layer (Polygon)",
+            name = "N2 Strip Map Layer (Polygon)",
             datatype = "GPFeatureLayer",
             parameterType = "Required",
             direction = "Input"

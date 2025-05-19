@@ -12,9 +12,9 @@ class Toolbox(object):
     def __init__(self):
         self.label = "UpdateLandAcquisition"
         self.alias = "UpdateLandAcquisition"
-        self.tools = [RestoreScaleForLot, JustMessage1, UpdateLot, UpdateISF, UpdateStructure, UpdateBarangay, UpdatePier,
+        self.tools = [RestoreScaleForLot, JustMessage1, UpdateLot, UpdateISF, UpdateStructure, UpdateBarangay,
                       JustMessage10, N2UpdateWorkablePierLandTable, N2UpdateWorkablePierStructureTable, SCUpdateWorkablePierLandTable, SCUpdateWorkablePierStructureTable,
-                      JustMessage2, UpdateLotGIS, UpdateStructureGIS, UpdatePierGIS, UpdateBarangayGIS,
+                      JustMessage2, UpdateLotGIS, UpdateStructureGIS, UpdateBarangayGIS,
                       JustMessage3, CheckLotUpdatedStatusGIS, CheckStructureUpdatedStatusGIS, CheckIsfUpdatedStatusGIS,
                       JustMessage4, CheckMissingLotIDs, CheckMissingStructureIDs, CheckMissingIsfIDs
                       ]
@@ -360,6 +360,11 @@ class UpdateLot(object):
                     rap_table[package_field] = rap_table[package_field].replace(r'3A|3A|3a', '3a',regex=True)
                     rap_table[package_field] = rap_table[package_field].replace(r'3B|3B|3b', '3b',regex=True)
                     rap_table[package_field] = rap_table[package_field].replace(r'3C|3C|3c', '3c',regex=True)
+                    
+                    # Conver the following LotIDs to S-01
+                    ## 10155, 10156, 10158-5
+                    ids = rap_table.index[rap_table[joinField].str.contains(r'10155|10156|10158-5',regex=True,na=False)]
+                    rap_table.loc[ids, package_field] = 'S-01'
 
                 rap_table[package_field] = rap_table[package_field].apply(lambda x: re.sub(r',.*','',x))
 
@@ -995,6 +1000,11 @@ class UpdateStructure(object):
                     rap_table[cp_field] = rap_table[cp_field].replace(r'03B|3B|3b', '03b',regex=True)
                     rap_table[cp_field] = rap_table[cp_field].replace(r'03C|3C|3c', '03c',regex=True)
 
+                    # Conver the following LotIDs to S-01
+                    ## NSRP-01-08-ML046
+                    ids = rap_table.index[rap_table[joinField].str.contains(r'NSRP-01-08-ML046',regex=True,na=False)]
+                    rap_table.loc[ids, cp_field] = 'S-01'
+
                 rap_table[cp_field] = rap_table[cp_field].apply(lambda x: re.sub(r',.*','',x))
                 rap_table_stats[cp_field] = rap_table_stats[cp_field].apply(lambda x: re.sub(r',.*','',x))
                 
@@ -1229,180 +1239,6 @@ class UpdateBarangay(object):
 
         SC1_Barangay_Update()
 
-class UpdatePier(object):
-    def __init__(self):
-        self.label = "1.5. Update Excel Master List (Pier)"
-        self.description = "Update Excel Master List (Pier)"
-
-    def getParameterInfo(self):
-        proj = arcpy.Parameter(
-            displayName = "Project Extension: N2 or SC",
-            name = "Project Extension: N2 or SC",
-            datatype = "GPString",
-            parameterType = "Required",
-            direction = "Input"
-        )
-        proj.filter.type = "ValueList"
-        proj.filter.list = ['N2', 'SC']
-
-        gis_dir = arcpy.Parameter(
-            displayName = "GIS Masterlist Storage Directory",
-            name = "GIS master-list directory",
-            datatype = "DEWorkspace",
-            parameterType = "Required",
-            direction = "Input"
-        )
-
-        gis_pier_ms = arcpy.Parameter(
-            displayName = "GIS Pier Number List ML (Excel)",
-            name = "GIS Pier Number List ML (Excel)",
-            datatype = "DEFile",
-            parameterType = "Required",
-            direction = "Input"
-        )
-
-        rap_pier_ms = arcpy.Parameter(
-            displayName = "RAP Pier Number List ML (Excel)",
-            name = "RAP Pier Number List ML (Excel)",
-            datatype = "DEFile",
-            parameterType = "Required",
-            direction = "Input"
-        )
-
-        gis_bakcup_dir = arcpy.Parameter(
-            displayName = "GIS Masterlist Backup Directory",
-            name = "GIS Masterlist Backup Directory",
-            datatype = "DEWorkspace",
-            parameterType = "Optional",
-            direction = "Input"
-        )
-
-        lastupdate = arcpy.Parameter(
-            displayName = "Date for Backup: use 'yyyymmdd' format. eg. 20240101",
-            name = "Date for Backup: use 'yyyymmdd' format. eg. 20240101",
-            datatype = "GPString",
-            parameterType = "Optional",
-            direction = "Input"
-        )
-
-        params = [proj, gis_dir, gis_pier_ms, rap_pier_ms, gis_bakcup_dir, lastupdate]
-        return params
-
-    def updateMessages(self, params):
-        return
-
-    def execute(self, params, messages):
-        proj = params[0].valueAsText
-        gis_dir = params[1].valueAsText
-        gis_pier_ms = params[2].valueAsText
-        rap_pier_ms = params[3].valueAsText
-        gis_bakcup_dir = params[4].valueAsText
-        lastupdate = params[5].valueAsText
-
-        arcpy.env.overwriteOutput = True
-        #arcpy.env.addOutputsToMap = True
-        def N2SC_Pier_Update():
-            ## 2. Return unique values
-            def unique(lists):
-                collect = []
-                unique_list = pd.Series(lists).drop_duplicates().tolist()
-                for x in unique_list:
-                    collect.append(x)
-                return(collect)
-            
-            ## 3. Return non-matched values between two lists
-            def non_match_elements(list_a, list_b):
-                non_match = []
-                for i in list_a:
-                    if i not in list_b:
-                        non_match.append(i)
-                return non_match
-                       
-            def toString(table, to_string_fields):
-                for field in to_string_fields:
-                    table[field] = table[field].astype(str)
-                    table[field] = table[field].replace(r'\s+|^\w\s$','',regex=True)
-                return table
-
-            def first_letter_capital(table, column_names): # column_names are list
-                for name in column_names:
-                    table[name] = table[name].str.title()
-                return table
-            
-            ####################################################
-            # Update Excel Master List Tables
-            ####################################################
-            if proj == 'N2':
-                cp_suffix = 'N-'
-            else:
-                cp_suffix = 'S-'
-        
-            rap_table = pd.read_excel(rap_pier_ms)
-            gis_table = pd.read_excel(gis_pier_ms)
-
-            # Create backup files
-            try:
-                gis_table.to_excel(os.path.join(gis_bakcup_dir, lastupdate + proj + "_" + "Pier_Land.xlsx"), index=False)
-            except Exception:
-                arcpy.AddMessage('You did not choose to create a backup file of {0} master list.'.format('Pier_Land Table'))
-            
-            # Rename 'City' to Municipality
-            renamed_city = 'Municipality'
-            try:
-                renamed_col = rap_table.columns[rap_table.columns.str.contains('|'.join(['City','city', 'Muni']))]
-                rap_table = rap_table.rename(columns={str(renamed_col[0]): renamed_city})
-                rap_table = first_letter_capital(rap_table, [renamed_city])
-            except:
-                pass       
-            
-            # Convert Pier column name to upper case
-            try:
-                renamed_col = rap_table.columns[rap_table.columns.str.contains('|'.join(['pier','Pier', 'PIER']))]
-                rap_table = rap_table.rename(columns={str(renamed_col[0]): "PIER"})
-            except:
-                pass
-
-            # Reformat date
-            rap_table['AccessDate'] = pd.to_datetime(rap_table['AccessDate'],errors='coerce').dt.date
-
-            # Make sure no space
-            rap_table = toString(rap_table, ['Municipality', 'PIER', 'CP'])
-
-            # CP to upper case
-            rap_table['CP'] = rap_table['CP'].str.upper()
-
-            # Reformat CP
-            if proj == 'N2':
-                rap_table['CP'] = rap_table['CP'].str[-2:]       
-                rap_table['CP'] = cp_suffix + rap_table['CP']
-
-            # check match between RAP and GIS
-            try:
-                pier_rap = unique(rap_table['PIER'])
-                pier_gis = unique(gis_table['PIER'])
-
-                non_match_piers = non_match_elements(pier_rap, pier_gis)
-                if (len(non_match_piers) > 0):
-                    arcpy.AddMessage('Pier Numbers do not match between GIS excel ML and RAP excel ML.')
-                    arcpy.AddMessage(non_match_piers)
-                else:
-                    arcpy.AddMessage('Pier Numbers match between Excel ML and GIS table.')
-            except:
-                pass
-
-            # Change the following pier numbers
-            piers_change = ['P-2152-A', 'P-2153-A', 'P-2206-A']
-            for old_pier in piers_change:
-                new_pier = old_pier.replace(r'-A','A')
-                rap_table['PIER'].replace(old_pier, new_pier, inplace=True)
-
-            # Export
-            export_file_name = os.path.splitext(os.path.basename(gis_pier_ms))[0]
-            to_excel_file = os.path.join(gis_dir, export_file_name + ".xlsx")
-            rap_table.to_excel(to_excel_file, index=False)
-
-        N2SC_Pier_Update()
-
 class JustMessage10(object):
     def __init__(self):
         self.label = "1.6.0 ----- Update Land & Structure for Workable Pier -----"
@@ -1415,8 +1251,8 @@ class N2UpdateWorkablePierLandTable(object):
 
     def getParameterInfo(self):
         gis_rap_dir = arcpy.Parameter(
-            displayName = "N2 GIS Masterlist Storage Directory for RAP",
-            name = "N2 GIS Masterlist Storage Directory for RAP",
+            displayName = "N2 GIS RAP Directory",
+            name = "N2 GIS RAP Directory",
             datatype = "DEWorkspace",
             parameterType = "Required",
             direction = "Input"
@@ -1439,8 +1275,8 @@ class N2UpdateWorkablePierLandTable(object):
         )
 
         gis_via_dir = arcpy.Parameter(
-            displayName = "N2 Pier Tracker Masterlist Storage Directory",
-            name = "N2 Pier Tracker Masterlist Storage Directory",
+            displayName = "N2 Pier Tracker Directory",
+            name = "N2 Pier Tracker Directory",
             datatype = "DEWorkspace",
             parameterType = "Required",
             direction = "Input"
@@ -1509,6 +1345,9 @@ class N2UpdateWorkablePierLandTable(object):
             gis_lot_table = pd.read_excel(gis_lot_ms)
             gis_lot_portal_t = pd.read_excel(gis_lot_portal)
 
+            # 0. Reset 'Obstruction' to 'No' first
+            gis_lot_table.loc[:, obstruc_field] = np.nan
+
             # 1. Clean fields
             compile_land = pd.DataFrame()
             sum_lot_compile = pd.DataFrame()
@@ -1545,12 +1384,10 @@ class N2UpdateWorkablePierLandTable(object):
                 ### Add these obstructing LotIDs to GIS Structure master list
                 #### First, reset 'obstruction' field
                 gis_lot_t[obstruc_field] = np.nan
-                idcp = gis_lot_t.index[gis_lot_t[cp_field] == cp]
-                gis_lot_t.loc[idcp, obstruc_field] = 'No'
+                gis_lot_t.loc[:, obstruc_field] = 'No'
 
-                ids = gis_lot_t.loc[idcp, ].index[gis_lot_t.loc[idcp, lot_id_field].isin(x_lot_ids)]
+                ids = gis_lot_t.index[gis_lot_t[lot_id_field].isin(x_lot_ids)]
                 y_lot_ids = gis_lot_t.loc[ids, lot_id_field].values
-                # arcpy.AddMessage(y_lot_ids)
                 gis_lot_t.loc[ids, obstruc_field] = 'Yes'
 
                 # #### Extract obstructing LotIDs from the GIS Attribute table (GIS_portal)
@@ -1633,8 +1470,8 @@ class N2UpdateWorkablePierStructureTable(object):
 
     def getParameterInfo(self):
         gis_rap_dir = arcpy.Parameter(
-            displayName = "N2 GIS Masterlist Storage Directory for RAP",
-            name = "N2 GIS Masterlist Storage Directory for RAP",
+            displayName = "N2 GIS RAP Directory",
+            name = "N2 GIS RAP Directory",
             datatype = "DEWorkspace",
             parameterType = "Required",
             direction = "Input"
@@ -1657,16 +1494,16 @@ class N2UpdateWorkablePierStructureTable(object):
         )
 
         gis_nlo_ms = arcpy.Parameter(
-            displayName = "GIS Structure NLO (ISF) ML (Excel)",
-            name = "GIS Structure NLO (ISF) ML (Excel)",
+            displayName = "N2 GIS Structure NLO (ISF) ML (Excel)",
+            name = "N2 GIS Structure NLO (ISF) ML (Excel)",
             datatype = "DEFile",
             parameterType = "Required",
             direction = "Input"
         )
 
         gis_via_dir = arcpy.Parameter(
-            displayName = "N2 Pier Tracker Masterlist Storage Directory",
-            name = "N2 Pier Tracker Masterlist Storage Directory",
+            displayName = "N2 Pier Tracker Directory",
+            name = "N2 Pier Tracker Directory",
             datatype = "DEWorkspace",
             parameterType = "Required",
             direction = "Input"
@@ -1736,6 +1573,10 @@ class N2UpdateWorkablePierStructureTable(object):
             gis_struc_portal_t = pd.read_excel(gis_struc_portal)
             gis_nlo_table = pd.read_excel(gis_nlo_ms)
 
+            # 0. Reset 'Obstruction' to 'No' first
+            gis_struc_table.loc[:, obstruc_field] = np.nan
+            gis_nlo_table.loc[:, obstruc_field] = np.nan
+
             # Define how obstructing lot and structure IDs are entered for each pier
             ## '\n' or ','
             split_mark = ","
@@ -1766,28 +1607,14 @@ class N2UpdateWorkablePierStructureTable(object):
                 x_struc_ids = unique(struc_ids)
                 x_struc_ids = remove_empty_strings(x_struc_ids)  
 
-                ## Remove some
-                # id_drop = np.where(x_struc_ids == '')
-                # x_struc_ids = np.delete(x_struc_ids, id_drop)
-                # id_drop = np.where(x_struc_ids == ' ')
-                # x_struc_ids = np.delete(x_struc_ids, id_drop)
-  
                 ### Add these obstructing StrucIDs to GIS Structure master list
                 #### First, reset 'obstruction' field
                 gis_struc_t[obstruc_field] = np.nan
-                idcp = gis_struc_t.index[gis_struc_t[cp_field] == cp]
-                gis_struc_t.loc[idcp, obstruc_field] = 'No'
+                gis_struc_t.loc[:, obstruc_field] = 'No'
 
-                ids = gis_struc_t.loc[idcp, ].index[gis_struc_t.loc[idcp, struc_id_field].isin(x_struc_ids)]
+                ids = gis_struc_t.index[gis_struc_t[struc_id_field].isin(x_struc_ids)]
                 y_struc_ids = gis_struc_t.loc[ids, struc_id_field].values
                 gis_struc_t.loc[ids, obstruc_field] = 'Yes'
-
-                #### Check if x_struc_ids match StrucIDs in N2_Structure_ML.xlsx
-                # ids = gis_struc_t.index[gis_struc_t[obstruc_field] == 'Yes']
-                # gis_struc_ids = gis_struc_t.loc[ids, struc_id_field].values
-                # # arcpy.AddMessage(gis_struc_ids)
-                # unmatched_struc_ids = non_match_elements(x_struc_ids, gis_struc_ids)
-                # arcpy.AddMessage(unmatched_struc_ids)
 
                 # #### Extract obstructing LotIDs from the GIS Attribute table (GIS_portal)
                 idcp = gis_struc_portal_t.index[gis_struc_portal_t[cp_field] == cp]
@@ -1798,10 +1625,9 @@ class N2UpdateWorkablePierStructureTable(object):
                 #### Add these obstructing StrucIDs to GIS ISF master list
                 #### Note that regardless of NLO' status, all the NLOs falling under obstructing structures must be visualized.
                 gis_nlo_t[obstruc_field] = np.nan
-                idcp = gis_nlo_t.index[gis_nlo_t[cp_field] == cp]
-                gis_nlo_t.loc[idcp, obstruc_field] = 'No'
+                gis_nlo_t.loc[:, obstruc_field] = 'No'
 
-                ids = gis_nlo_t.loc[idcp, ].index[gis_nlo_t.loc[idcp, struc_id_field].isin(x_struc_ids)]
+                ids = gis_nlo_t.index[gis_nlo_t[struc_id_field].isin(x_struc_ids)]
                 gis_nlo_t.loc[ids, obstruc_field] = 'Yes'
 
                 ### 3. Check obstructing StrucIDS between NLO and Structure GIS master list
@@ -1901,15 +1727,15 @@ class SCUpdateWorkablePierLandTable(object):
 
     def getParameterInfo(self):
         gis_rap_dir = arcpy.Parameter(
-            displayName = "GIS Masterlist Storage Directory for RAP",
-            name = "GIS Masterlist Storage Directory for RAP",
+            displayName = "SC GIS RAP Directory",
+            name = "GIS RAP Directory",
             datatype = "DEWorkspace",
             parameterType = "Required",
             direction = "Input"
         )
 
         gis_lot_ms = arcpy.Parameter(
-            displayName = "GIS Land Status ML (Excel)",
+            displayName = "SC GIS Land Status ML (Excel)",
             name = "GIS Land Status ML (Excel))",
             datatype = "DEFile",
             parameterType = "Required",
@@ -1917,7 +1743,7 @@ class SCUpdateWorkablePierLandTable(object):
         )
 
         gis_lot_portal = arcpy.Parameter(
-            displayName = "GIS Land Portal ML (Excel)",
+            displayName = "SC GIS Land Portal ML (Excel)",
             name = "GIS Land Portal ML (Excel)",
             datatype = "DEFile",
             parameterType = "Required",
@@ -1925,8 +1751,8 @@ class SCUpdateWorkablePierLandTable(object):
         )
 
         gis_via_dir = arcpy.Parameter(
-            displayName = "GIS Masterlist Storage Directory for Viaduct",
-            name = "GIS Masterlist Storage Directory for Viaduct",
+            displayName = "SC Pier Tracker Directory",
+            name = "SC Pier Tracker Directory",
             datatype = "DEWorkspace",
             parameterType = "Required",
             direction = "Input"
@@ -1971,6 +1797,19 @@ class SCUpdateWorkablePierLandTable(object):
                         non_match.append(i)
                 return non_match
             
+            def flatten_extend(matrix):
+                flat_list = []
+                for row in matrix:
+                    row = [re.sub(r'\s+','',e) for e in row]
+                    flat_list.extend(row)
+                return flat_list
+            
+            def remove_empty_strings(string_list):
+                return [string for string in string_list if string]
+            
+            def unlist_brackets(nested_list): ## Remove nested list in a list
+                return [item for sublist in nested_list for item in sublist]
+            
             # Read as xlsx
             gis_lot_table = pd.read_excel(gis_lot_ms)
             gis_lot_portal_t = pd.read_excel(gis_lot_portal)
@@ -1982,9 +1821,13 @@ class SCUpdateWorkablePierLandTable(object):
             cp_field = 'CP'
             struc_id_field = 'StrucID'
 
+            # 0. Reset 'Obstruction' to 'No' first
+            gis_lot_table.loc[:, obstruc_field] = np.nan
+
             # 1. Clean fields
             compile_land = pd.DataFrame()
             sum_lot_compile = pd.DataFrame()
+            tnon_matched_lot_ids = []
             
             # cps = ['S-01','S-02','S-03a','S-03b','S-03c','S-04','S-05','S-06','S-07']
             cps = ['S-01']
@@ -2015,10 +1858,9 @@ class SCUpdateWorkablePierLandTable(object):
 
                 # Remove empty space
                 ids = civil_workable_t.index[(civil_workable_t[col_names[0]].isna()) | (civil_workable_t[col_names[0]].isnull()) | (civil_workable_t[col_names[0]] == '')]
-                # ids = civil_workable_t.index[civil_workable_t[col_names[0]].isna()]
                 civil_workable_t = civil_workable_t.drop(ids).reset_index(drop=True)
-
                 civil_workable_t[cp_field] = cp
+
                 ################################################################
                 ## B. Identify Obstruction (Yes' or 'No') to GIS master list ###
                 ################################################################
@@ -2032,22 +1874,16 @@ class SCUpdateWorkablePierLandTable(object):
                 civil_workable_t[lot_id_field] = civil_workable_t[lot_id_field].str.replace('\n',',')
                 civil_workable_t[lot_id_field] = civil_workable_t[lot_id_field].replace(r'\s+','',regex=True)
                 civil_workable_t[lot_id_field] = civil_workable_t[lot_id_field].str.upper()
-                # ids = civil_workable_t.index[civil_workable_t[lot_id_field].notna()]
-                lot_ids = civil_workable_t.loc[ids, lot_id_field].str.split(',').values.flatten()
-                x_lot_ids = np.concatenate(lot_ids)
-
-                ##### Remove any empty ones and duplicated LotIDs
-                id_drop = np.where(x_lot_ids == '')
-                x_lot_ids = np.delete(x_lot_ids, id_drop)
-                x_lot_ids = np.unique(x_lot_ids)
+                civil_workable_t[lot_id_field] = civil_workable_t[lot_id_field].str.lstrip(',')
+                lot_ids = flatten_extend(civil_workable_t.loc[ids, lot_id_field].str.split(','))
+                x_lot_ids = unique(lot_ids)
+                x_lot_ids = remove_empty_strings(x_lot_ids)  
 
                 ### Add these obstructing LotIDs to GIS Structure master list
-                #### First, reset 'obstruction' field
                 gis_lot_t[obstruc_field] = np.nan
-                idcp = gis_lot_t.index[gis_lot_t[cp_field] == cp]
-                gis_lot_t.loc[idcp, obstruc_field] = 'No'
+                gis_lot_t.loc[:, obstruc_field] = 'No'
 
-                ids = gis_lot_t.loc[idcp, ].index[gis_lot_t.loc[idcp, lot_id_field].isin(x_lot_ids)]
+                ids = gis_lot_t.index[gis_lot_t[lot_id_field].isin(x_lot_ids)]
                 y_lot_ids = gis_lot_t.loc[ids, lot_id_field].values
                 gis_lot_t.loc[ids, obstruc_field] = 'Yes'
 
@@ -2090,9 +1926,9 @@ class SCUpdateWorkablePierLandTable(object):
             arcpy.AddMessage(miss_cp)
             if len(miss_cp) > 0:
                 gis_lot_misst = gis_lot_table.query(f"{cp_field} in {miss_cp}")
-                gis_lot_misst[obstruc_field] = 'No'
+                # gis_lot_misst[obstruc_field] = 'No'
                 compile_land = pd.concat([compile_land, gis_lot_misst])
-            compile_land.to_excel(os.path.join(gis_rap_dir, 'SC_Land_Status.xlsx'), index=False) ## gis_land
+            compile_land.to_excel(os.path.join(gis_rap_dir, os.path.basename(gis_lot_ms)), index=False) ## gis_land
  
             ## Export summary table
             sum_lot_compile.to_excel(os.path.join(gis_via_dir, '99-SC_Pier_Workable_Obstruction_Land_summaryStats.xlsx'), sheet_name='Land', index=False)
@@ -2106,40 +1942,40 @@ class SCUpdateWorkablePierStructureTable(object):
 
     def getParameterInfo(self):
         gis_rap_dir = arcpy.Parameter(
-            displayName = "GIS Masterlist Storage Directory for RAP",
-            name = "GIS Masterlist Storage Directory for RAP",
+            displayName = "SC GIS RAP Directory",
+            name = "SC GIS RAP Directory",
             datatype = "DEWorkspace",
             parameterType = "Required",
             direction = "Input"
         )
 
         gis_struc_ms = arcpy.Parameter(
-            displayName = "GIS Structure Status ML (Excel)",
-            name = "GIS Structure Status ML (Excel))",
+            displayName = "SC GIS Structure Status ML (Excel)",
+            name = "SC GIS Structure Status ML (Excel))",
             datatype = "DEFile",
             parameterType = "Required",
             direction = "Input"
         )
 
         gis_struc_portal = arcpy.Parameter(
-            displayName = "GIS Structure Portal ML (Excel)",
-            name = "GIS Structure Portal ML (Excel)",
+            displayName = "SC GIS Structure Portal ML (Excel)",
+            name = "SC GIS Structure Portal ML (Excel)",
             datatype = "DEFile",
             parameterType = "Required",
             direction = "Input"
         )
 
         gis_nlo_ms = arcpy.Parameter(
-            displayName = "GIS Structure NLO (ISF) ML (Excel)",
-            name = "GIS Structure NLO (ISF) ML (Excel)",
+            displayName = "SC GIS Structure NLO (ISF) ML (Excel)",
+            name = "SC GIS Structure NLO (ISF) ML (Excel)",
             datatype = "DEFile",
             parameterType = "Required",
             direction = "Input"
         )
 
         gis_via_dir = arcpy.Parameter(
-            displayName = "SC GIS Masterlist Storage Directory for Viaduct",
-            name = "GIS Masterlist Storage Directory for Viaduct",
+            displayName = "SC Pier Tracker Directory",
+            name = "SC Pier Tracker Directory",
             datatype = "DEWorkspace",
             parameterType = "Required",
             direction = "Input"
@@ -2185,6 +2021,19 @@ class SCUpdateWorkablePierStructureTable(object):
                         non_match.append(i)
                 return non_match
             
+            def flatten_extend(matrix):
+                flat_list = []
+                for row in matrix:
+                    row = [re.sub(r'\s+','',e) for e in row]
+                    flat_list.extend(row)
+                return flat_list
+            
+            def remove_empty_strings(string_list):
+                return [string for string in string_list if string]
+            
+            def unlist_brackets(nested_list): ## Remove nested list in a list
+                return [item for sublist in nested_list for item in sublist]
+            
             # Read as xlsx
             gis_struc_table = pd.read_excel(gis_struc_ms)
             gis_struc_portal_t = pd.read_excel(gis_struc_portal)
@@ -2196,6 +2045,10 @@ class SCUpdateWorkablePierStructureTable(object):
             pier_number_field = 'PierNumber'
             cp_field = 'CP'
             struc_id_field = 'StrucID'
+
+            # 0. Reset 'Obstruction' to 'No' first
+            gis_struc_table.loc[:, obstruc_field] = np.nan
+            gis_nlo_table.loc[:, obstruc_field] = np.nan
 
             # 1. Clean fields
             compile_struc = pd.DataFrame()
@@ -2234,7 +2087,6 @@ class SCUpdateWorkablePierStructureTable(object):
                 # Remove empty space
                 ids = civil_workable_t.index[(civil_workable_t[col_names[0]].isna()) | (civil_workable_t[col_names[0]].isnull()) | (civil_workable_t[col_names[0]] == '')]
                 civil_workable_t = civil_workable_t.drop(ids).reset_index(drop=True)
-
                 civil_workable_t[cp_field] = cp
 
                 ################################################################
@@ -2252,36 +2104,46 @@ class SCUpdateWorkablePierStructureTable(object):
                 civil_workable_t[struc_id_field] = civil_workable_t[struc_id_field].replace(r'\s+','',regex=True)
                 civil_workable_t[struc_id_field] = civil_workable_t[struc_id_field].str.upper()
                 civil_workable_t[struc_id_field] = civil_workable_t[struc_id_field].replace(r'[(]PNR[)]','',regex=True)
-                # ids = civil_workable_t.index[civil_workable_t[struc_id_field].notna()]
-                struc_ids = civil_workable_t.loc[ids, struc_id_field].str.split(',').values.flatten()
-                x_struc_ids = np.concatenate(struc_ids)
-                
-                ##### Remove any empty ones
-                id_drop = np.where(x_struc_ids == '')
-                x_struc_ids = np.delete(x_struc_ids, id_drop)
-                x_struc_ids = np.unique(x_struc_ids)
+                struc_ids = flatten_extend(civil_workable_t.loc[ids, struc_id_field].str.split(','))
+                x_struc_ids = unique(struc_ids)
+                x_struc_ids = remove_empty_strings(x_struc_ids)  
 
                 ### Add these obstructing StrucIDs to GIS Structure master list
                 gis_struc_t[obstruc_field] = np.nan
-                idcp = gis_struc_t.index[gis_struc_t[cp_field] == cp]
-                gis_struc_t.loc[idcp, obstruc_field] = 'No'
+                gis_struc_t.loc[:, obstruc_field] = 'No'
 
-                ids = gis_struc_t.loc[idcp, ].index[gis_struc_t.loc[idcp, struc_id_field].isin(x_struc_ids)]
-                y_struc_ids = gis_struc_t.loc[ids,struc_id_field].values
+                ids = gis_struc_t.index[gis_struc_t[struc_id_field].isin(x_struc_ids)]
+                y_struc_ids = gis_struc_t.loc[ids, struc_id_field].values
                 gis_struc_t.loc[ids, obstruc_field] = 'Yes'
 
                 #### Extract obstructing StrucIDs from the GIS Attribute table (GIS_portal)
                 ids_portal = gis_struc_portal_t.index[gis_struc_portal_t[struc_id_field].isin(x_struc_ids)]
                 y_struc_portal_ids = gis_struc_portal_t.loc[ids_portal,struc_id_field].values
 
-                ### Add these obstructing StrucIDs to GIS ISF master list
+                ### 2. NLO
+                #### 2.1. Add these obstructing StrucIDs to GIS ISF master list
                 #### Note that regardless of NLO' status, all the NLOs falling under obstructing structures must be visualized.
                 gis_nlo_t[obstruc_field] = np.nan
-                idcp = gis_nlo_t.index[gis_nlo_t[cp_field] == cp]
-                gis_nlo_t.loc[idcp, obstruc_field] = 'No'
+                gis_nlo_t.loc[:, obstruc_field] = 'No'
 
-                ids = gis_nlo_t.loc[idcp, ].index[gis_nlo_t.loc[idcp, struc_id_field].isin(x_struc_ids)]
+                ids = gis_nlo_t.index[gis_nlo_t[struc_id_field].isin(x_struc_ids)]
                 gis_nlo_t.loc[ids, obstruc_field] = 'Yes'
+
+                #### 2.2. Check obstructing StrucIDS between NLO and Structure GIS master list
+                ids = gis_struc_t.index[gis_struc_t[obstruc_field] == 'Yes']
+                gis_struc_ids = gis_struc_t.loc[ids, struc_id_field].values
+
+                ids = gis_nlo_t.index[gis_nlo_t[obstruc_field] == 'Yes']
+                gis_nlo_ids = unique(gis_nlo_t.loc[ids, struc_id_field])    
+                unmatched_struc_ids = non_match_elements(gis_nlo_ids, gis_struc_ids)
+
+                arcpy.AddMessage(f"Any obstructing StrucIDs in the NLO ML that do not exist in the structure ML for {cp}?")
+                if len(unmatched_struc_ids) > 0:
+                    arcpy.AddMessage('Yes, you have the following unmatched obstructing StrucIDs between these master list tables.')
+                    arcpy.AddMessage(unmatched_struc_ids)
+                    arcpy.AddMessage('Please ensure that these unmatched StrucIDs share the same information on CP.')
+                else:
+                    arcpy.AddMessage('No, everything is fine.')
 
                 ## Compile for cps
                 compile_struc = pd.concat([compile_struc, gis_struc_t])
@@ -2319,13 +2181,12 @@ class SCUpdateWorkablePierStructureTable(object):
             compile_cps = unique(compile_struc[cp_field])
             gis_cps = unique(gis_struc_table[cp_field])
             miss_cp = tuple(non_match_elements(gis_cps, compile_cps))
-            arcpy.AddMessage(miss_cp)
             if len(miss_cp) > 0:
                 gis_struc_misst = gis_struc_table.query(f"{cp_field} in {miss_cp}")
-                gis_struc_misst[obstruc_field] = 'No'
+                # gis_struc_misst[obstruc_field] = 'No'
                 compile_struc = pd.concat([compile_struc, gis_struc_misst])
 
-            compile_struc.to_excel(os.path.join(gis_rap_dir, 'SC_Structure_Status.xlsx'), index=False) ## gis_struc
+            compile_struc.to_excel(os.path.join(gis_rap_dir, os.path.basename(gis_struc_ms)), index=False) ## gis_struc
            
             #### NLO
             compile_cps = unique(compile_nlo[cp_field])
@@ -2334,10 +2195,10 @@ class SCUpdateWorkablePierStructureTable(object):
             arcpy.AddMessage(miss_cp)
             if len(miss_cp) > 0:
                 gis_nlo_misst = gis_nlo_table.query(f"{cp_field} in {miss_cp}")
-                gis_nlo_misst[obstruc_field] = 'No'
+                # gis_nlo_misst[obstruc_field] = 'No'
                 compile_nlo = pd.concat([compile_nlo, gis_nlo_misst])
            
-            compile_nlo.to_excel(os.path.join(gis_rap_dir, 'SC_ISF_Relocation_Status.xlsx'), index=False) ## gis_isf
+            compile_nlo.to_excel(os.path.join(gis_rap_dir, os.path.basename(gis_nlo_ms)), index=False) ## gis_isf
 
             ## Export summary statistics table
             sum_struc_compile.to_excel(os.path.join(gis_via_dir, '99-SC_Workable_Pier_obstructing_structure_summaryStats.xlsx'), sheet_name='Land', index=False)
@@ -2375,8 +2236,8 @@ class UpdateLotGIS(object):
 
         # Input Feature Layers
         in_lot = arcpy.Parameter(
-            displayName = "GIS Lot Feature Layer (Polygon)",
-            name = "GIS Lot Feature Layer (Polygon)",
+            displayName = "Land Feature Layer (Polygon)",
+            name = "Land Feature Layer (Polygon)",
             datatype = "GPFeatureLayer",
             parameterType = "Required",
             direction = "Input"
@@ -2384,8 +2245,8 @@ class UpdateLotGIS(object):
 
         # Input Excel master list tables
         ml_lot = arcpy.Parameter(
-            displayName = "GIS ML (Excel)",
-            name = "GIS ML (Excel)",
+            displayName = "GIS Land Status ML (Feature Table)",
+            name = "GIS Land Status ML (Feature Table)",
             datatype = "GPTableView",
             parameterType = "Required",
             direction = "Input"
@@ -2552,40 +2413,40 @@ class UpdateStructureGIS(object):
         )
     
         in_structure = arcpy.Parameter(
-            displayName = "GIS Structure Status (Polygon)",
-            name = "GIS Structure Status (Polygon)",
+            displayName = "Structure Status Layer (Polygon)",
+            name = "Structure Status Layer (Polygon)",
             datatype = "GPFeatureLayer",
             parameterType = "Required",
             direction = "Input"
         )
 
         in_occupancy = arcpy.Parameter(
-            displayName = "GIS Structure Occupancy (Point)",
-            name = "GIS Structure Occupancy (Point)",
+            displayName = "Structure Occupancy Layer (Point)",
+            name = "Structure Occupancy Layer (Point)",
             datatype = "GPFeatureLayer",
             parameterType = "Required",
             direction = "Input"
         )
 
         in_isf = arcpy.Parameter(
-            displayName = "GIS ISF Relocation (Point)",
-            name = "GIS ISF Relocation (Point)",
+            displayName = "Structure ISF Relocation (Point)",
+            name = "Structure ISF Relocation (Point)",
             datatype = "GPFeatureLayer",
             parameterType = "Required",
             direction = "Input"
         )
 
         ml_structure = arcpy.Parameter(
-            displayName = "Excel MasterList (Structure)",
-            name = "Structure_ML (Excel)",
+            displayName = "GIS Structure Status Table (Feature Table)",
+            name = "GIS Structure Status Table (Feature Table)",
             datatype = "GPTableView",
             parameterType = "Required",
             direction = "Input"
         )
 
         ml_isf = arcpy.Parameter(
-            displayName = "Excel MasterList (ISF Relocation)",
-            name = "ISF_Relocation_ML (Excel)",
+            displayName = "GIS Structure ISF Table (Feature Table)",
+            name = "GIS Structure ISF Table (Feature Table)",
             datatype = "GPTableView",
             parameterType = "Required",
             direction = "Input"
@@ -2758,108 +2619,6 @@ class UpdateStructureGIS(object):
             arcpy.AddMessage('The following Struc IDs are duplicated in the GIS attribute table:')
             arcpy.AddMessage(dup)
             arcpy.AddError('There are duplicated StrucIDs in the GIS attribute table. The process stops. Please fix this first.')
-
-class UpdatePierGIS(object):
-    def __init__(self):
-        self.label = "2.3. Update GIS Attribute Tables (Pier)"
-        self.description = "Update feature layers for pier number"
-
-    def getParameterInfo(self):
-        in_pier = arcpy.Parameter(
-            displayName = "GIS Pier Number (Point)",
-            name = "GIS Pier Number",
-            datatype = "GPFeatureLayer",
-            parameterType = "Required",
-            direction = "Input"
-        )
-
-        ml_pier = arcpy.Parameter(
-            displayName = "Excel MasterList (Pier No.)",
-            name = "Excel MasterList (Pier No.)",
-            datatype = "GPTableView",
-            parameterType = "Required",
-            direction = "Input"
-        )
-
-        params = [in_pier, ml_pier]
-        return params
-
-    def updateMessages(self, params):
-        return
-
-    def execute(self, params, messages):
-        inPier = params[0].valueAsText
-        mlPier = params[1].valueAsText
-
-        arcpy.env.overwriteOutput = True
-
-        def unique_values(table, field):  ##uses list comprehension
-            with arcpy.da.SearchCursor(table, [field]) as cursor:
-                return sorted({row[0] for row in cursor if row[0] is not None})
-
-        # 1. For Pier
-        try:
-            arcpy.AddMessage('Updating Pier No. list has started..')
-            pier_copied_name = 'N2_Pier_test'
-            pier_copied_gis = arcpy.CopyFeatures_management(inPier, pier_copied_name)
-            
-            # 2. Delete fields: 'Municipality' and 'AccessDate'
-            pier_gis_fields = [f.name for f in arcpy.ListFields(pier_copied_gis)]
-            
-            ## 2.1. Fields to be dropped
-            pier_drop_fields = [e for e in pier_gis_fields if e not in ('PIER','CP','Shape','Shape_Length','Shape_Area','Shape.STArea()','Shape.STLength()','OBJECTID','GlobalID')]
-            
-            ## 2.3. Check if there are fields to be dropped
-            pier_drop_fields_check = [f for f in pier_gis_fields if f in tuple(pier_drop_fields)]
-            
-            ## 2.4 Drop
-            if len(pier_drop_fields_check) == 0:
-                arcpy.AddMessage("There is no field that can be dropped from the feature layer")
-            else:
-                arcpy.DeleteField_management(pier_copied_gis, pier_drop_fields_check)
-
-            # 3. Join Field
-            ## 3.1. Convert Excel tables to feature table
-            ##MasterListN2Pier = arcpy.TableToTable_conversion(mlPier, workspace, 'MasterListN2Pier')
-            pier_ml_table = arcpy.conversion.ExportTable(mlPier, 'pier_ml_table')
-
-            # Check if pier numbers match between ML and GIS
-            pier_field = 'PIER'
-            piers_gis = unique_values(pier_copied_gis, pier_field)
-            piers_ml = unique_values(pier_ml_table, pier_field)
-            
-            piers_miss_gis = [e for e in piers_gis if e not in piers_ml] # missing in gis
-            piers_miss_ml = [e for e in piers_ml if e not in piers_gis] # missing in ML
-
-            if piers_miss_ml or piers_miss_gis:
-                arcpy.AddMessage('The following pier numbers do not match between ML and GIS.')
-                arcpy.AddMessage('Missing Pier Numbers in GIS table: {}'.format(piers_miss_gis))
-                arcpy.AddMessage('Missing Pier Numbers in ML Excel table: {}'.format(piers_miss_ml))
-            
-            ## 3.2. Get Join Field from MasterList gdb table: Gain all fields except 'Id'
-            pier_ml_fields = [f.name for f in arcpy.ListFields(pier_ml_table)]
-            transfer_fields = [e for e in pier_ml_fields if e not in ('PIER', 'Pier','OBJECTID')]
-            
-            ## 3.3. Extract a Field from MasterList and Feature Layer to be used to join two tables
-            gis_join_field = ' '.join(map(str, [f for f in pier_gis_fields if f in ('PIER', 'Pier')]))
-            ml_join_field =' '.join(map(str, [f for f in pier_ml_fields if f in ('PIER', 'Pier')]))
-            
-            ## 3.4 Join
-            arcpy.JoinField_management(in_data=pier_copied_gis, in_field=gis_join_field, join_table=pier_ml_table, join_field=ml_join_field, fields=transfer_fields)
-            
-            # 4. Trucnate
-            arcpy.TruncateTable_management(inPier)
-            
-            # 5. Append
-            arcpy.Append_management(pier_copied_gis, inPier, schema_type = 'NO_TEST')
-                    
-            # Delete the copied feature layer
-            deleteTempLayers = [pier_copied_gis, pier_ml_table]
-            arcpy.Delete_management(deleteTempLayers)
-            
-        except:
-            arcpy.AddError("Something went wrong..process stopped.")
-            pass
 
 class UpdateBarangayGIS(object):
     def __init__(self):

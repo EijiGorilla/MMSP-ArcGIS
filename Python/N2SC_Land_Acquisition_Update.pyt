@@ -1820,13 +1820,8 @@ class SCUpdateWorkablePierLandTable(object):
             lot_id_field = 'LotID'
             pier_number_field = 'PierNumber'
             cp_field = 'CP'
-            struc_id_field = 'StrucID'
-            utility_field = 'Utility'
-            others_field = 'Others'
             land_obstruc_field = 'Land'
-            struc_obstruc_field = 'Structure'
             land_obstrucid_field = 'Land.1'
-            struc_obstrucid_field = 'Structure.1'
 
             # 0. Reset 'Obstruction' to 'No' first
             gis_lot_table.loc[:, obstruc_field] = np.nan
@@ -1853,7 +1848,11 @@ class SCUpdateWorkablePierLandTable(object):
 
                 ### 1. Land
                 ids = pier_t.index[pier_t[land_obstruc_field] == 1]
-                x_lot_ids = pier_t.loc[ids, land_obstrucid_field].values
+                lot_ids = flatten_extend(pier_t.loc[ids, land_obstrucid_field].str.split(","))
+                x_lot_ids = unique(lot_ids)
+                x_lot_ids = remove_empty_strings(x_lot_ids)
+
+                arcpy.AddMessage(x_lot_ids)
 
                 ### Add these obstructing LotIDs to GIS Structure master list
                 gis_lot_t[obstruc_field] = np.nan
@@ -1957,15 +1956,15 @@ class SCUpdateWorkablePierStructureTable(object):
             direction = "Input"
         )
 
-        civil_workable_ms = arcpy.Parameter(
-            displayName = "SC Civil Pier Workable ML (Excel)",
-            name = "Civil Pier Workable ML (Excel))",
+        pier_workable_tracker_ms = arcpy.Parameter(
+            displayName = "SC Pier Workable Tracker (Excel)",
+            name = "SC Pier Workable Tracker (Excel)",
             datatype = "DEFile",
             parameterType = "Required",
             direction = "Input"
         )
 
-        params = [gis_rap_dir, gis_struc_ms, gis_struc_portal, gis_nlo_ms, gis_via_dir, civil_workable_ms]
+        params = [gis_rap_dir, gis_struc_ms, gis_struc_portal, gis_nlo_ms, gis_via_dir, pier_workable_tracker_ms]
         return params
 
     def updateMessages(self, params):
@@ -1977,7 +1976,7 @@ class SCUpdateWorkablePierStructureTable(object):
         gis_struc_portal = params[2].valueAsText
         gis_nlo_ms = params[3].valueAsText
         gis_via_dir = params[4].valueAsText
-        civil_workable_ms = params[5].valueAsText
+        pier_tracker_ms = params[5].valueAsText
 
         arcpy.env.overwriteOutput = True
         #arcpy.env.addOutputsToMap = True
@@ -2017,10 +2016,12 @@ class SCUpdateWorkablePierStructureTable(object):
 
             # List of fields
             obstruc_field = 'Obstruction' ## ('Yes' or 'No')
-            lot_id_field = 'LotID'
             pier_number_field = 'PierNumber'
             cp_field = 'CP'
             struc_id_field = 'StrucID'
+            struc_obstruc_field = 'Structure'
+            struc_obstrucid_field = 'Structure.1'
+
 
             # 0. Reset 'Obstruction' to 'No' first
             gis_struc_table.loc[:, obstruc_field] = np.nan
@@ -2037,33 +2038,9 @@ class SCUpdateWorkablePierStructureTable(object):
                 gis_struc_t = gis_struc_table.query(f"{cp_field} == '{cp}'").reset_index(drop=True)
                 gis_nlo_t = gis_nlo_table.query(f"{cp_field} == '{cp}'").reset_index(drop=True)
 
-                cp_civil_name = "(" + cp.replace('-','') + ")"
-                civil_workable_t = pd.read_excel(civil_workable_ms,sheet_name=cp_civil_name)
-                civil_workable_t = civil_workable_t.iloc[:,[14,19,22,23,24,25,26,27,28,30,32,34,35,48,51]]
-                ids = civil_workable_t.index[civil_workable_t.iloc[:, 0].str.contains(r'^P-',regex=True,na=False)]
-                civil_workable_t = civil_workable_t.loc[ids[0]:, ]
-
-                col_names = [pier_number_field,'via_construct_status','workability',
-                            'util1','util2','util3','util4','util5','ISF_pnr','land','structure','pnr_station','others',
-                            lot_id_field, struc_id_field] # 'lot_id','struc_id'
-
-                for j, col in enumerate(col_names):
-                    civil_workable_t = civil_workable_t.rename(columns={civil_workable_t.columns[j]: col})
-
-                # create workable columns for pre-construction work
-                new_cols = ['AllWorkable','LandWorkable','StrucWorkable','NLOWorkable', 'UtilWorkable', 'OthersWorkable']
-                for k, col in enumerate(new_cols):
-                    civil_workable_t[col] = np.nan
-                    # x[col] = x[col].astype(str)
-
-                ## Clean column names
-                # x[col_names[0]] = x[col_names[0]].replace(r'\s+|[^\w\s]','',regex=True)
-                civil_workable_t[col_names[0]] = civil_workable_t[col_names[0]].replace(r'\s+','',regex=True)
-
-                # Remove empty space
-                ids = civil_workable_t.index[(civil_workable_t[col_names[0]].isna()) | (civil_workable_t[col_names[0]].isnull()) | (civil_workable_t[col_names[0]] == '')]
-                civil_workable_t = civil_workable_t.drop(ids).reset_index(drop=True)
-                civil_workable_t[cp_field] = cp
+                pier_workable_t = pd.read_excel(pier_tracker_ms)
+                pier_t = pier_workable_t.query(f"{cp_field} == '{cp}'").reset_index(drop=True)
+                civil_piers = pier_t[pier_number_field].values
 
                 ################################################################
                 ## B. Identify Obstruction (Yes' or 'No') to GIS master list ###
@@ -2072,17 +2049,10 @@ class SCUpdateWorkablePierStructureTable(object):
                 #### are obstructed by the same lots or structures.
 
                 ### 2. Structure and ISF
-                ids = civil_workable_t.index[civil_workable_t['structure'] == 1]
-
-                civil_workable_t[struc_id_field] = civil_workable_t[struc_id_field].astype(str)
-                # struc_obs = civil_workable_t.loc[ids,struc_id_field]
-                civil_workable_t[struc_id_field] = civil_workable_t[struc_id_field].str.replace('\n',',')
-                civil_workable_t[struc_id_field] = civil_workable_t[struc_id_field].replace(r'\s+','',regex=True)
-                civil_workable_t[struc_id_field] = civil_workable_t[struc_id_field].str.upper()
-                civil_workable_t[struc_id_field] = civil_workable_t[struc_id_field].replace(r'[(]PNR[)]','',regex=True)
-                struc_ids = flatten_extend(civil_workable_t.loc[ids, struc_id_field].str.split(','))
+                ids = pier_t.index[pier_t[struc_obstruc_field] == 1]
+                struc_ids = flatten_extend(pier_t.loc[ids, struc_obstrucid_field].str.split(","))
                 x_struc_ids = unique(struc_ids)
-                x_struc_ids = remove_empty_strings(x_struc_ids)  
+                x_struc_ids = remove_empty_strings(x_struc_ids)
 
                 ### Add these obstructing StrucIDs to GIS Structure master list
                 gis_struc_t[obstruc_field] = np.nan

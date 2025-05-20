@@ -934,6 +934,26 @@ class UpdateWorkablePierLayer(object):
                         if isinstance(value, str) and search_word in value.title():
                             locations.append({'index': idx, 'column': col})
                 return locations
+            
+            def find_word_location2(df, search_word):
+                """
+                Finds the index and column of a specific word in a Pandas DataFrame.
+
+                Args:
+                    df (pd.DataFrame): The DataFrame to search.
+                    search_word (str): The word to search for.
+
+                Returns:
+                    list: A list of dictionaries, where each dictionary represents a location
+                        of the word in the DataFrame. Each dictionary has 'index' and 'column' keys.
+                        Returns an empty list if the word is not found.
+                """
+                locations = []
+                for col in df.columns:
+                    for idx, value in df[col].items():
+                        if isinstance(value, str) and search_word in value:
+                            locations.append({'index': idx, 'column': col})
+                return locations
 
             def get_column_indices(df, column_names):
                 """
@@ -984,8 +1004,7 @@ class UpdateWorkablePierLayer(object):
                 cp_civil_name = "(" + cp.replace('-','') + ")"
                 civil_workable_t = pd.read_excel(civil_workable_ms, sheet_name = cp_civil_name)
 
-                new_cols = [cp_field,
-                            pier_number_field,
+                new_cols = [pier_number_field,
                             workability_field,
                             utility_field,
                             others_field,
@@ -994,8 +1013,8 @@ class UpdateWorkablePierLayer(object):
                             land_obstrucid_field,
                             struc_obstrucid_field,
                         ]
-                # Search the first column 'Pier'
-                ## first, get 'chainage', as 'Pier' is alwasy one column before the 'chainage'
+                
+                # Search the first column 'IFC Designation'
                 loc = find_word_location(civil_workable_t,'Chainage')
                 idx_chainage = loc[0]['index']
                 col_chainage = loc[0]['column']
@@ -1006,35 +1025,48 @@ class UpdateWorkablePierLayer(object):
                 col_status = loc[0]['column']
 
                 # Search the next column 'Others"
-                loc = find_word_location(civil_workable_t,'Others')
+                loc = find_word_location2(civil_workable_t,'Others')
                 idx_others = loc[0]['index']
                 col_others = loc[0]['column']
 
                 # Search the next column 'Remarks'
-                loc = find_word_location(civil_workable_t, 'Lots')
-                idx_lot = loc[len(loc)-1]['index']
-                col_lot = loc[len(loc)-1]['column']
+                loc = find_word_location2(civil_workable_t, '# of Lots')
+                idx_lot = loc[0]['index']
+                col_lot = loc[0]['column']
+                print(loc)
 
                 # Search the last column 'Structures'
-                loc = find_word_location(civil_workable_t, 'Structures')
-                idx_struc = loc[len(loc)-1]['index']
-                col_struc = loc[len(loc)-1]['column']
+                loc = find_word_location2(civil_workable_t, '# of Structures')
+                idx_struc = loc[0]['index']
+                col_struc = loc[0]['column']
+                print(loc)
 
                 # Extract column indices with all the searched words
                 ## First identify utility columns
-                sc_util_cols = ['Meralco','Telco','Drainage','Canal','Waterline','Maynilad','NGCP POLE','ETPI']
+                sc_util_cols = [
+                    {
+                        'S-01': ['Meralco','Telco Line','Drainage','Canal','Waterline'],
+                        'S-02': ['NGCP POLE', 'Maynilad', 'ETPI'],
+                        'S-03a': ['NGCP POLE', 'Maynilad', 'Meralco', 'ETPI'],
+                        'S-03c': ['NGCP POLE', 'Maynilad', 'Meralco', 'ETPI'],
+                        'S-04': ['NGCP POLE', 'Maynilad', 'Meralco', 'ETPI'],
+                        'S-05': ['NGCP', 'ETPI', 'Maynilad', 'Meralco', 'Telco'],
+                        'S-06': ['ETPI', 'Maynilad', 'Meralco']
+                    }
+                ]
+
                 util_cols = []
-                arcpy.AddMessage("1.ok")
-                for util in sc_util_cols:
-                    col = find_word_location(civil_workable_t, util)
+                for util in sc_util_cols[0][cp]:
+                    col = find_word_location2(civil_workable_t, util)
                     if col:
                         util_cols.append(col[0]['column'])
 
-                arcpy.AddMessage("2.ok")
                 idx_cols = get_column_indices(civil_workable_t, [col_chainage, col_status] + util_cols + [col_others, col_lot, col_struc])
-                idx_cols[0] = idx_cols[0]-1
+                print(idx_cols)
+                idx_cols[0] = idx_cols[0]-1 # PierNumber
+                idx_cols[-2] = idx_cols[-2] + 1 # Lots
+                idx_cols[-1] = idx_cols[-1] + 1 # Structures
                 x = civil_workable_t.iloc[idx_status:, idx_cols].reset_index(drop=True)
-                arcpy.AddMessage("4.ok")
 
                 # Rename utility columns
                 for i, util in enumerate(util_cols):

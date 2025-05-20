@@ -997,14 +997,15 @@ class UpdateWorkablePierLayer(object):
 
             # 1. Clean fields
             ## cps = ['S-01','S-02','S-03a','S-03b','S-03c','S-04','S-05','S-06','S-07']
-            cps = ['S-01']
+            cps = ['S-01', 'S-02', 'S-03a']
             civil_workable_t_compile = pd.DataFrame()
 
             for i, cp in enumerate(cps):
                 cp_civil_name = "(" + cp.replace('-','') + ")"
                 civil_workable_t = pd.read_excel(civil_workable_ms, sheet_name = cp_civil_name)
 
-                new_cols = [pier_number_field,
+                new_cols = [cp_field,
+                            pier_number_field,
                             workability_field,
                             utility_field,
                             others_field,
@@ -1085,12 +1086,15 @@ class UpdateWorkablePierLayer(object):
                 x = x.drop(x.index[x[pier_number_field].isna()]).reset_index(drop=True)
                 arcpy.AddMessage("7.ok")
 
-                # Re-organize information to accommodate pier workability excel master list
-                ## Land (land = 1 and clean land obstruction IDs)
+                ## Land (Land = 1)
                 x[land_obstruc_field] = 0
+
+                ## Delete any words other than IDs
+                idx = x.index[x[land_obstrucid_field].str.contains(r'^No l.*|^No s.*|^Lot.*|^lot.*',regex=True,na=False)]
+                x.loc[idx, land_obstrucid_field] = np.nan
+
                 idx = x.index[~x[land_obstrucid_field].isna()]
                 x.loc[idx, land_obstruc_field] = 1
-                arcpy.AddMessage(x.loc[0:20, [pier_number_field,land_obstruc_field,land_obstrucid_field]])
 
                 x[land_obstrucid_field] = x[land_obstrucid_field].astype(str)
                 x[land_obstrucid_field] = x[land_obstrucid_field].str.replace(r'\n',',',regex=True)
@@ -1106,17 +1110,21 @@ class UpdateWorkablePierLayer(object):
                 x[land_obstrucid_field] = x[land_obstrucid_field].str.lstrip(',') # remove leading comma
                 x[land_obstrucid_field] = x[land_obstrucid_field].str.rstrip(',') # remove leading comma
                 arcpy.AddMessage("9.ok")
-                arcpy.AddMessage(x.loc[0:20, [pier_number_field,land_obstruc_field,land_obstrucid_field]])
 
                 ### Extract obstructing LotIDs
                 x1 = x.dropna(subset=[land_obstrucid_field]).reset_index(drop=True)
                 x1[land_obstrucid_field] = x1[land_obstrucid_field].astype(str)
                 lot_ids = flatten_extend(x1[land_obstrucid_field].str.split(","))
                 x_lot_ids = unique(lot_ids)
-                x_lot_ids = remove_empty_strings(x_lot_ids)  
+                x_lot_ids = remove_empty_strings(x_lot_ids)
 
                 ## Structure (structure = 1)
                 x[struc_obstruc_field] = 0
+
+                ## Delete any words other than IDs
+                idx = x.index[x[struc_obstrucid_field].str.contains(r'^No l.*|^No s.*|^Lot.*|^lot.*',regex=True,na=False)]
+                x.loc[idx, struc_obstrucid_field] = np.nan
+
                 idx = x.index[~x[struc_obstrucid_field].isna()]
                 x.loc[idx, struc_obstruc_field] = 1
 
@@ -1129,7 +1137,6 @@ class UpdateWorkablePierLayer(object):
                 x[struc_obstrucid_field] = x[struc_obstrucid_field].str.replace(r',$','',regex=True)
                 x[struc_obstrucid_field] = x[struc_obstrucid_field].str.replace(r'nan','',regex=True)
                 x[struc_obstrucid_field] = x[struc_obstrucid_field].str.replace(r'\s+','',regex=True)
-                x[struc_obstrucid_field] = x[struc_obstrucid_field].str.upper()
                 x[struc_obstrucid_field] = x[struc_obstrucid_field].replace(r'[(]PNR[)]','',regex=True)
                 x[struc_obstrucid_field] = x[struc_obstrucid_field].str.lstrip(',') # remove leading comma
                 x[struc_obstrucid_field] = x[struc_obstrucid_field].str.rstrip(',') # remove leading comma

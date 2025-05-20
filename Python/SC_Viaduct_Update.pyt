@@ -1027,7 +1027,6 @@ class UpdateWorkablePierLayer(object):
                 arcpy.AddMessage("1.ok")
                 for util in sc_util_cols:
                     col = find_word_location(civil_workable_t, util)
-                    arcpy.AddMessage(col)
                     if col:
                         util_cols.append(col[0]['column'])
 
@@ -1054,15 +1053,14 @@ class UpdateWorkablePierLayer(object):
                 x = x.drop(x.index[x[pier_number_field].isna()]).reset_index(drop=True)
                 arcpy.AddMessage("7.ok")
 
-                arcpy.AddMessage(x.head())
-
                 # Re-organize information to accommodate pier workability excel master list
                 ## Land (land = 1 and clean land obstruction IDs)
                 x[land_obstruc_field] = 0
                 idx = x.index[~x[land_obstrucid_field].isna()]
                 x.loc[idx, land_obstruc_field] = 1
-                arcpy.AddMessage("8.ok")
+                arcpy.AddMessage(x.loc[0:20, [pier_number_field,land_obstruc_field,land_obstrucid_field]])
 
+                x[land_obstrucid_field] = x[land_obstrucid_field].astype(str)
                 x[land_obstrucid_field] = x[land_obstrucid_field].str.replace(r'\n',',',regex=True)
                 x[land_obstrucid_field] = x[land_obstrucid_field].str.replace(r';',',',regex=True)
                 x[land_obstrucid_field] = x[land_obstrucid_field].str.replace(r';;',',',regex=True)
@@ -1076,6 +1074,7 @@ class UpdateWorkablePierLayer(object):
                 x[land_obstrucid_field] = x[land_obstrucid_field].str.lstrip(',') # remove leading comma
                 x[land_obstrucid_field] = x[land_obstrucid_field].str.rstrip(',') # remove leading comma
                 arcpy.AddMessage("9.ok")
+                arcpy.AddMessage(x.loc[0:20, [pier_number_field,land_obstruc_field,land_obstrucid_field]])
 
                 ### Extract obstructing LotIDs
                 x1 = x.dropna(subset=[land_obstrucid_field]).reset_index(drop=True)
@@ -1089,6 +1088,7 @@ class UpdateWorkablePierLayer(object):
                 idx = x.index[~x[struc_obstrucid_field].isna()]
                 x.loc[idx, struc_obstruc_field] = 1
 
+                x[struc_obstrucid_field] = x[struc_obstrucid_field].astype(str)
                 x[struc_obstrucid_field] = x[struc_obstrucid_field].str.replace(r'\n',',',regex=True)
                 x[struc_obstrucid_field] = x[struc_obstrucid_field].str.replace(r';',',',regex=True)
                 x[struc_obstrucid_field] = x[struc_obstrucid_field].str.replace(r';;',',',regex=True)

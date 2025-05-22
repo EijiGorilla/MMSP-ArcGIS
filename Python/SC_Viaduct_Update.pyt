@@ -13,7 +13,7 @@ class Toolbox(object):
         self.alias = "UpdateSCViaduct"
         self.tools = [UpdateExcelML, UpdateGISTable, 
                       CreateWorkablePierLayer, CheckPierNumbers, 
-                      UpdateWorkablePierLayer, UpdatePierPointLayer,
+                      UpdateWorkablePierLayer, UpdatePierPointLayer, UpdateStripMapLayer,
                       ReSortGISTable, CheckUpdatesCivilGIS]
 
 class UpdateExcelML(object):
@@ -629,6 +629,11 @@ class CreateWorkablePierLayer(object):
 
         new_cols = ['AllWorkable','LandWorkable','StrucWorkable','NLOWorkable', 'UtilWorkable', 'OthersWorkable']
 
+        ####### Pier Workability Status 
+        # 0 = 'Workable'
+        # 1 = 'Non-workable'
+        # 2 = Completed (construction)
+
         # Filter by Type = 2 and keep only 'CP', 'PierNumber', and 'uniqueID'
         temp_layer = 'temp_layer'
         arcpy.management.MakeFeatureLayer(via_layer, temp_layer, '"Type" = 2')
@@ -997,10 +1002,15 @@ class UpdateWorkablePierLayer(object):
 
             # 1. Clean fields
             ## cps = ['S-01','S-02','S-03a','S-03b','S-03c','S-04','S-05','S-06','S-07']
-            cps = ['S-01', 'S-02', 'S-03a']
+            cps = ['S-01', 'S-02', 'S-03a', 'S-03c','S-04','S-05','S-06']
             civil_workable_t_compile = pd.DataFrame()
 
+            ####################################################
+            # A. Update Pier Workability Tracker table #########
+            ####################################################
+
             for i, cp in enumerate(cps):
+                arcpy.AddMessage(f"Contract Package: {cp}")
                 cp_civil_name = "(" + cp.replace('-','') + ")"
                 civil_workable_t = pd.read_excel(civil_workable_ms, sheet_name = cp_civil_name)
 
@@ -1058,18 +1068,20 @@ class UpdateWorkablePierLayer(object):
 
                 util_cols = []
                 for util in sc_util_cols[0][cp]:
-                    col = find_word_location2(civil_workable_t, util)
-                    if col:
+                    if cp == 'S-05' and util == 'NGCP':
+                        col = {'index': 1, 'column': 'Unnamed: 23'}
+                        util_cols.append(col['column'])
+                    else:
+                        col = find_word_location2(civil_workable_t, util)
                         util_cols.append(col[0]['column'])
 
                 idx_cols = get_column_indices(civil_workable_t, [col_chainage, col_status] + util_cols + [col_others, col_lot, col_struc])
-                print(idx_cols)
                 idx_cols[0] = idx_cols[0]-1 # PierNumber
                 idx_cols[-2] = idx_cols[-2] + 1 # Lots
                 idx_cols[-1] = idx_cols[-1] + 1 # Structures
                 x = civil_workable_t.iloc[idx_status:, idx_cols].reset_index(drop=True)
 
-                # Rename utility columns
+                # Rename columns
                 for i, util in enumerate(util_cols):
                     x = x.rename(columns={util: 'util' + str(i)})
                 arcpy.AddMessage("5.ok")
@@ -1085,10 +1097,48 @@ class UpdateWorkablePierLayer(object):
                 x = x.drop(x.index[0:idx[0]]).reset_index(drop=True)
                 x = x.drop(x.index[x[pier_number_field].isna()]).reset_index(drop=True)
                 arcpy.AddMessage("7.ok")
+                arcpy.AddMessage(x.loc[0:10, ])
 
-                ## Land (Land = 1)
+                col_utils = x.columns[x.columns.str.contains(r'^util.*',regex=True)]
+                for i, util in enumerate(col_utils):
+                    idx = x.index[x[util].isna()]
+                    x.loc[idx, util] = 0
+                    x[util] = pd.to_numeric(x[util], errors='coerce').astype('int64')
+
+                x['Utility'] = x.loc[:, col_utils].sum(axis=1)
+                idx = x.index[x['Utility'] > 0]
+                x.loc[idx, 'Utility'] = 1
+
+                ## Update 'Land' and 'Structure' (0: workable, 1: non-workable)
+                ### First enter 0 for all and fill in 1 for non-workable piers
                 x[land_obstruc_field] = 0
+                x[struc_obstruc_field] = 0
 
+                ## 1. Enter 2 for 'Completed' pier numbers
+                completed_piers = []
+                with arcpy.da.SearchCursor(gis_workable_layer, [pier_number_field, 'AllWorkable']) as cursor:
+                    for row in cursor:
+                        if row[1] == 2:
+                            completed_piers.append(row[0])
+
+                idx = x.index[x[pier_number_field].isin(completed_piers)]
+                x.loc[idx, workability_field] = 'Completed'
+                x.loc[idx, utility_field] = 2
+                x.loc[idx, others_field] = 2
+                x.loc[idx, land_obstruc_field] = 2
+                x.loc[idx, struc_obstruc_field] = 2
+                x.loc[idx, land_obstrucid_field] = np.nan
+                x.loc[idx, struc_obstrucid_field] = np.nan
+
+                ## 2. Enter  for 'Workable' pier numbers
+                idx_workable_piers = x.index[x[workability_field] == 'Workable'] ## this is also incomplete workable piers
+                x.loc[idx_workable_piers, utility_field] = 0
+                x.loc[idx_workable_piers, others_field] = 0
+                x.loc[idx_workable_piers, land_obstruc_field] = 0
+                x.loc[idx_workable_piers, struc_obstruc_field] = 0
+                x.loc[idx_workable_piers, land_obstrucid_field] = np.nan
+                x.loc[idx_workable_piers, struc_obstrucid_field] = np.nan
+                
                 ## Delete any words other than IDs
                 idx = x.index[x[land_obstrucid_field].str.contains(r'^No l.*|^No s.*|^Lot.*|^lot.*',regex=True,na=False)]
                 x.loc[idx, land_obstrucid_field] = np.nan
@@ -1118,9 +1168,6 @@ class UpdateWorkablePierLayer(object):
                 x_lot_ids = unique(lot_ids)
                 x_lot_ids = remove_empty_strings(x_lot_ids)
 
-                ## Structure (structure = 1)
-                x[struc_obstruc_field] = 0
-
                 ## Delete any words other than IDs
                 idx = x.index[x[struc_obstrucid_field].str.contains(r'^No l.*|^No s.*|^Lot.*|^lot.*',regex=True,na=False)]
                 x.loc[idx, struc_obstrucid_field] = np.nan
@@ -1148,16 +1195,6 @@ class UpdateWorkablePierLayer(object):
                 x_struc_ids = remove_empty_strings(x_struc_ids)  
 
                 ## Utility
-                col_utils = x.columns[x.columns.str.contains(r'^util.*',regex=True)]
-                for i, util in enumerate(col_utils):
-                    idx = x.index[x[util].isna()]
-                    x.loc[idx, util] = 0
-                    x[util] = pd.to_numeric(x[util], errors='coerce').astype('int64')
-
-                x['Utility'] = x.loc[:, col_utils].sum(axis=1)
-                idx = x.index[x['Utility'] > 0]
-                x.loc[idx, 'Utility'] = 1
-
                 x1 = x.query(f"{utility_field} > 0").reset_index(drop=True)
                 util_piers = x1[pier_number_field].values
                 util_obstruc_piers = unique(util_piers)
@@ -1180,52 +1217,41 @@ class UpdateWorkablePierLayer(object):
 
                 civil_workable_t_compile = pd.concat([civil_workable_t_compile, x])
 
-                ##################################
-                # A. Update Pier Workable Layer using Civil table ##
-                ##################################
+                ####################################################
+                # B. Update Pier Workable Layer using Civil table ##
+                ####################################################
 
                 ## 1. Workable Pile Cap
                 ## Status of Workable Pier
-                ### 0: Non-Workable
-                ### 1: Workable
+                ### 0: Non-Workable (x) -> 1
+                ### 1: Workable (x) -> 0
                 ### 2: Completedd
 
                 ### 1.2. Workable Pile Cap
-                ## 2.0. Enter Workable (1) else non-Workable (0) for AllWorkable
-                completed_piers = []
-                with arcpy.da.SearchCursor(gis_workable_layer, [pier_number_field, 'AllWorkable']) as cursor:
-                    for row in cursor:
-                        if row[1] == 2:
-                            completed_piers.append(row[0])
-
-                # from civil pier workable database
-                id_workable_piers = x.index[x[workability_field] == 'Workable']
+                id_completed_piers = x.index[x[workability_field] == 'Completed']
+                id_workable_piers = x.index[x[workability_field] == 'Workable'] ## this is also incomplete workable piers
                 id_nonworkable_piers = x.index[x[workability_field] == 'Non-workable']
 
-                workable_piers = x.loc[id_workable_piers, pier_number_field].values
+                incomp_workable_piers = x.loc[id_workable_piers, pier_number_field].values
                 nonworkable_piers = x.loc[id_nonworkable_piers, pier_number_field].values
 
-                # Exclude 'completed' piers (ie., status = 4)
-                incomp_workable_piers = non_match_elements(workable_piers, completed_piers)
-                incomp_nonworkable_piers = non_match_elements(nonworkable_piers, completed_piers)
-
-                # Enter 1
+                # Enter 0
                 with arcpy.da.UpdateCursor(gis_workable_layer, [pier_number_field,'AllWorkable','LandWorkable','StrucWorkable','NLOWorkable', 'UtilWorkable', 'OthersWorkable', cp_field]) as cursor:
                     for row in cursor:
                         if row[0] in tuple(incomp_workable_piers) and row[7] == cp:
-                            row[1] = 1
-                            row[2] = 1
-                            row[3] = 1
-                            row[4] = 1
-                            row[5] = 1
-                            row[6] = 1
+                            row[1] = 0
+                            row[2] = 0
+                            row[3] = 0
+                            row[4] = 0
+                            row[5] = 0
+                            row[6] = 0
                         cursor.updateRow(row)
 
-                # Empty cell for AllWorkable = 0 (non-workable)
+                # Empty cell for AllWorkable = 1 (non-workable)
                 with arcpy.da.UpdateCursor(gis_workable_layer, [pier_number_field,'AllWorkable',cp_field]) as cursor:
                     for row in cursor:
                         if row[1] is None and row[2] == cp:
-                            row[1] = 0
+                            row[1] = 1
                         cursor.updateRow(row)
 
                 ## 2.1 LandWorkable
@@ -1236,14 +1262,14 @@ class UpdateWorkablePierLayer(object):
                 with arcpy.da.UpdateCursor(gis_workable_layer, [pier_number_field, 'LandWorkable', cp_field]) as cursor:
                     for row in cursor:
                         if row[0] in tuple(land_nonwork_piers) and row[2] == cp:
-                            row[1] = 0
+                            row[1] = 1
                         cursor.updateRow(row)
 
-                # Empty cell = 1 (workable)
+                # Empty cell = 0 (workable)
                 with arcpy.da.UpdateCursor(gis_workable_layer, [pier_number_field,'LandWorkable',cp_field]) as cursor:
                     for row in cursor:
                         if row[1] is None and row[2] == cp:
-                            row[1] = 1
+                            row[1] = 0
                         cursor.updateRow(row)
 
                 ## 2.2 StrucWorkable
@@ -1252,7 +1278,7 @@ class UpdateWorkablePierLayer(object):
                 with arcpy.da.UpdateCursor(gis_workable_layer, [pier_number_field, 'StrucWorkable', cp_field]) as cursor:
                     for row in cursor:
                         if row[0] in tuple(struc_nonwork_piers) and row[2] == cp:
-                            row[1] = 0
+                            row[1] = 1
                         cursor.updateRow(row)
 
                 # Empty cell = 1 (workable)
@@ -1266,33 +1292,33 @@ class UpdateWorkablePierLayer(object):
                 ### 2.3.2. identify any NLOs falling under the identified non-workable structures
                 struc_ids_nlo = [e for e in gis_nlo_t[struc_id_field] if e in x_struc_ids]
                 
-                ### 2.3.3. Enter NLOWorkable = 0 with identified pier numbers
+                ### 2.3.3. Enter NLOWorkable = 1 with identified pier numbers
                 with arcpy.da.UpdateCursor(gis_workable_layer, [pier_number_field, 'NLOWorkable', cp_field]) as cursor:
                     for row in cursor:
                         if row[0] in tuple(struc_ids_nlo) and row[2] == cp:
-                            row[1] = 0
+                            row[1] = 1
                         cursor.updateRow(row)
 
 
-                # Empty cell = 1 (workable)
+                # Empty cell = 0 (workable)
                 with arcpy.da.UpdateCursor(gis_workable_layer, [pier_number_field,'NLOWorkable',cp_field]) as cursor:
                     for row in cursor:
                         if row[1] is None and row[2] == cp:
-                            row[1] = 1
+                            row[1] = 0
                         cursor.updateRow(row)
 
                 ## 2.4. UtilWorkable
                 with arcpy.da.UpdateCursor(gis_workable_layer, [pier_number_field, 'UtilWorkable',cp_field]) as cursor:
                     for row in cursor:
                         if row[0] in tuple(util_obstruc_piers) and row[2] == cp:
-                            row[1] = 0
+                            row[1] = 1
                         cursor.updateRow(row)
 
-                # Empty cell = 1 (workable)
+                # Empty cell = 0 (workable)
                 with arcpy.da.UpdateCursor(gis_workable_layer, [pier_number_field,'UtilWorkable',cp_field]) as cursor:
                     for row in cursor:
                         if row[1] is None and row[2] == cp:
-                            row[1] = 1
+                            row[1] = 0
                         cursor.updateRow(row)
 
                 ## 2.5. OthersWorkable 
@@ -1301,20 +1327,20 @@ class UpdateWorkablePierLayer(object):
                 with arcpy.da.UpdateCursor(gis_workable_layer, [pier_number_field, 'OthersWorkable', cp_field]) as cursor:
                     for row in cursor:
                         if row[0] in tuple(others_obstruc_piers) and row[2] == cp:
-                            row[1] = 0
+                            row[1] = 1
                         cursor.updateRow(row)
 
-                # Empty cell = 1 (workable)
+                # Empty cell = 0 (workable)
                 with arcpy.da.UpdateCursor(gis_workable_layer, [pier_number_field,'OthersWorkable',cp_field]) as cursor:
                     for row in cursor:
                         if row[1] is None and row[2] == cp:
-                            row[1] = 1
+                            row[1] = 0
                         cursor.updateRow(row)
 
                 ## Export this layer to excel
                 arcpy.conversion.TableToExcel(gis_workable_layer, os.path.join(pier_workability_dir, "SC_Pier_Workability_GIS_Portal.xlsx"))
 
-            civil_workable_t_compile.to_excel(os.path.join(pier_workability_dir, "SC_Pier_Workability_Tracker_Compiled.xlsx"), index=False)
+            civil_workable_t_compile.to_excel(os.path.join(pier_workability_dir, "SC_Pier_Workability_Tracker.xlsx"), index=False)
         Workable_Pier_Table_Update()
 
 class UpdatePierPointLayer(object):
@@ -1393,6 +1419,129 @@ class UpdatePierPointLayer(object):
             arcpy.Delete_management(deleteTempLayers)
 
         Pier_Point_Layer_Update()
+
+class UpdateStripMapLayer(object):
+    def __init__(self):
+        self.label = "7. Update Strip Map Layer (Polygon)"
+        self.description = "Update Strip Map Layer (Polygon)"
+
+    def getParameterInfo(self):
+        pier_point_layer = arcpy.Parameter(
+            displayName = "SC Pier Layer (Point)",
+            name = "SC Pier Layer (Point)",
+            datatype = "GPFeatureLayer",
+            parameterType = "Required",
+            direction = "Input"
+        )
+
+        strip_map_layer = arcpy.Parameter(
+            displayName = "SC Strip Map Layer (Polygon)",
+            name = "SC Strip Map Layer (Polygon)",
+            datatype = "GPFeatureLayer",
+            parameterType = "Required",
+            direction = "Input"
+        )
+
+        cp_breakline_layer = arcpy.Parameter(
+            displayName = "SC CP Breakline Layer (Line)",
+            name = "SC CP Breakline Layer (Line)",
+            datatype = "GPFeatureLayer",
+            parameterType = "Required",
+            direction = "Input"
+        )
+
+        params = [pier_point_layer, strip_map_layer, cp_breakline_layer]
+        return params
+
+    def updateMessages(self, params):
+        return
+
+    def execute(self, params, messages):
+        pier_point_layer = params[0].valueAsText
+        strip_map_layer = params[1].valueAsText
+        cpbreak_layer = params[2].valueAsText
+        
+        arcpy.env.overwriteOutput = True
+        #arcpy.env.addOutputsToMap = True
+
+        def Strip_Map_Layer_Update():
+            def unique(lists):
+                collect = []
+                unique_list = pd.Series(lists).drop_duplicates().tolist()
+                for x in unique_list:
+                    collect.append(x)
+                return(collect)
+            
+            def non_match_elements(list_a, list_b):
+                non_match = []
+                for i in list_a:
+                    if i not in list_b:
+                        non_match.append(i)
+                return non_match
+
+            # 3. Update strip map polygon layer
+            ## 3.1. Select pier point layer for each status in 'AllWorkable' field
+            ### First, select rows with non-workable piers
+            where_clause = "AllWorkable = 0"
+            arcpy.management.SelectLayerByAttribute(pier_point_layer, 'NEW_SELECTION', where_clause)
+
+            # Select strip map layer by location
+            arcpy.management.SelectLayerByLocation(strip_map_layer, 'CONTAINS', pier_point_layer)
+
+            # Update strip map layer
+            with arcpy.da.UpdateCursor(strip_map_layer, ['NonWorkable']) as cursor:
+                for row in cursor:
+                    row[0] = 'Yes'
+                    cursor.updateRow(row)
+
+            ### Second, switch rows and these rows are workable piers
+            arcpy.management.SelectLayerByAttribute(strip_map_layer, 'SWITCH_SELECTION')
+            with arcpy.da.UpdateCursor(strip_map_layer, ['NonWorkable']) as cursor:
+                for row in cursor:
+                    row[0] = 'No'
+                    cursor.updateRow(row)
+
+
+            ### Add second 'CP' for strip polygons overlapping with two CPs.
+            #### Used to accommodate two different CPs when selected in the smart map
+            cp_field = 'CP_End'
+            cp2_field = 'GroupId'
+            where_clause = f"{cp_field} <> 'S-06'"
+
+            # First enter null 'GroupId' field
+            with arcpy.da.UpdateCursor(strip_map_layer, [cp2_field]) as cursor:
+                for row in cursor:
+                    if row[0]:
+                        row[0] = None
+                    cursor.updateRow(row)
+                    
+            # Select rows
+
+            arcpy.management.SelectLayerByAttribute(cpbreak_layer, 'NEW_SELECTION', where_clause)
+            arcpy.management.SelectLayerByLocation(strip_map_layer, 'INTERSECT', cpbreak_layer)
+
+            # Enter the second CP to 'GroupId' field
+            ## The second CP is always +1 from the previous
+            with arcpy.da.UpdateCursor(strip_map_layer, ['CP',cp2_field]) as cursor:
+                for row in cursor:
+                    if row[0]:
+                        if row[0] == 'S-01':
+                            row[1] = 'S-02'
+                        if row[0] == 'S-02':
+                            row[1] = 'S-03a'
+                        elif row[0] == 'S-03a':
+                            row[1] = 'S-03b'
+                        elif row[0] == 'S-03b':
+                            row[1] = 'S-03c'
+                        elif row[0] == 'S-03c':
+                            row[1] = 'S-04'
+                        elif row[0] == 'S-04':
+                            row[1] = 'S-05'
+                        elif row[0] == 'S-05':
+                            row[1] = 'S-06'
+                    cursor.updateRow(row)
+
+        Strip_Map_Layer_Update()
 
 class ReSortGISTable(object):
     def __init__(self):
@@ -1525,8 +1674,8 @@ class ReSortGISTable(object):
 
 class CheckUpdatesCivilGIS(object):
     def __init__(self):
-        self.label = "7. Check Update between Civil and GIS Maser List (SC Viaduct)"
-        self.description = "Check Update between Civil and GIS Maser List (SC Viaduct)"
+        self.label = "(Optional) Check Update between Civil and GIS Maser List (SC Viaduct)"
+        self.description = "(Optional) Check Update between Civil and GIS Maser List (SC Viaduct)"
 
     def getParameterInfo(self):
         gis_dir = arcpy.Parameter(

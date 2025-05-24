@@ -170,6 +170,14 @@ class UpdatePierWorkableTrackerML(object):
             direction = "Input"
         )
 
+        viaduct_ms = arcpy.Parameter(
+            displayName = "N2 Viaduct GIS ML (Excel)",
+            name = "N2 Viaduct GIS ML (Excel)",
+            datatype = "DEFile",
+            parameterType = "Required",
+            direction = "Input"
+        )
+
         civil_workable_ms = arcpy.Parameter(
             displayName = "N2 Civil Pier Workability ML (Excel)",
             name = "N2 Civil Pier Workability ML (Excel)",
@@ -187,14 +195,22 @@ class UpdatePierWorkableTrackerML(object):
         )
 
         rap_obstruction_ms = arcpy.Parameter(
-            displayName = "RAP Obstructing Lot and Structure ML (Excel)",
-            name = "RAP Obstructing Lot and Structure ML (Excel)",
+            displayName = "N2 RAP Obstructing Lot and Structure ML (Excel)",
+            name = "N2 RAP Obstructing Lot and Structure ML (Excel)",
             datatype = "DEFile",
             parameterType = "Required",
             direction = "Input"
         )
 
-        params = [pier_workablet_dir, civil_workable_ms, pier_workable_tracker_ms, rap_obstruction_ms]
+        gis_nlo_ms = arcpy.Parameter(
+            displayName = "N2 Structure ISF/NLO ML (Excel)",
+            name = "N2 Structure ISF/NLO ML (Excel)",
+            datatype = "DEFile",
+            parameterType = "Required",
+            direction = "Input"
+        )
+
+        params = [pier_workablet_dir, viaduct_ms, civil_workable_ms, pier_workable_tracker_ms, rap_obstruction_ms, gis_nlo_ms]
         return params
 
     def updateMessages(self, params):
@@ -202,9 +218,11 @@ class UpdatePierWorkableTrackerML(object):
 
     def execute(self, params, messages):
         pier_workablet_dir = params[0].valueAsText
-        civil_table = params[1].valueAsText
-        pier_tracker_table = params[2].valueAsText
-        rap_obst_table = params[3].valueAsText
+        viaduct_ms = params[1].valueAsText
+        civil_table = params[2].valueAsText
+        pier_tracker_table = params[3].valueAsText
+        rap_obst_table = params[4].valueAsText
+        gis_nlo_ms = params[5].valueAsText
 
         def Workable_Pier_Tracker_Update():
             def unique(lists):
@@ -242,13 +260,24 @@ class UpdatePierWorkableTrackerML(object):
             others_field = 'Others'
             pier_num_field_c = 'Pier No. (P)'
             util_obstruc_field = 'Utility'
+            remarks_field = 'Remarks'
+            struc_id_field = 'StrucID'
+            nlo_obstruc_field = 'NLO'
 
             #**************************************************************************************************#
-            #*********************  Update Pier Workable Tracker ML using Civil Team's ML *********************#
+            #*********************  1. Update Pier Workable Tracker ML using Civil Team's ML *********************#
             #**************************************************************************************************#
+            # 0: Workable
+            # 1: Non-workable
+            # 2: Completed
+
+            civil_t = pd.read_excel(civil_table, skiprows=2)
+            via_t = pd.read_excel(viaduct_ms)
+            gis_nlo_t = pd.read_excel(gis_nlo_ms)
+
             # Update N2 Pier Workability Tracker
             new_cols = ['PierNumber', 'CP', 'util1', 'util2', 'Others', 'Workability']
-            civil_t = pd.read_excel(civil_table, skiprows=2)
+            
             ids = civil_t.columns[civil_t.columns.str.contains(r'^Pier No.*|Contract P.*|^Name of Utilities|^Others|^OTHERS|^Pile Cap Workable.*',regex=True,na=False)]
             civil_t = civil_t.loc[:, ids]
             for i, col in enumerate(ids):
@@ -257,23 +286,22 @@ class UpdatePierWorkableTrackerML(object):
             ## change CP notation
             civil_t[new_cols[1]] = civil_t[new_cols[1]].replace(r'CPN','N-',regex=True)
 
-            ## Compile utility
-            civil_t[util_obstruc_field] = np.nan
-            ids = civil_t.index[(civil_t[new_cols[2]].notna()) | (civil_t[new_cols[3]].notna())]
-            civil_t.loc[ids, util_obstruc_field] = 1
-            civil_t = civil_t.drop([new_cols[2],new_cols[3]], axis=1)
-
-            ## 'Others' 
-            idx = civil_t.index[~civil_t[new_cols[4]].isna()]
-            civil_t.loc[idx, new_cols[4]] = 1
-
-            ## Change labels for Workability (No = Non-workable, Yes = Workable)
             ids = civil_t.index[civil_t[new_cols[5]] == 'Yes']
             civil_t.loc[ids, new_cols[5]] = 'Workable'
             ids = civil_t.index[civil_t[new_cols[5]] == 'No']
             civil_t.loc[ids, new_cols[5]] = 'Non-workable'
             ids = civil_t.index[civil_t[new_cols[5]] == 'Partial']
             civil_t.loc[ids, new_cols[5]] = 'Non-workable'
+
+            ### Update 'Utility'
+            civil_t[util_obstruc_field] = np.nan
+            ids = civil_t.index[(civil_t[new_cols[2]].notna()) | (civil_t[new_cols[3]].notna())]
+            civil_t.loc[ids, util_obstruc_field] = 1
+            civil_t = civil_t.drop([new_cols[2],new_cols[3]], axis=1)
+
+            ## Update 'Others' 
+            idx = civil_t.index[~civil_t[new_cols[4]].isna()]
+            civil_t.loc[idx, new_cols[4]] = 1
 
             ## If either Utility or Others has obstruction, Pile Cap must be 'Non-Workable'
             ##.query(f"((~{land_field}.isna()) & (`{land1_field}`.isna())) | (({land_field}.isna()) & (~`{land1_field}`.isna()))")
@@ -302,6 +330,7 @@ class UpdatePierWorkableTrackerML(object):
                 ## Merge civil pier workability ML to GIS N2 Pier Workability Tracker
                 gis_tracker = pd.read_excel(pier_tracker_table, sheet_name = cp)
                 idx = gis_tracker.iloc[:, 0].index[gis_tracker.iloc[:, 0].str.contains(r'PierNumber',regex=True,na=False)]
+                
                 # When you have two rows until the first observation
                 if len(idx) > 0:
                     for i, col in enumerate(tracker_fields_ordered):
@@ -340,9 +369,6 @@ class UpdatePierWorkableTrackerML(object):
                 # Finally, merge
                 new_tracker = pd.merge(left=gis_tracker, right=c_t, how='left', on=pier_num_field)
                 new_tracker = new_tracker.loc[:, tracker_fields_ordered]
-                # print(new_tracker.dtypes)
-
-                # Civil Tea
 
                 # Summary statistics between Civil ML and GIS pier workability tracker ML
                 ## 'Workable' 
@@ -367,11 +393,10 @@ class UpdatePierWorkableTrackerML(object):
             #     comp_table.query(f"{cp_field} == 'N-03'").reset_index(drop=True).to_excel(writer, sheet_name='N-03', index=False)
 
             #**************************************************************************************************#
-            #*********************  Update Pier Workable Tracker ML using RAP Team's ML *********************#
+            #*********************  2. Update Pier Workable Tracker ML using RAP Team's ML *********************#
             #**************************************************************************************************#
             ## Add obstructing Lot and structure IDs to pier workable tracker ML
             ### 1. Read the RAP table
-
             comp_table2 = pd.DataFrame()
             for cp in cps:
                 rap_t = pd.read_excel(rap_obst_table, skiprows = 1, sheet_name = cp)
@@ -380,6 +405,12 @@ class UpdatePierWorkableTrackerML(object):
                                     struc_field,
                                     land1_field,
                                     struc1_field]]
+                
+                # Update 'Land.1' for non-workable and completed pile caps
+                # idx = rap_t.index[rap_t[land_field] != 1]
+                # rap_t.loc[idx, land_field] = 0
+                # idx_comp = rap_t.index[rap_t[pier_num_field].isin(comp_piers)]
+                # rap_t.loc[idx_comp, land_field] = 2
                 
                 ## Fix format for land1_field
                 rap_t[land1_field] = rap_t[land1_field].astype(str)
@@ -398,6 +429,12 @@ class UpdatePierWorkableTrackerML(object):
                 rap_t.loc[ids, land1_field] = np.nan
 
                 ## Fix format for struc1_field
+                # Update 'Structure.1' for non-workable and completed pile caps
+                # idx = rap_t.index[rap_t[struc_field] != 1]
+                # rap_t.loc[idx, struc_field] = 0
+                # idx_comp = rap_t.index[rap_t[pier_num_field].isin(comp_piers)]
+                # rap_t.loc[idx_comp, struc_field] = 2
+
                 rap_t[struc1_field] = rap_t[struc1_field].astype(str)
                 rap_t[struc1_field] = rap_t[struc1_field].str.replace(r'\n',',',regex=True)
                 rap_t[struc1_field] = rap_t[struc1_field].str.replace(r';',',',regex=True)
@@ -416,6 +453,17 @@ class UpdatePierWorkableTrackerML(object):
                 ids = rap_t.index[rap_t[struc1_field] == '']
                 rap_t.loc[ids, struc1_field] = np.nan
 
+                ## NLO
+                ### using obstructing structure IDs, enter NLO
+                gis_nlo_t_filter = gis_nlo_t.query(f"{cp_field} == '{cp}'").reset_index(drop=True)
+                nlo_piers = unique(gis_nlo_t_filter[struc_id_field])
+
+                # Inspect the Pier Tracker ML contains the above strucIDs
+                nlo_piers_join = ("|").join(nlo_piers)
+                idx = rap_t.index[rap_t[struc1_field].str.contains(nlo_piers_join,regex=True,na=False)]
+                rap_t[nlo_obstruc_field] = np.nan
+                rap_t.loc[idx, nlo_obstruc_field] = 1
+
                 ### 2. Update Pier Tracker ML
                 #### Remove column names to be merged from the RAP Team
                 comp_table_temp = comp_table.loc[:, [pier_num_field,
@@ -429,28 +477,106 @@ class UpdatePierWorkableTrackerML(object):
                                                     ]]
                 comp_table_temp = comp_table_temp.query(f"{cp_field} == '{cp}'").reset_index(drop=True)
                 merged_table = pd.merge(left=comp_table_temp, right=rap_t, how='left', on=pier_num_field)
-                merged_table = merged_table.loc[:, tracker_fields_ordered]
+                merged_table = merged_table.loc[:, tracker_fields_ordered + [nlo_obstruc_field]]
+
+                ## Concat
                 comp_table2 = pd.concat([comp_table2, merged_table], ignore_index=False).reset_index(drop=True)
 
-            ##################### Check consistency between Civil ML and RAP ML ###############################
-            ## When obstruction is present (e.g., 'Land' = 1), there should be obstructing lot IDs. 
-            ## Identify piers with inconsistent information
-            ### Land
-            #### 'Land.1' field 
-            error_land_t = comp_table2.loc[:, [pier_num_field, cp_field, workability_field, land_field, land1_field]].query(f"((~{land_field}.isna()) & (`{land1_field}`.isna())) | (({land_field}.isna()) & (~`{land1_field}`.isna()))")
-            error_land_t.to_excel(os.path.join(pier_workablet_dir, '99-CHECK_Obstruction_N2_Land_Civil_vs_RAP.xlsx'), index=False)
+            ## Finally update 'Workability'
+            ### Completed
+            idx = via_t.index[(via_t[status_field] == 4) & (via_t[type_field] == 2)]
+            comp_piers = via_t.loc[idx, pier_num_field].values
+            ids_comp = comp_table2.index[comp_table2[pier_num_field].isin(comp_piers)]
+            comp_table2.loc[ids_comp, workability_field] = 'Completed'
+            # merged_table.loc[ids_comp, [util_obstruc_field,land_field,struc_field,others_field]] = 2
+
+            # ### Workable (0)
+            # ids_work = merged_table.index[merged_table[workability_field] == 'Workable']
+            # merged_table.loc[ids_work, [util_obstruc_field,land_field,struc_field,others_field]] = 0
+
+            # ## Non-workable (1)
+            # ids_nonwork = merged_table.index[merged_table[workability_field] == 'Non-workable']
             
-            comp_table2['error_land'] = np.nan
-            ids = comp_table2.index[comp_table2[pier_num_field].isin(error_land_t[pier_num_field])]
-            comp_table2.loc[ids, 'error_land'] = 1
+            # ### Utility
+            # ids_nonwork_util = merged_table.loc[ids_nonwork, ].index[merged_table.loc[ids_nonwork, util_obstruc_field].isna()]
+            # merged_table.loc[ids_nonwork_util, util_obstruc_field] = 0
 
-            ### Structure
-            error_struc_t = comp_table2.loc[:, [pier_num_field, cp_field, workability_field, struc_field, struc1_field]].query(f"((~{struc_field}.isna()) & (`{struc1_field}`.isna())) | (({struc_field}.isna()) & (~`{struc1_field}`.isna()))")
-            error_struc_t.to_excel(os.path.join(pier_workablet_dir, '99-CHECK_Obstruction_N2_Structure_Civil_vs_RAP.xlsx'), index=False)
+            # ### Land
+            # ids_nonwork_land = merged_table.loc[ids_nonwork, ].index[merged_table.loc[ids_nonwork, land_field].isna()]
+            # merged_table.loc[ids_nonwork_land, land_field] = 0
 
-            comp_table2['error_struc'] = np.nan
-            ids = comp_table2.index[comp_table2[pier_num_field].isin(error_struc_t[pier_num_field])]
-            comp_table2.loc[ids, 'error_struc'] = 1
+            # ### Structure
+            # ids_nonwork_struc = merged_table.loc[ids_nonwork, ].index[merged_table.loc[ids_nonwork, struc_field].isna()]
+            # merged_table.loc[ids_nonwork_struc, struc_field] = 0
+
+            # ### Others
+            # ids_nonwork_others = merged_table.loc[ids_nonwork, ].index[merged_table.loc[ids_nonwork, others_field].isna()]
+            # merged_table.loc[ids_nonwork_others, others_field] = 0
+
+
+            ##################### Check consistency between Civil ML and RAP ML ###############################
+            ## Add case of errors to Remarks field;
+            ## 1. Completed and Workable piers have obstructions (in Utility, Land, Structure, Others, Land.1, Structure.1)
+            ## 2. Non-workable piers have empty cells in Utility, Land, Structure, Others, Land.1, Structure.1.
+            ## 3. Piers with obstructing Land (1) or Structure (1) do not have any IDs in Land.1 or Structure.1 field.
+            ## 4. Piers with obstructing Lot or Structure IDs in Land.1 or Structure.1 field do not have '1' in Land or Structure field.
+
+            comp_table2[remarks_field] = np.nan
+            obstruc_fields_all = [util_obstruc_field,land_field,struc_field,others_field,land1_field,struc1_field]
+            error_descriptions = [
+                {
+                    'case1': 'Workable or completed piers should not have obstructions in one or more columns.',
+                    'case2': 'Non-workable piers should have at least one obstruction in columns.',
+                    'case3': 'This pier is missing obstructing LotIDs.',
+                    'case4': 'This pier is missing obstructing StructureIDs.',
+                    'case5': 'This pier is missing obstruction in Land',
+                    'case6': 'This pier is missing obstruction in Structure'
+                }
+            ]
+
+            obstruc_fields_notna = ((~comp_table2[util_obstruc_field].isna()) |
+                                    (~comp_table2[land_field].isna()) |
+                                    (~comp_table2[struc_field].isna()) |
+                                    (~comp_table2[others_field].isna()) |
+                                    (~comp_table2[land1_field].isna()) |
+                                    (~comp_table2[struc1_field].isna()))
+            
+            obstruc_fields_na = ((comp_table2[util_obstruc_field].isna()) &
+                        (comp_table2[land_field].isna()) &
+                        (comp_table2[struc_field].isna()) &
+                        (comp_table2[others_field].isna()) &
+                        (comp_table2[land1_field].isna()) &
+                        (comp_table2[struc1_field].isna()))
+
+            ### Case 1:
+            idx = comp_table2.index[((comp_table2[workability_field] == 'Completed') | (comp_table2[workability_field] == 'Workable')) & 
+                                    obstruc_fields_notna]
+            comp_table2.loc[idx, remarks_field] = error_descriptions[0]['case1']
+
+            ### Case 2:
+            idx = comp_table2.index[(comp_table2[workability_field] == 'Non-workable') &
+                                    obstruc_fields_na]
+            comp_table2.loc[idx, remarks_field] = error_descriptions[0]['case2']
+
+            ### Case 3:
+            idx = comp_table2.index[((comp_table2[workability_field] == 'Non-workable') & (comp_table2[land_field] == 1)) &
+                                    (comp_table2[land1_field].isna())]
+            comp_table2.loc[idx, remarks_field] = error_descriptions[0]['case3']
+
+            ### Case 4:
+            idx = comp_table2.index[((comp_table2[workability_field] == 'Non-workable') & (comp_table2[struc_field] == 1)) &
+                                    (comp_table2[struc1_field].isna())]
+            comp_table2.loc[idx, remarks_field] = error_descriptions[0]['case4']
+
+            ### Case 5:
+            idx = comp_table2.index[((comp_table2[workability_field] == 'Non-workable') & (~comp_table2[land1_field].isna())) &
+                                    (comp_table2[land_field].isna())]
+            comp_table2.loc[idx, remarks_field] = error_descriptions[0]['case5']
+
+            ### Case 6:
+            idx = comp_table2.index[((comp_table2[workability_field] == 'Non-workable') & (~comp_table2[struc1_field].isna())) &
+                                    (comp_table2[struc_field].isna())]
+            comp_table2.loc[idx, remarks_field] = error_descriptions[0]['case6']
 
             # Export as a new tracker
             to_excel_file0 = os.path.join(pier_workablet_dir, os.path.basename(pier_tracker_table))
@@ -468,8 +594,8 @@ class UpdateWorkablePierLayer(object):
 
     def getParameterInfo(self):
         gis_viaduct_dir = arcpy.Parameter(
-            displayName = "N2 Pier Tracker Masterlist Storage Directory",
-            name = "N2 Pier Tracker Masterlist Storage Directory",
+            displayName = "N2 Pier Tracker Directory",
+            name = "N2 Pier Tracker Directory",
             datatype = "DEWorkspace",
             parameterType = "Required",
             direction = "Input"
@@ -484,22 +610,14 @@ class UpdateWorkablePierLayer(object):
         )
 
         gis_workable_layer = arcpy.Parameter(
-            displayName = "N2 Pier Workable Layer (Polygon)",
-            name = "N2 Pier Workable Layer (Polygon)",
+            displayName = "N2 Pier Workability Layer (Polygon)",
+            name = "N2 Pier Workability Layer (Polygon)",
             datatype = "GPFeatureLayer",
             parameterType = "Required",
             direction = "Input"
         )
 
-        gis_nlo_ms = arcpy.Parameter(
-            displayName = "N2 GIS Structure NLO (ISF) ML (Excel)",
-            name = "N2 GIS Structure NLO (ISF) ML (Excel)",
-            datatype = "DEFile",
-            parameterType = "Required",
-            direction = "Input"
-        )
-
-        params = [gis_viaduct_dir, pier_workable_tracker_ms, gis_workable_layer, gis_nlo_ms]
+        params = [gis_viaduct_dir, pier_workable_tracker_ms, gis_workable_layer]
         return params
 
     def updateMessages(self, params):
@@ -509,7 +627,6 @@ class UpdateWorkablePierLayer(object):
         gis_via_dir = params[0].valueAsText
         pier_tracker_ms = params[1].valueAsText
         gis_workable_layer = params[2].valueAsText
-        gis_nlo_ms = params[3].valueAsText
         
         arcpy.env.overwriteOutput = True
         #arcpy.env.addOutputsToMap = True
@@ -529,11 +646,6 @@ class UpdateWorkablePierLayer(object):
                         non_match.append(i)
                 return non_match
             
-            # Read as xlsx
-            # gis_via_t = pd.read_excel(gis_via_ms)
-            gis_nlo_t = pd.read_excel(gis_nlo_ms)
-            # civil_workable_t = pd.read_excel(civil_workable_ms,sheet_name='(S01)',skiprows=3)
-
             # List of fields
             cp_field = 'CP'
             type_field = 'Type'
@@ -548,7 +660,7 @@ class UpdateWorkablePierLayer(object):
             lot_obstrucid_field = 'Land.1'
             struc_obstrucid_field = 'Structure.1'
             utility_obstruc_field = 'Utility'
-
+            nlo_obstruc_field = 'NLO'
 
             # 1. Clean fields
             cps = ['N-01','N-02','N-03']
@@ -570,12 +682,12 @@ class UpdateWorkablePierLayer(object):
 
                 ## 1. Workable Pile Cap
                 ## Status of Workable Pier
-                ### 0: Non-Workable
-                ### 1: Workable
+                ### 1: Non-Workable
+                ### 0: Workable
                 ### 2: Completedd
 
                 ### 1.2. Workable Pile Cap
-                ## 2.0. Enter Workable (1) else non-Workable (1) for AllWorkable
+                ## 2.0. Enter Workable (0) else non-Workable (1) for AllWorkable
                 completed_piers = []
                 with arcpy.da.SearchCursor(gis_workable_layer, [pier_number_field, workable_cols[0]]) as cursor:
                     for row in cursor:
@@ -589,29 +701,25 @@ class UpdateWorkablePierLayer(object):
                 workable_piers = pier_tracker_t.loc[id_workable_piers, pier_number_field].values
                 nonworkable_piers = pier_tracker_t.loc[id_nonworkable_piers, pier_number_field].values
 
-                # Identify workable piers but status is not 4 (i.e., workable piers with incompleted pile cap construction)
-                incomp_workable_piers = non_match_elements(workable_piers, completed_piers)
-                # incomp_nonworkable_piers = non_match_elements(nonworkable_piers, completed_piers)
-
                 # Enter 1 for workable piers with incompleted pile cap construction
                 with arcpy.da.UpdateCursor(gis_workable_layer, [pier_number_field,'AllWorkable','LandWorkable','StrucWorkable','NLOWorkable', 'UtilWorkable', 'OthersWorkable', cp_field]) as cursor:
                     for row in cursor:
-                        if row[0] in tuple(incomp_workable_piers) and row[7] == cp:
-                            row[1] = 1
-                            row[2] = 1
-                            row[3] = 1
-                            row[4] = 1
-                            row[5] = 1
-                            row[6] = 1
+                        if row[0] in tuple(workable_piers) and row[7] == cp:
+                            row[1] = 0
+                            row[2] = 0
+                            row[3] = 0
+                            row[4] = 0
+                            row[5] = 0
+                            row[6] = 0
                         cursor.updateRow(row)
                 
                 arcpy.AddMessage('Finished entering for workable piers with incomplete construction of pile cap.')
 
-                # Empty cell for AllWorkable = 0 (non-workable)
+                # Empty cell for AllWorkable = 1 (non-workable)
                 with arcpy.da.UpdateCursor(gis_workable_layer, [pier_number_field,'AllWorkable',cp_field]) as cursor:
                     for row in cursor:
                         if row[1] is None and row[2] == cp:
-                            row[1] = 0
+                            row[1] = 1
                         cursor.updateRow(row)
 
                 ## 2.1 LandWorkable
@@ -622,14 +730,14 @@ class UpdateWorkablePierLayer(object):
                 with arcpy.da.UpdateCursor(gis_workable_layer, [pier_number_field, workable_cols[1], cp_field]) as cursor:
                     for row in cursor:
                         if row[0] in tuple(land_nonwork_piers) and row[2] == cp:
-                            row[1] = 0
+                            row[1] = 1
                         cursor.updateRow(row)
 
-                # Empty cell = 1 (workable)
+                # Empty cell = 0 (workable)
                 with arcpy.da.UpdateCursor(gis_workable_layer, [pier_number_field,'LandWorkable',cp_field]) as cursor:
                     for row in cursor:
                         if row[1] is None and row[2] == cp:
-                            row[1] = 1
+                            row[1] = 0
                         cursor.updateRow(row)
 
                 ## 2.2 StrucWorkable
@@ -639,46 +747,25 @@ class UpdateWorkablePierLayer(object):
                 with arcpy.da.UpdateCursor(gis_workable_layer, [pier_number_field, workable_cols[2], cp_field]) as cursor:
                     for row in cursor:
                         if row[0] in tuple(struc_nonwork_piers) and row[2] == cp:
-                            row[1] = 0
-                        cursor.updateRow(row)
-
-                # Empty cell = 1 (workable)
-                with arcpy.da.UpdateCursor(gis_workable_layer, [pier_number_field,'StrucWorkable',cp_field]) as cursor:
-                    for row in cursor:
-                        if row[1] is None and row[2] == cp:
                             row[1] = 1
                         cursor.updateRow(row)
 
-                ## 2.3 NLOWorkable
-                ### Not all non-workable structures have NLOs. So, to decide the workable status of 'NLOWorkable':
-                ### 2.3.1. identify StrucID of non-workable structures
-
-                pier_tracker_t[struc_obstrucid_field] = pier_tracker_t[struc_obstrucid_field].replace('\n',',')
-                pier_tracker_t[struc_obstrucid_field] = pier_tracker_t[struc_obstrucid_field].replace(r'\s+','',regex=True)
-                pier_tracker_t[struc_obstrucid_field] = pier_tracker_t[struc_obstrucid_field].str.upper()
-                # pier_tracker_t[struc_id_field] = pier_tracker_t[struc_id_field].replace(r'[(]PNR[)]','',regex=True)
-                
-                ids_nonna = pier_tracker_t.index[pier_tracker_t[struc_obstruc_field] == 1]
-                c_t2 = pier_tracker_t.loc[ids_nonna, ]
-                ids = c_t2.index[c_t2[struc_obstrucid_field].notna()]
-                c_t2 = c_t2.loc[ids, ]
- 
-                ### 2.3.2. identify any NLOs falling under the identified non-workable structures
-                nlo_obstruc_piers = []
-                for i in c_t2.index:
-                    obstruc_struc_ids = c_t2.loc[i, struc_obstrucid_field]
-                    # obstruc_struc_ids = obstruc_struc_ids[~np.isnan(obstruc_struc_ids)]
-                    test = [e for e in gis_nlo_t[struc_id_field] if e in obstruc_struc_ids.split(',')]
-                    
-                    if len(test) > 0:
-                        # idenfity pier numbers with obstructing NLOs
-                        nlo_obstruc_piers.append(pier_tracker_t.loc[i, pier_number_field])
-                
-                ### 2.3.3. Enter NLOWorkable = 0 with identified pier numbers
-                with arcpy.da.UpdateCursor(gis_workable_layer, [pier_number_field, workable_cols[3], cp_field]) as cursor:
+                # Empty cell = 0 (workable)
+                with arcpy.da.UpdateCursor(gis_workable_layer, [pier_number_field,'StrucWorkable',cp_field]) as cursor:
                     for row in cursor:
-                        if row[0] in tuple(nlo_obstruc_piers) and row[2] == cp:
+                        if row[1] is None and row[2] == cp:
                             row[1] = 0
+                        cursor.updateRow(row)
+
+                ## 2.3 NLOWorkable
+                ids = pier_tracker_t.index[pier_tracker_t[nlo_obstruc_field] == 1]
+                nlo_nonwork_piers = pier_tracker_t.loc[ids, pier_number_field].values
+                
+                ### 'Non-workable' (1)
+                with arcpy.da.UpdateCursor(gis_workable_layer, [pier_number_field, 'NLOWorkable', cp_field]) as cursor:
+                    for row in cursor:
+                        if row[0] in tuple(nlo_nonwork_piers) and row[2] == cp:
+                            row[1] = 1
                         cursor.updateRow(row)
 
 
@@ -686,7 +773,7 @@ class UpdateWorkablePierLayer(object):
                 with arcpy.da.UpdateCursor(gis_workable_layer, [pier_number_field,'NLOWorkable',cp_field]) as cursor:
                     for row in cursor:
                         if row[1] is None and row[2] == cp:
-                            row[1] = 1
+                            row[1] = 0
                         cursor.updateRow(row)
 
                 ## 2.4. UtilWorkable
@@ -988,7 +1075,15 @@ class UpdateStripMapLayer(object):
             direction = "Input"
         )
 
-        params = [pier_point_layer, strip_map_layer]
+        cp_breakline_layer = arcpy.Parameter(
+            displayName = "N2 CP Breakline Layer (Line)",
+            name = "N2 CP Breakline Layer (Line)",
+            datatype = "GPFeatureLayer",
+            parameterType = "Required",
+            direction = "Input"
+        )
+
+        params = [pier_point_layer, strip_map_layer, cp_breakline_layer]
         return params
 
     def updateMessages(self, params):
@@ -997,6 +1092,7 @@ class UpdateStripMapLayer(object):
     def execute(self, params, messages):
         pier_point_layer = params[0].valueAsText
         strip_map_layer = params[1].valueAsText
+        cpbreak_layer = params[2].valueAsText
         
         arcpy.env.overwriteOutput = True
         #arcpy.env.addOutputsToMap = True
@@ -1037,6 +1133,38 @@ class UpdateStripMapLayer(object):
                 for row in cursor:
                     row[0] = 'No'
                     cursor.updateRow(row)
+
+            ### Add second 'CP' for strip polygons overlapping with two CPs.
+            #### Used to accommodate two different CPs when selected in the smart map
+            cp_field = 'CP_End'
+            cp2_field = 'GroupId'
+            # where_clause = f"{cp_field} <> 'S-06'"
+
+            # First enter null 'GroupId' field
+            with arcpy.da.UpdateCursor(strip_map_layer, [cp2_field]) as cursor:
+                for row in cursor:
+                    if row[0]:
+                        row[0] = None
+                    cursor.updateRow(row)
+                    
+            # Select rows
+
+            # arcpy.management.SelectLayerByAttribute(cpbreak_layer, 'NEW_SELECTION', where_clause)
+            arcpy.management.SelectLayerByAttribute(cpbreak_layer, 'NEW_SELECTION')
+            arcpy.management.SelectLayerByLocation(strip_map_layer, 'INTERSECT', cpbreak_layer)
+
+            # Enter the second CP to 'GroupId' field
+            ## The second CP is always +1 from the previous
+            with arcpy.da.UpdateCursor(strip_map_layer, ['CP',cp2_field]) as cursor:
+                for row in cursor:
+                    if row[0]:
+                        if row[0] == 'N-01':
+                            row[1] = 'N-02'
+                        if row[0] == 'N-02':
+                            row[1] = 'N-03'
+                        elif row[0] == 'N-03':
+                            row[1] = 'N-04'
+                    cursor.updateRow(row)           
 
         Strip_Map_Layer_Update()
 

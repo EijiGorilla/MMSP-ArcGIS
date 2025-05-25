@@ -25,8 +25,8 @@ class CreateWorkablePierLayer(object):
 
     def getParameterInfo(self):
         pier_workable_dir = arcpy.Parameter(
-            displayName = "N2 Pier Workability Tracker Directory",
-            name = "N2 Pier Workability Tracker Directory",
+            displayName = "N2 Pier Workability Directory",
+            name = "N2 Pier Workability Directory",
             datatype = "DEWorkspace",
             parameterType = "Required",
             direction = "Input"
@@ -163,8 +163,8 @@ class UpdatePierWorkableTrackerML(object):
 
     def getParameterInfo(self):
         pier_workablet_dir = arcpy.Parameter(
-            displayName = "N2 Pier Workability Tracker Directory",
-            name = "N2 Pier Workability Tracker Directory",
+            displayName = "N2 Pier Workability Directory",
+            name = "N2 Pier Workability Directory",
             datatype = "DEWorkspace",
             parameterType = "Required",
             direction = "Input"
@@ -179,16 +179,16 @@ class UpdatePierWorkableTrackerML(object):
         )
 
         civil_workable_ms = arcpy.Parameter(
-            displayName = "N2 Civil Pier Workability ML (Excel)",
-            name = "N2 Civil Pier Workability ML (Excel)",
+            displayName = "N2 Pier Workability Civil ML (Excel)",
+            name = "N2 Pier Workability Civil ML (Excel)",
             datatype = "DEFile",
             parameterType = "Required",
             direction = "Input"
         )
 
         pier_workable_tracker_ms = arcpy.Parameter(
-            displayName = "N2 Pier Workable Tracker ML (Excel)",
-            name = "Pier Workable Tracker ML (Excel)",
+            displayName = "N2 Pier Workability Tracker ML (Excel)",
+            name = "N2 Pier Workability Tracker ML (Excel)",
             datatype = "DEFile",
             parameterType = "Required",
             direction = "Input"
@@ -514,7 +514,7 @@ class UpdatePierWorkableTrackerML(object):
             # merged_table.loc[ids_nonwork_others, others_field] = 0
 
 
-            ##################### Check consistency between Civil ML and RAP ML ###############################
+            ##################### Identify incosistent data entry ###############################
             ## Add case of errors to Remarks field;
             ## 1. Completed and Workable piers have obstructions (in Utility, Land, Structure, Others, Land.1, Structure.1)
             ## 2. Non-workable piers have empty cells in Utility, Land, Structure, Others, Land.1, Structure.1.
@@ -594,16 +594,16 @@ class UpdateWorkablePierLayer(object):
 
     def getParameterInfo(self):
         gis_viaduct_dir = arcpy.Parameter(
-            displayName = "N2 Pier Tracker Directory",
-            name = "N2 Pier Tracker Directory",
+            displayName = "N2 Pier Workability Directory",
+            name = "N2 Pier Workability Directory",
             datatype = "DEWorkspace",
             parameterType = "Required",
             direction = "Input"
         )
 
         pier_workable_tracker_ms = arcpy.Parameter(
-            displayName = "N2 Pier Workable Tracker ML (Excel)",
-            name = "N2 Pier Workable Tracker ML (Excel)",
+            displayName = "N2 Pier Workability Tracker ML (Excel)",
+            name = "N2 Pier Workability Tracker ML (Excel)",
             datatype = "DEFile",
             parameterType = "Required",
             direction = "Input"
@@ -820,24 +820,24 @@ class CheckPierNumbers(object):
 
     def getParameterInfo(self):
         pier_tracker_dir = arcpy.Parameter(
-            displayName = "N2 Pier Workability Tracker Directory",
-            name = "N2 Pier Workability Tracker Directory",
+            displayName = "N2 Pier Workability Directory",
+            name = "N2 Pier Workability Directory",
             datatype = "DEWorkspace",
             parameterType = "Required",
             direction = "Input"
         )
 
         civil_workable_ms = arcpy.Parameter(
-            displayName = "N2 Civil Pier Workability ML (Excel)",
-            name = "N2 Civil Pier Workability ML (Excel)",
+            displayName = "N2 Pier Workability Civil ML (Excel)",
+            name = "N2 Pier Workability Civil ML (Excel)",
             datatype = "DEFile",
             parameterType = "Required",
             direction = "Input"
         )
 
         gis_viaduct_ms = arcpy.Parameter(
-            displayName = "N2 GIS Viaduct ML (Excel)",
-            name = "N2 GIS Viaduct ML (Excel)",
+            displayName = "N2 Viaduct GIS ML (Excel)",
+            name = "N2 Viaduct GIS ML (Excel)",
             datatype = "DEFile",
             parameterType = "Required",
             direction = "Input"
@@ -941,26 +941,32 @@ class CheckPierNumbers(object):
                 compile_t.loc[0, cols[1]] = len(civil_piers)
                 compile_t.loc[0, cols[2]] = len(gis_piers)
                 compile_t.loc[0, cols[4]] = compile_t.loc[0, cols[1]] - compile_t.loc[0, cols[2]]
-                nonmatch_piers = [e for e in civil_piers if e not in gis_piers]
-                if len(nonmatch_piers) > 0:
-                    compile_t.loc[0, cols[5]] = nonmatch_piers
+                nonmatch_piers1 = [e for e in civil_piers if e not in gis_piers]
+                nonmatch_piers2 = [e for e in gis_piers if e not in civil_piers]
+                nonmatch_piers_all = nonmatch_piers1 + nonmatch_piers2
+                if len(nonmatch_piers_all) > 0:
+                    compile_t.loc[0, cols[5]] = nonmatch_piers_all
                 else:
                     compile_t.loc[0, cols[5]] = np.nan
 
                 ## 2.2. Civil vs Pier Tracker
                 compile_t.loc[0, cols[3]] = len(tracker_piers)
                 compile_t.loc[0, cols[6]] = compile_t.loc[0, cols[1]] - compile_t.loc[0, cols[3]]
-                nonmatch_piers = [e for e in civil_piers if e not in tracker_piers]
-                if len(nonmatch_piers) > 0:
-                    compile_t.loc[0, cols[7]] = nonmatch_piers
+                nonmatch_piers1 = [e for e in civil_piers if e not in tracker_piers]
+                nonmatch_piers2 = [e for e in tracker_piers if e not in civil_piers]
+                nonmatch_piers_all = nonmatch_piers1 + nonmatch_piers2
+                if len(nonmatch_piers_all) > 0:
+                    compile_t.loc[0, cols[7]] = nonmatch_piers_all
                 else:
                     compile_t.loc[0, cols[7]] = np.nan
 
                 ## 2.3. GIS Portal vs Pier Tracker
                 compile_t.loc[0, cols[8]] = compile_t.loc[0, cols[2]] - compile_t.loc[0, cols[3]]
-                nonmatch_piers = [e for e in gis_piers if e not in tracker_piers]
-                if len(nonmatch_piers) > 0:
-                    compile_t.loc[0, cols[9]] = nonmatch_piers
+                nonmatch_piers1 = [e for e in gis_piers if e not in tracker_piers]
+                nonmatch_piers2 = [e for e in tracker_piers if e not in gis_piers]
+                nonmatch_piers_all = nonmatch_piers1 + nonmatch_piers2
+                if len(nonmatch_piers_all) > 0:
+                    compile_t.loc[0, cols[9]] = nonmatch_piers_all
                 else:
                     compile_t.loc[0, cols[9]] = np.nan
 

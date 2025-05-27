@@ -150,6 +150,7 @@ class UpdateExcelML(object):
 
             ## Read table
             gis_table = pd.read_excel(gis_ml, keep_default_na=False)
+            gis_table0 = pd.read_excel(gis_ml, keep_default_na=False)
 
             ## Create backup file for GIS master list
             export_file_name = os.path.splitext(os.path.basename(gis_ml))[0]
@@ -395,10 +396,16 @@ class UpdateExcelML(object):
                 
                 ## 2.5. Append the merged table to the GIS table
                 final_table = pd.concat([g_table2, merged_table], ignore_index=True)
-
+          
                 ## 2.6. Return labeling notation for PierNumber (e.g., P-0101, PR-1911)
-                final_table[pier_field] = final_table[pier_field].replace(r'P','P-',regex=True)
-                final_table[pier_field] = final_table[pier_field].replace(r'P-R','PR',regex=True)
+                # final_table[pier_field] = final_table[pier_field].str.replace(r'P','P-',regex=True)
+                # final_table[pier_field] = final_table[pier_field].str.replace(r'P-R','PR',regex=True)
+
+                ## join back original PierNumber
+                temp = gis_table0.loc[:, ['uniqueID','PierNumber']]
+                final_table = pd.merge(left=final_table, right=temp, how='left', left_on=unique_id, right_on=unique_id)
+                final_table = final_table.drop('PierNumber_x',axis=1)
+                final_table = final_table.rename(columns={'PierNumber_y': pier_field})
 
                 ## 2.7. Sort by uniqueID
                 final_table = final_table.sort_values(by=[unique_id])
@@ -678,7 +685,7 @@ class CreateWorkablePierLayer(object):
         arcpy.Delete_management(deleteTempLayers)
 
         # Export the latest N2 Viaduct layer to excel
-        arcpy.conversion.TableToExcel(via_layer, os.path.join(workable_dir, "SC_Viaduct_MasterList.xlsx"))
+        arcpy.conversion.TableToExcel(via_layer, os.path.join(workable_dir, "SC_Viaduct_ML.xlsx"))
 
         ########################################
         ##### Update SC Pier Point Layer #######
@@ -1206,7 +1213,7 @@ class UpdateWorkablePierLayer(object):
                         cursor.updateRow(row)
 
                 ## Export this layer to excel
-                arcpy.conversion.TableToExcel(gis_workable_layer, os.path.join(pier_workability_dir, "SC_Pier_Workability_GIS_Portal.xlsx"))
+                #arcpy.conversion.TableToExcel(gis_workable_layer, os.path.join(pier_workability_dir, "SC_Pier_Workability_GIS_Portal.xlsx"))
 
             ##################### Identify incosistent data entry ###############################
             ## Add case of errors to Remarks field;
@@ -1270,6 +1277,21 @@ class UpdateWorkablePierLayer(object):
                                     (civil_t[struc_field].isna())]
             civil_t.loc[idx, remarks_field] = error_descriptions[0]['case6']    
             civil_t.to_excel(os.path.join(pier_workability_dir, "SC_Pier_Workability_Tracker.xlsx"), index=False)
+
+            ## Update Pier Workable Layer for 'Remarks'
+            idx = civil_t.index[~civil_t[remarks_field].isna()]
+            remarks_piers = civil_t.loc[idx, pier_number_field].values
+            remarks_text = civil_t.loc[idx, remarks_field].values
+            with arcpy.da.UpdateCursor(gis_workable_layer, [pier_number_field, remarks_field]) as cursor:
+                for row in cursor:
+                    if row[0] in tuple(remarks_piers):
+                        # Find index of the subject pier numbers in a list (remarks_piers)
+                        idx2 = [index for index, value in enumerate(remarks_piers) if value == row[0]][0]
+
+                        # Use this index to extract the corresponding remarks
+                        row[1] = remarks_text[idx2]
+                    cursor.updateRow(row)
+                        
         Workable_Pier_Table_Update()
 
 class CheckPierNumbers(object):
@@ -1397,7 +1419,7 @@ class CheckPierNumbers(object):
                 arcpy.AddMessage(compile_all)
             
             # Export
-            compile_all.to_excel(os.path.join(pier_tracker_dir, '99-CHECK_Summary_SC_PierNumbers_Civil_vs_GISportal.xlsx'),
+            compile_all.to_excel(os.path.join(pier_tracker_dir, '99-CHECK_SC_PierNumbers_Civil_vs_GISportal.xlsx'),
                                               index=False)
 
         Workable_Pier_Table_Update()
@@ -1609,8 +1631,8 @@ class ReSortGISTable(object):
 
     def getParameterInfo(self):
         gis_layer = arcpy.Parameter(
-            displayName = "GIS Attribute Table (SC Viaduct)",
-            name = "GIS Attribute Table (SC Viaduct)",
+            displayName = "SC Viaduct Layer (File Geodatabase)",
+            name = "SC Viaduct Layer (File Geodatabase)",
             datatype = "GPFeatureLayer",
             parameterType = "Required",
             direction = "Input"

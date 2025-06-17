@@ -366,6 +366,14 @@ class UpdateLot(object):
                     ids = rap_table.index[rap_table[joinField].str.contains(r'10155|10156|10158-5',regex=True,na=False)]
                     rap_table.loc[ids, package_field] = 'S-01'
 
+                    # Convert the following LotIDs to S-04
+                    idx = rap_table.index[rap_table[joinField] == '60136-A']
+                    rap_table.loc[idx, package_field] = 'S-04'
+
+                    # Convert the following LotIDs to S-06
+                    idx = rap_table.index[rap_table[joinField].str.contains(r'^100003$|^100004$|^100005$|^100010$',regex=True,na=False)]
+                    rap_table.loc[idx, package_field] = 'S-06'
+
                 rap_table[package_field] = rap_table[package_field].apply(lambda x: re.sub(r',.*','',x))
 
                 ## for stats
@@ -1010,6 +1018,10 @@ class UpdateStructure(object):
                 
                 # Conver join field (StrucID) to upper case
                 rap_table[joinField] = rap_table[joinField].str.upper()
+
+                # Remove white space and convert to string
+                to_string_fields = [joinField]
+                toString(rap_table, to_string_fields)
 
                 # Check and Fix StatusStruc, 
                 ## 1. StatusStruc =0 -> StatusStruc = empty
@@ -1831,8 +1843,8 @@ class SCUpdateWorkablePierLandTable(object):
             sum_lot_compile = pd.DataFrame()
             tnon_matched_lot_ids = []
             
-            # cps = ['S-01','S-02','S-03a','S-03b','S-03c','S-04','S-05','S-06','S-07']
-            cps = ['S-01']
+            # cps = ['S-01','S-02','S-03a','S-03c','S-04','S-05','S-06']
+            cps = ['S-01','S-02','S-03a','S-03c','S-04','S-05','S-06']
             for i, cp in enumerate(cps):
                 gis_lot_t = gis_lot_table.query(f"{cp_field} == '{cp}'").reset_index(drop=True)
 
@@ -2032,8 +2044,7 @@ class SCUpdateWorkablePierStructureTable(object):
             compile_nlo = pd.DataFrame()
             sum_struc_compile = pd.DataFrame()
             ## cps = ['S-01','S-02','S-03a','S-03b','S-03c','S-04','S-05','S-06','S-07']
-            cps = ['S-01']
-
+            cps = ['S-01','S-02','S-03a','S-03c','S-04','S-05','S-06']
             for i, cp in enumerate(cps):
                 gis_struc_t = gis_struc_table.query(f"{cp_field} == '{cp}'").reset_index(drop=True)
                 gis_nlo_t = gis_nlo_table.query(f"{cp_field} == '{cp}'").reset_index(drop=True)

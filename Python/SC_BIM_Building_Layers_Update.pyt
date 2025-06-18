@@ -138,7 +138,7 @@ class StationStructureMessage(object):
         self.label = "2.0. ---------- Station Structures ------------"
         self.description = "2.0. ---------- Station Structures ------------"
 
-class AddFieldsToBuildingLayerStation(object):
+class AddFieldsToBuildingLayerStation(object):          
     def __init__(self):
         self.label = "2.1. Add Fields to New Building Layers (Station Structures ONLY)"
         self.description = "2.1. Add Fields to New Building Layers (Station Structures ONLY)"
@@ -166,6 +166,7 @@ class AddFieldsToBuildingLayerStation(object):
         layers = list(input_layers.split(";"))
 
         # 1. Add fields
+        finish_date_field = 'Finish_date'
         add_fields = ['Station', 'Types', 'CP', 'Status']
 
         arcpy.AddMessage("Add Fields start...")
@@ -304,6 +305,15 @@ class EditBuildingLayerStation(object):
             multiValue = True
         )
 
+        # finish_field = arcpy.Parameter(
+        #     displayName = "Field indicating completed construction dates",
+        #     name = "Field indicating completed construction dates",
+        #     datatype = "Field",
+        #     parameterType = "Required",
+        #     direction = "Input",
+        # )
+        # finish_field.parameterDependencies = [delete_fc.name]
+
         params = [station_update, delete_fc, new_fc]
         return params
 
@@ -314,12 +324,13 @@ class EditBuildingLayerStation(object):
         station_update = params[0].valueAsText
         delete_bim = params[1].valueAsText
         new_bim = params[2].valueAsText
+        # finish_date_field = params[3].valueAsText
 
         arcpy.env.overwriteOutput = True
 
         # define fields
         status_field = 'Status'
-        finish_date_field = 'Finish_date'
+        # finish_date_field = 'Finish_date'
 
         # Stations domains
         stations = {
@@ -347,8 +358,7 @@ class EditBuildingLayerStation(object):
         del_layers = list(delete_bim.split(";"))
         new_layers = list(new_bim.split(";"))
         new_stations = list(station_update.split(";"))
-        
-        arcpy.AddMessage(new_layers)
+
         # Convert station names to station domain numbers
         station_numbers = tuple([stations[e] for e in new_stations])
 
@@ -362,40 +372,62 @@ class EditBuildingLayerStation(object):
         for layer in new_layers:
             new_basenames.append(os.path.basename(layer))
 
-        # 2. Add and Delete
+        arcpy.AddMessage(f"deleted layer names: {sorted(del_basenames)}")
+        arcpy.AddMessage(f"new layer names: {sorted(new_basenames)}")
+
+        # # 2. Add and Delete
         if sorted(del_basenames) == sorted(new_basenames):
+            arcpy.AddMessage('Sublayer names are all matched.')
+    
+            for target_layer in del_layers:
+                del_basename = os.path.basename(target_layer)
 
-            # 2.1. Delete layers from existing
-            for layer in del_layers:
-                del_basename = os.path.basename(layer)
+                # 1. Add new layer
+                new_layers_series = pd.Series(new_layers)
+                id = new_layers_series.index[new_layers_series.str.contains(del_basename,regex=True)][0]
+                new_layer = new_layers[id]
+                arcpy.AddMessage(del_basename + "; " + new_layer)
 
+                # 2. Update 'Status' field in new_layer using 'xx_Status or xx_status' field from Revit
+                # empty cell (null): 1. To be Constructed, 
+                # 'Ongoing': 2. Ongoing
+                # 'Completed': 4. Completed
+                # 2. Extract fields
+                bim_fields = [e.name for e in arcpy.ListFields(new_layer)]
+
+                ## 3. Search field name excluding 'Project_'
+                try:
+                    bim_status_field = [re.search(r'^(?!.*Project)(.*?)_Status$|(?!.*Project)(.*?)_status$', e).group() for e in bim_fields if re.search(r'^(?!.*Project)(.*?)_Status$|(?!.*Project)(.*?)_status$', e) is not None]
+                except AttributeError:
+                    bim_status_field = [re.search(r'^(?!.*Project)(.*?)_Status$|(?!.*Project)(.*?)_status$', e) for e in bim_fields if re.search(r'^(?!.*Project)(.*?)_Status$|(?!.*Project)(.*?)_status$', e) is not None]
+
+                arcpy.AddMessage(bim_status_field)
+
+                # 4. Update 'Status' field in new_layer
+                with arcpy.da.UpdateCursor(new_layer, [bim_status_field, status_field]) as cursor:
+                    for row in cursor:
+                        if row[0] == 'Ongoing':
+                            row[1] = 2
+                        elif row[0] == 'Completed':
+                            row[1] = 4
+                        elif row[0] is None:
+                            row[1] = 1
+                        cursor.updateRow(row)
+
+                # 5. Replace target layer with new observations
                 # Select layer by attribute
                 if len(new_stations) == 1:
                     where_clause = "Station = {}".format(station_numbers[0])
                 else:
                     where_clause = "Station IN {}".format(station_numbers)
 
-                arcpy.management.SelectLayerByAttribute(layer, 'SUBSET_SELECTION',where_clause)
+                arcpy.management.SelectLayerByAttribute(target_layer, 'SUBSET_SELECTION',where_clause)
 
                 # Truncate
-                arcpy.TruncateTable_management(layer)
-            
-                # 2.2. Add new layer
-                new_layers_series = pd.Series(new_layers)
-                id = new_layers_series.index[new_layers_series.str.contains(del_basename,regex=True)][0]
-                arcpy.AddMessage(del_basename + "; " + new_layers[id])
-                arcpy.Append_management(new_layers[id], layer, schema_type = 'NO_TEST')
+                arcpy.management.DeleteRows(target_layer)
 
-                # Update 'Status' field based on 'Target_date' and 'Finish_date'
-                ## if finish date is empty or null, status = 1 (to be constructed).
-                ## if finish date is entered, status = 4 (Completed)
-                with arcpy.da.UpdateCursor(layer, [status_field, finish_date_field]) as cursor:
-                    for row in cursor:
-                        if row[1] is None:
-                            row[0] = 1
-                        elif row[1] is not None:
-                            row[0] = 4
-                        cursor.updateRow(row)
+                # Append
+                arcpy.management.Append(new_layer, target_layer, schema_type = 'NO_TEST', expression = where_clause)
         else:
             arcpy.AddError("Matching Errors.. Select corresponding building sublayers for input and target.")
             pass
@@ -497,8 +529,8 @@ class AddFieldsToBuildingLayerDepot(object):
         try:
             for layer in layers:
                 for field in add_fields:
-                    if layer == 'Name':
-                        arcpy.AddField_management(layer, field, "TEXT", "", "", "", field, "NULLABLE", "")
+                    if field == 'Name':
+                        arcpy.management.AddField(layer, field, "TEXT", "", "", "", field, "NULLABLE", "")
                     else:
                         arcpy.management.AddField(layer, field, "SHORT", "", "", "", field, "NULLABLE", "")
 
@@ -516,7 +548,7 @@ class AddFieldsToBuildingLayerDepot(object):
                     
         ## Use 'DocName' field to extract CP and Station
         for layer in layers:
-            with arcpy.da.UpdateCursor(layer, ['DocName', 'Name']) as cursor:
+            with arcpy.da.UpdateCursor(layer, ['DocName', add_fields[0]]) as cursor:
                 for row in cursor:                    
                     try:
                         building_name = re.search(r'BAN\w+|BAN\w+[12]',row[0]).group()
@@ -565,7 +597,7 @@ class EditBuildingLayerDepot(object):
             "CWT",
             "FP1",
             "DB1",
-            "DB2"
+            "DB2",
             "DSP"
         ]
 
@@ -587,6 +619,15 @@ class EditBuildingLayerDepot(object):
             multiValue = True
         )
 
+        # finish_field = arcpy.Parameter(
+        #     displayName = "Field indicating completed construction dates",
+        #     name = "Field indicating completed construction dates",
+        #     datatype = "Field",
+        #     parameterType = "Required",
+        #     direction = "Input",
+        # )
+        # finish_field.parameterDependencies = [delete_fc.name]
+
         params = [building_update, delete_fc, new_fc]
         return params
 
@@ -599,11 +640,10 @@ class EditBuildingLayerDepot(object):
         new_bim = params[2].valueAsText
 
         arcpy.env.overwriteOutput = True
-        arcpy.AddMessage("0.")
 
         # Define fields
         status_field = 'Status'
-        finish_date_field = 'Finish_date'
+        # finish_date_field = 'Finish_date'
 
         # Building names = domain names for depot building layers    
         del_layers = list(delete_bim.split(";"))
@@ -621,14 +661,50 @@ class EditBuildingLayerDepot(object):
         for layer in new_layers:
             new_basenames.append(os.path.basename(layer))
 
-        arcpy.AddMessage(del_basenames)
-        arcpy.AddMessage(new_basenames)
+        arcpy.AddMessage(f"deleted layer names: {sorted(del_basenames)}")
+        arcpy.AddMessage(f"new layer names: {sorted(new_basenames)}")
 
         # 2. Add and Delete
         if sorted(del_basenames) == sorted(new_basenames):
+            arcpy.AddMessage('Sublayer names are all matched.')
+
             # # 2.1. Delete layers from existing
-            for layer in del_layers:
-                del_basename = os.path.basename(layer)
+            for target_layer in del_layers:
+                del_basename = os.path.basename(target_layer)
+
+                # 1. Add new layer
+                new_layers_series = pd.Series(new_layers)
+                id = new_layers_series.index[new_layers_series.str.contains(del_basename,regex=True)][0]
+                new_layer = new_layers[id]
+                arcpy.AddMessage("Checking Match: ")
+                arcpy.AddMessage("Updated Subylayer: " + del_basename + "; " + "New Sublayer: " + new_layer)
+ 
+                # 2. Update 'Status' field in new_layer using 'xx_Status or xx_status' field from Revit
+                # empty cell (null): 1. To be Constructed, 
+                # 'Ongoing': 2. Ongoing
+                # 'Completed': 4. Completed
+                # 2. Extract fields
+
+                bim_fields = [e.name for e in arcpy.ListFields(new_layer)]
+
+                ## 3. Search field name excluding 'Project_'
+                try:
+                    bim_status_field = [re.search(r'^(?!.*Project)(.*?)_Status$|(?!.*Project)(.*?)_status$', e).group() for e in bim_fields if re.search(r'^(?!.*Project)(.*?)_Status$|(?!.*Project)(.*?)_status$', e) is not None]
+                except AttributeError:
+                    bim_status_field = [re.search(r'^(?!.*Project)(.*?)_Status$|(?!.*Project)(.*?)_status$', e) for e in bim_fields if re.search(r'^(?!.*Project)(.*?)_Status$|(?!.*Project)(.*?)_status$', e) is not None]
+
+                arcpy.AddMessage(f"The name of status field in BIM models: {bim_status_field}")
+
+                # 4. Update 'Status' field in new_layer
+                with arcpy.da.UpdateCursor(new_layer, [bim_status_field, status_field]) as cursor:
+                    for row in cursor:
+                        if row[0] == 'Ongoing':
+                            row[1] = 2
+                        elif row[0] == 'Completed':
+                            row[1] = 4
+                        elif row[0] is None:
+                            row[1] = 1
+                        cursor.updateRow(row)
 
                 # Select layer by attribute
                 if len(new_list_buildings) == 1:
@@ -637,30 +713,13 @@ class EditBuildingLayerDepot(object):
                     where_clause = "Name IN {}".format(new_buildings)
                 
                 arcpy.AddMessage(where_clause)
-                arcpy.management.SelectLayerByAttribute(layer, 'SUBSET_SELECTION',where_clause)
+                arcpy.management.SelectLayerByAttribute(target_layer, 'SUBSET_SELECTION',where_clause)
 
                 # Truncate
-                arcpy.TruncateTable_management(layer)
-            
-                # 2.2. Add new layer
-                new_layers_series = pd.Series(new_layers)
-                id = new_layers_series.index[new_layers_series.str.contains(del_basename,regex=True)][0]
-                arcpy.AddMessage("Checking Match: ")
-                arcpy.AddMessage("Updated Subylayer: " + del_basename + "; " + "New Sublayer: " + new_layers[id])
-                
-                arcpy.Append_management(new_layers[id], layer, schema_type = 'NO_TEST')
+                arcpy.management.DeleteRows(target_layer)
+               
+                arcpy.management.Append(new_layer, target_layer, schema_type = 'NO_TEST', expression = where_clause)
                 arcpy.AddMessage(del_basename + " was successfully updated.")
-
-                # Update 'Status' field based on 'Target_date' and 'Finish_date'
-                ## if finish date is empty or null, status = 1 (to be constructed).
-                ## if finish date is entered, status = 4 (Completed)
-                with arcpy.da.UpdateCursor(layer, [status_field, finish_date_field]) as cursor:
-                    for row in cursor:
-                        if row[1] is None:
-                            row[0] = 1
-                        elif row[1] is not None:
-                            row[0] = 4
-                        cursor.updateRow(row)
         else:
             arcpy.AddError("Matching Errors.. Select corresponding building sublayers for input and target.")
             pass
@@ -823,6 +882,15 @@ class EditDepotCivilWorks(object):
             multiValue = True
         )
 
+        # finish_field = arcpy.Parameter(
+        #     displayName = "Field indicating completed construction dates",
+        #     name = "Field indicating completed construction dates",
+        #     datatype = "Field",
+        #     parameterType = "Required",
+        #     direction = "Input",
+        # )
+        # finish_field.parameterDependencies = [delete_fc.name]
+
         params = [delete_fc, new_fc]
         return params
 
@@ -836,8 +904,6 @@ class EditDepotCivilWorks(object):
         arcpy.env.overwriteOutput = True
 
         # Define field
-        target_date_field = 'Target_date'
-        finish_date_field = 'Finish_date'
         status_field = 'Status'
 
         del_layers = list(delete_bim.split(";"))
@@ -857,30 +923,51 @@ class EditDepotCivilWorks(object):
 
         # 2. Add and Delete
         if sorted(del_basenames) == sorted(new_basenames):
-
-            # 2.1. Delete layers from existing
-            for layer in del_layers:
-                del_basename = os.path.basename(layer)
+            arcpy.AddMessage('Sublayer names are all matched.')
+            
+            for target_layer in del_layers:
+                del_basename = os.path.basename(target_layer)
 
                 # Truncate
-                arcpy.TruncateTable_management(layer)
+                arcpy.TruncateTable_management(target_layer)
             
-                # 2.2. Add new layer
+                # 1. Add new layer
                 new_layers_series = pd.Series(new_layers)
                 id = new_layers_series.index[new_layers_series.str.contains(del_basename,regex=True)][0]
-                arcpy.AddMessage(del_basename + "; " + new_layers[id])
-                arcpy.Append_management(new_layers[id], layer, schema_type = 'NO_TEST')
+                new_layer = new_layers[id]
+                arcpy.AddMessage(del_basename + "; " + new_layer)
 
-                # Update 'Status' field based on 'Target_date' and 'Finish_date'
-                ## if finish date is empty or null, status = 1 (to be constructed).
-                ## if finish date is entered, status = 4 (Completed)
-                with arcpy.da.UpdateCursor(layer, [status_field, finish_date_field]) as cursor:
+                # 2. Update 'Status' field in new_layer using 'xx_Status or xx_status' field from Revit
+                # empty cell (null): 1. To be Constructed, 
+                # 'Ongoing': 2. Ongoing
+                # 'Completed': 4. Completed
+                # 2. Extract fields
+                bim_fields = [e.name for e in arcpy.ListFields(new_layer)]
+
+                ## 3. Search field name excluding 'Project_'
+                try:
+                    bim_status_field = [re.search(r'^(?!.*Project)(.*?)_Status$|(?!.*Project)(.*?)_status$', e).group() for e in bim_fields if re.search(r'^(?!.*Project)(.*?)_Status$|(?!.*Project)(.*?)_status$', e) is not None]
+                except AttributeError:
+                    bim_status_field = [re.search(r'^(?!.*Project)(.*?)_Status$|(?!.*Project)(.*?)_status$', e) for e in bim_fields if re.search(r'^(?!.*Project)(.*?)_Status$|(?!.*Project)(.*?)_status$', e) is not None]
+                arcpy.AddMessage(f"The name of status field in BIM model: {bim_status_field}")
+
+                # 4. Update 'Status' field in new_layer
+                with arcpy.da.UpdateCursor(new_layer, [bim_status_field, status_field]) as cursor:
                     for row in cursor:
-                        if row[1] is None:
-                            row[0] = 1
-                        elif row[1] is not None:
-                            row[0] = 4
+                        if row[0] == 'Ongoing':
+                            row[1] = 2
+                        elif row[0] == 'Completed':
+                            row[1] = 4
+                        elif row[0] is None:
+                            row[1] = 1
                         cursor.updateRow(row)
+
+                # Truncate
+                arcpy.management.DeleteRows(target_layer)
+                
+                # Append
+                arcpy.management.Append(new_layer, target_layer, schema_type = 'NO_TEST')
+
         else:
             arcpy.AddError("Matching Errors.. Select corresponding building sublayers for input and target.")
             pass
@@ -925,7 +1012,7 @@ class DomainSettingDepotCivilWorks(object):
         layers = list(gis_layers.split(";"))
 
         # # Apply symbology changes to lyr, which will create a new finalLayer:       
-        domainList = ['Station Structures_TYPE', 'Station Structures_STATUS',]
+        domainList = ['Station Structures_TYPE', 'Station Structures_STATUS']
         
         for layer in layers:
             if domain_field == 'Status':

@@ -407,18 +407,19 @@ class EditBuildingLayerStation(object):
                 except AttributeError:
                     bim_status_field = [re.search(r'^(?!.*Project)(.*?)_Status$|(?!.*Project)(.*?)_status$', e) for e in bim_fields if re.search(r'^(?!.*Project)(.*?)_Status$|(?!.*Project)(.*?)_status$', e) is not None]
 
-                arcpy.AddMessage(bim_status_field)
+                arcpy.AddMessage(f"The name of status field in BIM models: {bim_status_field}")
 
                 # 4. Update 'Status' field in new_layer
-                with arcpy.da.UpdateCursor(new_layer, [bim_status_field, status_field]) as cursor:
-                    for row in cursor:
-                        if row[0] == 'Ongoing':
-                            row[1] = 2
-                        elif row[0] == 'Completed':
-                            row[1] = 4
-                        elif row[0] is None:
-                            row[1] = 1
-                        cursor.updateRow(row)
+                if len(bim_status_field) == 1: # Update only When status field exists in the BIM model (input)
+                    with arcpy.da.UpdateCursor(new_layer, [bim_status_field, status_field]) as cursor:
+                        for row in cursor:
+                            if row[0] == 'Ongoing':
+                                row[1] = 2
+                            elif row[0] == 'Completed':
+                                row[1] = 4
+                            elif row[0] is None:
+                                row[1] = 1
+                            cursor.updateRow(row)
 
                 # 5. Replace target layer with new observations
                 # Select layer by attribute

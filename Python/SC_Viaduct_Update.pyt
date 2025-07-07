@@ -937,12 +937,12 @@ class UpdateWorkablePierLayer(object):
                 sc_util_cols = [
                     {
                         'S-01': ['Meralco','Telco Line','Drainage','Canal','Waterline'],
-                        'S-02': ['NGCP POLE', 'Maynilad', 'ETPI'],
+                        'S-02': ['NGCP POLE', 'Maynilad', 'Meralco', 'ETPI'],
                         'S-03a': ['NGCP POLE', 'Maynilad', 'Meralco', 'ETPI'],
                         'S-03c': ['NGCP POLE', 'Maynilad', 'Meralco', 'ETPI'],
                         'S-04': ['NGCP POLE', 'Maynilad', 'Meralco', 'ETPI'],
                         'S-05': ['NGCP', 'ETPI', 'Maynilad', 'Meralco', 'Telco'],
-                        'S-06': ['ETPI', 'Maynilad', 'Meralco']
+                        'S-06': ['ETPI', 'Maynilad', 'Meralco / Telcom']
                     }
                 ]
 
@@ -984,6 +984,11 @@ class UpdateWorkablePierLayer(object):
                     # x.loc[idx, util] = 0
                     # x[util] = pd.to_numeric(x[util], errors='coerce').astype('int64')
 
+                for col in col_utils:
+                    x[col] = x[col].astype(str).str.replace(r'[()]', '', regex=True)
+                    x[col] = x[col].replace(['N/A', 'n/a', '-', '--', '', ' ', 'NaN', 'nan', 'null', 'NULL'], np.nan)
+                    
+                x[col_utils] = x[col_utils].apply(pd.to_numeric, errors='coerce')
                 x[utility_field] = x.loc[:, col_utils].sum(axis=1)
                 idx = x.index[x[utility_field] > 0]
                 x.loc[idx, utility_field] = 1
@@ -1563,7 +1568,7 @@ class UpdateStripMapLayer(object):
             # 3. Update strip map polygon layer
             ## 3.1. Select pier point layer for each status in 'AllWorkable' field
             ### First, select rows with non-workable piers
-            where_clause = "AllWorkable = 0"
+            where_clause = "AllWorkable = 1"
             arcpy.management.SelectLayerByAttribute(pier_point_layer, 'NEW_SELECTION', where_clause)
 
             # Select strip map layer by location

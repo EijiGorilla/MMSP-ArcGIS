@@ -1550,6 +1550,8 @@ class UpdateStripMapLayer(object):
         arcpy.env.overwriteOutput = True
         #arcpy.env.addOutputsToMap = True
 
+        workability_field_stripmap = 'Workability'
+
         def Strip_Map_Layer_Update():
             def unique(lists):
                 collect = []
@@ -1564,29 +1566,50 @@ class UpdateStripMapLayer(object):
                     if i not in list_b:
                         non_match.append(i)
                 return non_match
+            
+            
 
             # 3. Update strip map polygon layer
+            ## 3.0. Empty all rows in 'Workability' field in strip map layer
+            with arcpy.da.UpdateCursor(strip_map_layer, [workability_field_stripmap]) as cursor:
+                for row in cursor:
+                    if row[0] in ('Workable', 'Non-Workable', 'Completed'):
+                        row[0] = None
+                    cursor.updateRow(row)
+
             ## 3.1. Select pier point layer for each status in 'AllWorkable' field
             ### First, select rows with non-workable piers
             where_clause = "AllWorkable = 1"
             arcpy.management.SelectLayerByAttribute(pier_point_layer, 'NEW_SELECTION', where_clause)
-
-            # Select strip map layer by location
             arcpy.management.SelectLayerByLocation(strip_map_layer, 'CONTAINS', pier_point_layer)
-
-            # Update strip map layer
-            with arcpy.da.UpdateCursor(strip_map_layer, ['NonWorkable']) as cursor:
+            with arcpy.da.UpdateCursor(strip_map_layer, [workability_field_stripmap]) as cursor:
                 for row in cursor:
-                    row[0] = 'Yes'
+                    row[0] = "Non-Workable"
                     cursor.updateRow(row)
 
-            ### Second, switch rows and these rows are workable piers
-            arcpy.management.SelectLayerByAttribute(strip_map_layer, 'SWITCH_SELECTION')
-            with arcpy.da.UpdateCursor(strip_map_layer, ['NonWorkable']) as cursor:
+            ### Second, select rows with completed piers
+            where_clause = "AllWorkable = 2"
+            where_clause_stripmap = "Workability is null"
+            arcpy.management.SelectLayerByAttribute(pier_point_layer, 'NEW_SELECTION', where_clause)
+            arcpy.management.SelectLayerByAttribute(strip_map_layer, 'NEW_SELECTION', where_clause_stripmap)
+            arcpy.management.SelectLayerByLocation(strip_map_layer, 'CONTAINS', pier_point_layer)
+            with arcpy.da.UpdateCursor(strip_map_layer, [workability_field_stripmap]) as cursor:
                 for row in cursor:
-                    row[0] = 'No'
+                    if row[0] == None:
+                        row[0] = "Completed"
                     cursor.updateRow(row)
 
+            ### Finally, select rows with workable piers
+            where_clause = "AllWorkable = 0"
+            where_clause_stripmap = "Workability is null"
+            arcpy.management.SelectLayerByAttribute(pier_point_layer, 'NEW_SELECTION', where_clause)
+            arcpy.management.SelectLayerByAttribute(strip_map_layer, 'NEW_SELECTION', where_clause_stripmap)
+            arcpy.management.SelectLayerByLocation(strip_map_layer, 'CONTAINS', pier_point_layer)
+            with arcpy.da.UpdateCursor(strip_map_layer, [workability_field_stripmap]) as cursor:
+                for row in cursor:
+                    if row[0] == None:
+                        row[0] = "Workable"
+                    cursor.updateRow(row)
 
             ### Add second 'CP' for strip polygons overlapping with two CPs.
             #### Used to accommodate two different CPs when selected in the smart map

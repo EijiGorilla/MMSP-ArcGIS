@@ -20,7 +20,7 @@ B. Update construction status in existing building layers.
 
 ## B. Update construction status in existing building layers
 ## For SC station structures and depot buildings, BIM Team will provide
-## revit files monthly with updated construction status.
+## revit files with updated construction status.
 ## The same steps can be used to replace old revit with new refit files..
 
 ## Depot Civil Works:
@@ -31,6 +31,12 @@ B. Update construction status in existing building layers.
 ### 2.1. Add fields [Station, CP, and Types]
 ### 2.2. Delete existing building layers.
 ### 2.3. Add new buildings to the existing building layers.
+#***********************************************************************************************#
+#### You can first add input (new) sublayers and then corresponding target (existing) sublayers.
+#### For example, if you only see structuralColumns and StructuralFoundation sublayers in the input building layer, 
+#### you should add the only corresponding target sublayers (because the sublayers in the input building layer
+#### are the ONLY updates)
+#***********************************************************************************************#
 ** 2.4, 2.5, and 2.6 are not mandatory. Run only when you want to keep attribute information in excel files
 ### 2.4. Export building layers to excel
 ### 2.5. Update Master excel file
@@ -39,6 +45,7 @@ B. Update construction status in existing building layers.
 #************************************
 # Important Note
 ## In case input revit models have new sublayer (e.g., specialityEquipment) which does not appear in Contents Pane, 
+## Ensure to add 'Name', 'Status' fields to target (existing) sublayers for Depot
 ## first find the sublayer in the target geodatabase. If the same sublayer exists in the geodatabase, you can simply
 ## append the new observations to the existing (i.e., specialityEquipment sublayer in the geodatabase). 
 
@@ -856,18 +863,18 @@ class AddFieldsToDepotCivilWorksLayer(object):
                 for row in cursor:
                     if row[0] == 'StructuralFoundation':
                         row[1] = 1
-                    elif row[0] == 'StructuralColumn':
+                    elif row[0] == 'StructuralColumns':
                         row[1] = 2
                     elif row[0] == 'StructuralFraming':
                         row[1] = 3
-                    elif row[0] == 'Roofs':
-                        row[1] = 4
-                    elif row[0] == 'Floors':
-                        row[1] = 5
-                    elif row[0] == 'Walls':
-                        row[1] = 6
-                    elif row[0] == 'Columns':
-                        row[1] = 7
+                    # elif row[0] == 'Roofs':
+                    #     row[1] = 4
+                    # elif row[0] == 'Floors':
+                    #     row[1] = 5
+                    # elif row[0] == 'Walls':
+                    #     row[1] = 6
+                    # elif row[0] == 'Columns':
+                    #     row[1] = 7
                     else:
                         row[1] = 8
                     cursor.updateRow(row)
@@ -967,15 +974,16 @@ class EditDepotCivilWorks(object):
                 arcpy.AddMessage(f"The name of status field in BIM model: {bim_status_field}")
 
                 # 4. Update 'Status' field in new_layer
-                with arcpy.da.UpdateCursor(new_layer, [bim_status_field, status_field]) as cursor:
-                    for row in cursor:
-                        if row[0] == 'Ongoing':
-                            row[1] = 2
-                        elif row[0] == 'Completed':
-                            row[1] = 4
-                        elif row[0] is None:
-                            row[1] = 1
-                        cursor.updateRow(row)
+                if len(bim_status_field) == 1:
+                    with arcpy.da.UpdateCursor(new_layer, [bim_status_field, status_field]) as cursor:
+                        for row in cursor:
+                            if row[0] == 'Ongoing':
+                                row[1] = 2
+                            elif row[0] == 'Completed':
+                                row[1] = 4
+                            elif row[0] is None:
+                                row[1] = 1
+                            cursor.updateRow(row)
 
                 # Truncate
                 arcpy.management.DeleteRows(target_layer)

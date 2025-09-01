@@ -2118,7 +2118,7 @@ class SCUpdateWorkablePierStructureTable(object):
                             'Miss_IDs_Civil_GISPortal']
 
                 sum_struc = pd.DataFrame()
-                sum_struc.loc[0,sum_cols[0]] = 'S-01'
+                sum_struc.loc[0,sum_cols[0]] = cp
                 sum_struc.loc[0,sum_cols[1]] = len(x_struc_ids)
                 sum_struc.loc[0,sum_cols[2]] = len(y_struc_ids)
                 sum_struc.loc[0,sum_cols[3]] = len(y_struc_portal_ids)

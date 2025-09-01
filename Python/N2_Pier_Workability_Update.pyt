@@ -1028,7 +1028,15 @@ class UpdatePierPointLayer(object):
             direction = "Input"
         )
 
-        params = [pier_point_layer, pier_workable_layer]
+        viaduct_layer = arcpy.Parameter(
+            displayName = "N2 Viaduct Layer (multipatch)",
+            name = "N2 Viaduct Layer (multipatch)",
+            datatype = "GPFeatureLayer",
+            parameterType = "Required",
+            direction = "Input"
+        )
+
+        params = [pier_point_layer, pier_workable_layer, viaduct_layer]
         return params
 
     def updateMessages(self, params):
@@ -1037,6 +1045,7 @@ class UpdatePierPointLayer(object):
     def execute(self, params, messages):
         pier_point_layer = params[0].valueAsText
         pier_workable_layer = params[1].valueAsText
+        viaduct_layer = params[2].valueAsText
         
         arcpy.env.overwriteOutput = True
         #arcpy.env.addOutputsToMap = True
@@ -1080,6 +1089,37 @@ class UpdatePierPointLayer(object):
             # delete
             deleteTempLayers = [new_point_layer]
             arcpy.Delete_management(deleteTempLayers)
+
+            # Update the following pier numbers ONLY
+            ## As these piers do not have pile caps, we will use pier head for monitoring by visualizing pier points.
+            ## P-159, P-159NB/SB, P-160, P-160NB/SB
+            pier_number_field = "PierNumber"
+            type_field = "Type"
+            status_field = "Status"
+
+            where_clause = f"({pier_number_field} LIKE '%P-159%' OR {pier_number_field} LIKE '%P-160%') AND {type_field} = 1"
+            arcpy.management.SelectLayerByAttribute(viaduct_layer, 'NEW_SELECTION', where_clause)
+
+            ## Compile status for the above pier numbers in a dictionary
+            piers_status = {}
+            with arcpy.da.SearchCursor(viaduct_layer, [pier_number_field, status_field]) as cursor:
+                for row in cursor:
+                    if row[0]:
+                        if row[1] < 4:
+                            piers_status[row[0]] = 0
+                        elif row[1] == 4:
+                            piers_status[row[0]] = 2
+
+            ## {'P-160NB': 0, 'P-159': 0, 'P-159NB': 0, 'P-159SB': 0, 'P-160SB': 0, 'P-160': 0}
+            ## {PierNumber: AllWorkable}, where Workable (AllWorkable = 0), Nonworkable (AllWorkable = 1), and Completed (AllWorkable = 2)
+            where_clause = f"{pier_number_field} LIKE '%P-159%' OR {pier_number_field} LIKE '%P-160%'"
+            arcpy.management.SelectLayerByAttribute(pier_point_layer, 'NEW_SELECTION', where_clause)
+            with arcpy.da.UpdateCursor(pier_point_layer, [pier_number_field, 'AllWorkable']) as cursor:
+                for row in cursor:
+                    if row[0]:
+                        status = piers_status[row[0]]
+                        row[1] = status
+                    cursor.updateRow(row)
 
         Pier_Point_Layer_Update()
 

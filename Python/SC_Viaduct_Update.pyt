@@ -1864,50 +1864,58 @@ class CheckUpdatesCivilGIS(object):
 
         for i, sheet in enumerate(sheet_names):
             x = pd.read_excel(os.path.join(gis_dir,civil_ml),sheet_name=sheet)
-            idx = x.index[~x[pier_field].isna()]
-            x = x.loc[idx, ].reset_index(drop=True)
-            x['temp'] = x[pier_field].str.replace(r'[^P]','',regex=True) # Remove all letters except for 'P'
-            idx = x.index[x['temp'] != 'PP']
-            x = x.loc[idx, ]
-            
+
+            ## Delete unnecessary columns
+            drop_columns = x.columns[x.columns.str.contains(r'^Unname',regex=True,na=False)]
+            x = x.drop(columns=drop_columns)
+
             if i == 0: # for Bored Pile
                 x = x.loc[1:,[pier_field,no_field,cp_field_civil,finish_actual_field]]
             else:
                 x = x.loc[1:,[pier_field,cp_field_civil,finish_actual_field]]
-            
+
+            ## Delete rows with empty pier field
+            idx = x.index[x[pier_field].isna()]
+            x = x.drop(idx).reset_index(drop=True)
+
+            ## Delete rows with ES
+            ids = x.index[x[pier_field].str.contains(r'^ES', regex=True, na=False)]
+            x = x.drop(ids).reset_index(drop=True)
+
             # "---------------------------------------------------------------------------------------"
             # 1. Summary statistics:
             # Re-formata 'Package'
             x[cp_field_civil] = x[cp_field_civil].astype(str)
             x[cp_field_civil] = x[cp_field_civil].replace(r'/s+','',regex=True)
-            
+
             # Remove 'S' or 'S0'
             x[cp_field_civil] = x[cp_field_civil].replace(r'S|S0|0|.0','',regex=True)
+
+            ## Keep only completed ones
             x = x.query(f"{finish_actual_field}.notna()").reset_index(drop=True)
             x[status_field] = 4
             x[type_field] = i + 1
-            
+
             x = x.assign(CP=x.Package.map(cp_name))
             x_sum = x.groupby([cp_field,type_field,status_field])[status_field].count().reset_index(name='count')
             civil_sum = civil_sum._append(x_sum,ignore_index=True)
-            
+                
             # Create 'ID'
-            if i == 0: # Bored Piles
+            # Bored Piles
+            if i == 0: 
                 x[no_field] = x[no_field].astype(str)
+                x[no_field] = x[no_field].apply(lambda x: re.sub(r'.0', '', x))
                 x[id_field] = x[pier_field] + "-" + x[no_field] + "-1"
             else:
                 x[id_field] = x[pier_field] + "-" + str(i+1)
-            
-            ## Delete unnecessary columns
-            drop_columns = x.columns[x.columns.str.contains(r'^Unname',regex=True,na=False)]
-            x = x.drop(columns=drop_columns)
-            
+                x[id_field] = x[id_field].apply(lambda x: re.sub(r'P-', 'P', x))
+
             ## 2.2. Get pier ID
-            civil_id = x[id_field].values              
+            civil_id = x[id_field].values          
 
             # 3. GIS ML
             ## Filter
-            gis_fil = y.query(f"{status_field} == 4 & {type_field} == {i+1}")
+            gis_fil = y.query(f"{status_field} == 4 & {type_field} == {i+1}").reset_index(drop=True)
             gis_id = gis_fil[id_field].values
    
             # 3. Non-matched pier

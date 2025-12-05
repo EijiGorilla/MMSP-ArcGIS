@@ -154,6 +154,8 @@ class AddFieldsToBuildingLayerStation(object):
             multiValue = True
         )
 
+        # Process sublayers ONLY when a sublayer has "t00__Description" field.
+
         # Make sure to add the follwing sublayers:
         ## Architectural:
         ## 1. Site
@@ -178,11 +180,19 @@ class AddFieldsToBuildingLayerStation(object):
 
         layers = list(input_layers.split(";"))
 
-        # 1. Add fields
         finish_date_field = 'Finish_date'
         add_fields = ['Station', 'Types', 'CP', 'Status']
         component_source_field = "t00__Description"
 
+        # 0. Filter sublayers 
+        # sublayers = []
+        # ## Process sublayers only when they have "t00__Description" field.
+        # for layer in layers:
+        #     fields = [f.name for f in arcpy.ListFields(layer)]
+        #     if component_source_field in fields:
+        #         sublayers.append(layer)
+
+        # 1. Add fields
         arcpy.AddMessage("Add Fields start...")
         for layer in layers:
             for field in add_fields:
@@ -207,39 +217,55 @@ class AddFieldsToBuildingLayerStation(object):
 
         
         # Add 'UG' or 'ATG'
+        ug_n = ['000001', '000002', '000021', '000031', '000041']
+        ag_n = ['000011']
+
+        # For all layers
         for layer in layers:
             arcpy.AddMessage(layer)
-            with arcpy.da.UpdateCursor(layer, [component_source_field, component_field]) as cursor:
+            with arcpy.da.UpdateCursor(layer, ["DocName", component_field]) as cursor:
                 for row in cursor:
                     if row[0]:
-                        if "UG" in row[0]:
+                        component_n = row[0][-6:]
+                        if component_n in ug_n:
                             row[1] = "UG"
-                        elif "ATG" in row[0]:
+                        elif component_n in ag_n:
                             row[1] = "ATG"
                     cursor.updateRow(row)
         
-        # Add sub-components (e.g., D-Wall)
+        # Add sub-components for Below-ground
+        ## Only sublayers (with t00__Description)
         for layer in layers:
-            with arcpy.da.UpdateCursor(layer, [component_source_field, component_field, add_fields[1], "Family", "Workset", 'Category', 'Types']) as cursor:
+            with arcpy.da.UpdateCursor(layer, [component_field, "Types", "Family", "Workset"]) as cursor:
                 for row in cursor:
                     # Underground
-                    if row[1]:
-                        if row[1] == "UG":
-                            if "D-Wall" in row[3]:
-                                row[2] = "D-Wall"
-                            elif "Floor" in row[3]:
-                                row[2] = "Underground Slab"
-                            elif "Column" in row[3]:
-                                row[2] = "Underground Piles"
-                        elif row[1] == "ATG":
-                            if "Floor" in row[4] or "Foundation" in row[4]:
-                                row[2] = "Foundation"
-                            elif "Column" in row[3]:
-                                row[2] = "Piles"
-                            elif "Roof" in row[4]:
-                                row[2] = "Roof"
-                            elif "Beam" in row[3]:
-                                row[2] = "Beam"
+                    if row[0] and row[2]:
+                        if row[0] == "UG":
+                            if "D-Wall" in row[2]:
+                                row[1] = "D-Wall"
+                            elif "Floor" in row[2]:
+                                row[1] = "Underground Slab"
+                            elif "Column" in row[2]:
+                                row[1] = "Underground Piles"
+                            elif "Basic Wall" in row[2]:
+                                row[1] = "Underground Walls"
+                    cursor.updateRow(row)
+
+        # Add sub-components for Above-ground
+        for layer in layers:
+            with arcpy.da.UpdateCursor(layer, [component_field, 'Types', "Family", "Workset"]) as cursor:
+                for row in cursor:
+                    # Underground
+                    if row[0] and row[2] and row[3]:
+                        if row[0] == "ATG":
+                            if "Slab" in row[3] or "Foundation" in row[3]:
+                                row[1] = "Foundation"
+                            elif "Column" in row[2]:
+                                row[1] = "Piles"
+                            elif "Roof" in row[3]:
+                                row[1] = "Roof"
+                            elif "Beam" in row[2]:
+                                row[1] = "Beam"
                     cursor.updateRow(row)
                     
         ## Use 'DocName' field to extract CP and Station
@@ -328,6 +354,22 @@ class EditBuildingLayerStation(object):
         del_layers = list(delete_bim.split(";"))
         new_layers = list(new_bim.split(";"))
 
+        # 0. Filter sublayers 
+        # component_source_field = "t00__Description"
+        # del_sublayers = []
+        # new_sublayers = []
+
+        # ## Process sublayers only when they have "t00__Description" field.
+        # for layer in del_layers:
+        #     fields = [f.name for f in arcpy.ListFields(layer)]
+        #     if component_source_field in fields:
+        #         del_sublayers.append(layer)
+
+        # for layer in new_layers:
+        #     fields = [f.name for f in arcpy.ListFields(layer)]
+        #     if component_source_field in fields:
+        #         new_sublayers.append(layer)
+
         # 1. Check names are matched between deleted layers and new layers
         del_basenames = []
         new_basenames = []
@@ -379,8 +421,6 @@ class EditBuildingLayerStation(object):
 
                 # 5. Replace target layer with new observations
                 where_clause = "Station = {}".format(FTI_domain_number)
-
-
                 arcpy.management.SelectLayerByAttribute(target_layer, 'SUBSET_SELECTION',where_clause)
 
                 # Truncate
@@ -431,6 +471,16 @@ class DomainSettingStationStructure(object):
 
         layers = list(gis_layers.split(";"))
 
+        # component_source_field = "t00__Description"
+
+        # # 0. Filter sublayers 
+        # sublayers = []
+        # ## Process sublayers only when they have "t00__Description" field.
+        # for layer in layers:
+        #     fields = [f.name for f in arcpy.ListFields(layer)]
+        #     if component_source_field in fields:
+        #         sublayers.append(layer)
+
         # # Apply symbology changes to lyr, which will create a new finalLayer:
         # finalLayer = arcpy.management.ApplySymbologyFromLayer(lyr, "Q:\GIS_Data\Symbology_Layers\TypeSymbology.lyr")
         # # Remove the original lyr from aprxMap
@@ -442,8 +492,8 @@ class DomainSettingStationStructure(object):
         
         for layer in layers:
             if domain_field == 'Status':
-                arcpy.AssignDomainToField_management(layer, domain_field, domainList[1])
+                arcpy.AssignDomainToField_management(layer, domain_field, domainList[0])
             elif domain_field == 'Station':
-                arcpy.AssignDomainToField_management(layer, domain_field, domainList[2])
+                arcpy.AssignDomainToField_management(layer, domain_field, domainList[1])
             else:
                 arcpy.AddError("Your specified field was not found in doman lists...please check.")

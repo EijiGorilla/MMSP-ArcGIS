@@ -1220,6 +1220,22 @@ class UpdateWorkablePierLayer(object):
                 ## Export this layer to excel
                 #arcpy.conversion.TableToExcel(gis_workable_layer, os.path.join(pier_workability_dir, "SC_Pier_Workability_GIS_Portal.xlsx"))
 
+                ## Final tweak
+                ### When 'AllWorkable' = 2, the other fields ('LandWorkable', 'StrucWorkable', 'NLOWorkable', 'UtilWorkable', 'OthersWorkable') must be 2.
+                ### We need this process, as the construction of some pile caps is completed, but these piers are sometimes entered with obstructing IDs in the Civil Team's table.
+                with arcpy.da.UpdateCursor(gis_workable_layer, ['Type', 'Status', 'AllWorkable','LandWorkable','StrucWorkable','NLOWorkable', 'UtilWorkable', 'OthersWorkable']) as cursor:
+                    # 0: Non-workable, 1: Workable, 2: Completed
+                    for row in cursor:
+                        row[0] = 'Pile Cap'
+                        if row[1] == 4:
+                            row[2] = 2
+                            row[3] = 2
+                            row[4] = 2
+                            row[5] = 2
+                            row[6] = 2
+                            row[7] = 2
+                        cursor.updateRow(row)
+
             ##################### Identify incosistent data entry ###############################
             ## Add case of errors to Remarks field;
             ## 1. Completed and Workable piers have obstructions (in Utility, Land, Structure, Others, Land.1, Structure.1)
@@ -1714,9 +1730,9 @@ class ReSortGISTable(object):
                         if row[0]:
                             pier_n = re.sub("\D+","",row[0])
                             try:
-                                pier_s = re.search(r"^BUE-P.*[SN]?$|^SCT.*[SN]?$|^PR.*[SN]?$|^P.*[SN]?$|^MT.*[SN]?$|^STR.*[SN]?$|^DAT.*[SN]?$",str(row[0])).group()
+                                pier_s = re.search(r"^BUE-P.*[SN]?$|^SCT.*[SN]?$|^PR.*[SN]?$|^P.*[SN]?$|^MT.*[SN]?$|^STR.*[SN]?$|^DAT.*[SN]?$|^DEP.*[SN]?$",str(row[0])).group()
                             except AttributeError:
-                                pier_s = re.search(r"^BUE-P.*[SN]?$|^SCT.*[SN]?$|^PR.*[SN]?$|^P.*[SN]?$P|^MT.*[SN]?$|^STR.*[SN]?$|^DAT.*[SN]?$",str(row[0]))
+                                pier_s = re.search(r"^BUE-P.*[SN]?$|^SCT.*[SN]?$|^PR.*[SN]?$|^P.*[SN]?$P|^MT.*[SN]?$|^STR.*[SN]?$|^DAT.*[SN]?$|^DEP.*[SN]?$",str(row[0]))
                             
                             # when PierNumber has N or S suffix, we need to account for this.
                             digit = re.sub('\D+','',pier_s)

@@ -1097,6 +1097,7 @@ class UpdateWorkablePierLayer(object):
                 ### else .isna() does not work 
                 x = x.replace('^\s*$', np.nan, regex=True)
 
+                ### Compile for all the packages for subsequent operation
                 civil_t = pd.concat([civil_t, x]).reset_index(drop=True)
 
                 ######################################################################################
@@ -1106,11 +1107,11 @@ class UpdateWorkablePierLayer(object):
                 ## 1. Workable Pile Cap
                 ## Status of Workable Pier
                 ### 1: Non-Workable
-                ### 0: Workable
+                ### 0: Workable (i.e, construction is incomplete)
                 ### 2: Completed
 
                 ### 1.2. Workable Pile Cap
-                id_workable_piers = x.index[x[workability_field] == 'Workable'] ## this is also incomplete workable piers
+                id_workable_piers = x.index[x[workability_field] == 'Workable']
                 incomp_workable_piers = x.loc[id_workable_piers, pier_number_field].values
   
                 # Enter 0
@@ -1296,7 +1297,20 @@ class UpdateWorkablePierLayer(object):
             ### Case 6:
             idx = civil_t.index[((civil_t[workability_field] == 'Non-workable') & (~civil_t[struc1_field].isna())) &
                                     (civil_t[struc_field].isna())]
-            civil_t.loc[idx, remarks_field] = error_descriptions[0]['case6']    
+            civil_t.loc[idx, remarks_field] = error_descriptions[0]['case6']
+
+            ## Final Tweak
+            ### When 'AllWorkable' = 2, the other fields ('LandWorkable', 'StrucWorkable', 'NLOWorkable', 'UtilWorkable', 'OthersWorkable') must be 2.
+            ### We need this process, as the construction of some pile caps is completed, but these piers are sometimes entered with obstructing IDs in the Civil Team's table.
+            idx = civil_t.index[(civil_t[workability_field] == "Completed") & ((civil_t[land_field] == 1) | (civil_t[struc_field] == 1) | (civil_t[utility_field] == 1) | (civil_t[nlo_field] == 1) | (civil_t[others_field] == 1))]
+            civil_t.loc[idx, land_field] = np.nan
+            civil_t.loc[idx, land1_field] = np.nan
+            civil_t.loc[idx, struc_field] = np.nan
+            civil_t.loc[idx, struc1_field] = np.nan
+            civil_t.loc[idx, utility_field] = np.nan
+            civil_t.loc[idx, nlo_field] = np.nan
+            civil_t.loc[idx, others_field] = np.nan
+
             civil_t.to_excel(os.path.join(pier_workability_dir, "SC_Pier_Workability_Tracker.xlsx"), index=False)
 
             ## Update Pier Workable Layer for 'Remarks'

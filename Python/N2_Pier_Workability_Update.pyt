@@ -11,16 +11,28 @@ class Toolbox(object):
     def __init__(self):
         self.label = "UpdateN2Viaduct"
         self.alias = "UpdateN2Viaduct"
-        self.tools = [CreateWorkablePierLayer,
+        self.tools = [JustMessage1, 
+                      JustMessage2,
+                      CreateWorkablePierLayer,
+                      CheckPierNumbers,
                       UpdatePierWorkableTrackerML,
                       UpdateWorkablePierLayer,
                       UpdatePierPointLayer,
-                      CheckPierNumbers,
                       UpdateStripMapLayer]
+
+class JustMessage1(object):
+    def __init__(self):
+        self.label = "0. Update N2 Land, Structure, and NLO (Just message) "
+        self.description = "Update N2 Vidaduct Layer (Just message)"
+
+class JustMessage2(object):
+    def __init__(self):
+        self.label = "0. Update N2 Vidaduct Layer (Just message) "
+        self.description = "Update N2 Vidaduct Layer (Just message)"
 
 class CreateWorkablePierLayer(object):
     def __init__(self):
-        self.label = "0. Create Pier Workable Layer (Polygon)"
+        self.label = "1. Create Pier Workable Layer (Polygon)"
         self.description = "Create Pier Workable Layer"
 
     def getParameterInfo(self):
@@ -98,6 +110,7 @@ class CreateWorkablePierLayer(object):
             else:
                 arcpy.management.AddField(new_layer, field, "SHORT", field_alias=field, field_is_nullable="NULLABLE")
 
+        # When the construction of 'pile cap' is completed, al the 'Workable' fields must be 2 (completed). 
         with arcpy.da.UpdateCursor(new_layer, [type_field, status_field, 'AllWorkable','LandWorkable','StrucWorkable','NLOWorkable', 'UtilWorkable', 'OthersWorkable']) as cursor:
             # 0: Non-workable, 1: Workable, 2: Completed
             for row in cursor:
@@ -143,8 +156,16 @@ class CreateWorkablePierLayer(object):
             new_point_layer = 'N2_new_Pier_Point'
             arcpy.management.FeatureToPoint(new_layer, new_point_layer)
 
+            ## We need to desselect Piers P-159, P159NB/SB, P-160, P-160NB-SB so it won't be deleted in the table
+            pier_number_field = 'PierNumber'
+            where_clause_pt = f"{pier_number_field} LIKE '%P-159%' OR {pier_number_field} LIKE '%P-160%'"
+            arcpy.management.SelectLayerByAttribute(pier_pt_layer, 'NEW_SELECTION', where_clause_pt, 'INVERT')
+
+            ## Delete rows except Piers P-159, P159NB/SB, P-160, P-160NB-SB
+            arcpy.management.DeleteRows(pier_pt_layer)
+
             ## Truncate original point layer
-            arcpy.management.TruncateTable(pier_pt_layer)
+            ## arcpy.management.TruncateTable(pier_pt_layer)
 
             ## Append a new point layer to the original
             arcpy.management.Append(new_point_layer, pier_pt_layer, schema_type = 'NO_TEST')
@@ -156,9 +177,178 @@ class CreateWorkablePierLayer(object):
         except:
             pass
 
+class CheckPierNumbers(object):
+    def __init__(self):
+        self.label = "2. Check Pier Numbers between Civil, GIS Portal, and RAP ML"
+        self.description = "Check Pier Numbers between Civil, GIS Portal, and RAP ML"
+
+    def getParameterInfo(self):
+        pier_tracker_dir = arcpy.Parameter(
+            displayName = "N2 Pier Workability Directory",
+            name = "N2 Pier Workability Directory",
+            datatype = "DEWorkspace",
+            parameterType = "Required",
+            direction = "Input"
+        )
+
+        civil_workable_ms = arcpy.Parameter(
+            displayName = "N2 Pier Workability Civil ML (Excel)",
+            name = "N2 Pier Workability Civil ML (Excel)",
+            datatype = "DEFile",
+            parameterType = "Required",
+            direction = "Input"
+        )
+
+        gis_viaduct_ms = arcpy.Parameter(
+            displayName = "N2 Viaduct GIS ML (Excel)",
+            name = "N2 Viaduct GIS ML (Excel)",
+            datatype = "DEFile",
+            parameterType = "Required",
+            direction = "Input"
+        )
+
+        gis_pier_tracker_ms = arcpy.Parameter(
+            displayName = "N2 Pier Workability Tracker ML (Excel)",
+            name = "N2 Pier Workability Tracker ML (Excel)",
+            datatype = "DEFile",
+            parameterType = "Required",
+            direction = "Input"
+        )
+
+        params = [pier_tracker_dir, civil_workable_ms, gis_viaduct_ms, gis_pier_tracker_ms]
+        return params
+
+    def updateMessages(self, params):
+        return
+
+    def execute(self, params, messages):
+        pier_tracker_dir = params[0].valueAsText
+        civil_workable_ms = params[1].valueAsText
+        gis_viaduct_ms = params[2].valueAsText
+        gis_pier_tracker_ms = params[3].valueAsText
+        
+        arcpy.env.overwriteOutput = True
+        #arcpy.env.addOutputsToMap = True
+
+        def Workable_Pier_Table_Update():
+            def unique(lists):
+                collect = []
+                unique_list = pd.Series(lists).drop_duplicates().tolist()
+                for x in unique_list:
+                    collect.append(x)
+                return(collect)
+            
+            def non_match_elements(list_a, list_b):
+                non_match = []
+                for i in list_a:
+                    if i not in list_b:
+                        non_match.append(i)
+                return non_match
+
+            # List of fields
+            cp_field = 'CP'
+            type_field = 'Type'
+            pier_num_field = 'PierNumber'
+            unique_id_field = 'uniqueID'
+            pier_num_field_c = 'Pier No. (P)'
+
+            cps = ['N-01','N-02','N-03']
+
+            compile_all = pd.DataFrame()
+            for cp in cps:
+                arcpy.AddMessage("Contract Package: " + cp)
+                compile_t = pd.DataFrame()
+
+                cols = ['CP',
+                        'PierNumber_civil',
+                        'PierNumber_gisportal',
+                        'PierNumber_pierTracker',
+                        'Diff_Civil_vs_GISportal',
+                        'Non-matched_piers_Civil_vs_GISportal',
+                        'Diff_Civil_vs_PierTracker',
+                        'Non-matched_piers_Civil_vs_PierTracker',
+                        'Diff_GISportal_vs_PierTracker',
+                        'Non-matched_piers_GISportal_vs_PierTracker'
+                        ]
+
+                #1. Read table
+                ## N2 Viaduct portal
+                portal_t = pd.read_excel(gis_viaduct_ms)
+                ids = portal_t.index[(portal_t[cp_field] == cp) & (portal_t[type_field] == 2)]
+                portal_t = portal_t.loc[ids, [pier_num_field, unique_id_field]].reset_index(drop=True)
+                gis_piers = portal_t[pier_num_field].values
+                
+                ## N2 Civil ML
+                new_cols = ['PierNumber', 'CP', 'util1', 'util2', 'Others', 'Workability']
+                civil_t = pd.read_excel(civil_workable_ms, skiprows=2)
+                ids = civil_t.columns[civil_t.columns.str.contains(r'^Pier No.*|Contract P.*|^Name of Utilities|^Others|^Pile Cap Workable.*',regex=True,na=False)]
+                civil_t = civil_t.loc[:, ids]
+                for i, col in enumerate(ids):
+                    civil_t = civil_t.rename(columns={col: new_cols[i]})
+
+                civil_t[cp_field] = civil_t[cp_field].str.replace(r'/.*','',regex=True)
+                civil_t[cp_field] = civil_t[cp_field].str.replace(r'CPN','N-',regex=True)
+                civil_t = civil_t.query(f"{cp_field} == '{cp}'").reset_index(drop=True)
+                civil_piers = civil_t[pier_num_field].values
+                
+                ## Pier Workable Tracker (GIS Team prepared)
+                pier_track_t = pd.read_excel(gis_pier_tracker_ms, sheet_name=cp)
+                idx = pier_track_t.iloc[:, 0].index[pier_track_t.iloc[:, 0].str.contains(r'PierNumber',regex=True,na=False)]
+                pier_track_t = pier_track_t.drop(idx).reset_index(drop=True)
+                pier_track_t = pier_track_t.rename(columns={pier_track_t.columns[0]: pier_num_field}) 
+                tracker_piers = pier_track_t[pier_num_field].values
+
+                # 2. Comparing
+                compile_t.loc[0, cols[0]] = cp
+
+                ## 2.1. Civil vs GIS Portal
+                compile_t.loc[0, cols[1]] = len(civil_piers)
+                compile_t.loc[0, cols[2]] = len(gis_piers)
+                compile_t.loc[0, cols[4]] = compile_t.loc[0, cols[1]] - compile_t.loc[0, cols[2]]
+                nonmatch_piers1 = [e for e in civil_piers if e not in gis_piers]
+                nonmatch_piers2 = [e for e in gis_piers if e not in civil_piers]
+                nonmatch_piers_all = nonmatch_piers1 + nonmatch_piers2
+                if len(nonmatch_piers_all) > 0:
+                    compile_t.loc[0, cols[5]] = (",").join(nonmatch_piers_all)
+                else:
+                    compile_t.loc[0, cols[5]] = np.nan
+
+                ## 2.2. Civil vs Pier Tracker
+                compile_t.loc[0, cols[3]] = len(tracker_piers)
+                compile_t.loc[0, cols[6]] = compile_t.loc[0, cols[1]] - compile_t.loc[0, cols[3]]
+                nonmatch_piers1 = [e for e in civil_piers if e not in tracker_piers]
+                nonmatch_piers2 = [e for e in tracker_piers if e not in civil_piers]
+                nonmatch_piers_all = nonmatch_piers1 + nonmatch_piers2
+                if len(nonmatch_piers_all) > 0:
+                    compile_t.loc[0, cols[7]] = (",").join(nonmatch_piers_all)
+                else:
+                    compile_t.loc[0, cols[7]] = np.nan
+
+                ## 2.3. GIS Portal vs Pier Tracker
+                compile_t.loc[0, cols[8]] = compile_t.loc[0, cols[2]] - compile_t.loc[0, cols[3]]
+                nonmatch_piers1 = [e for e in gis_piers if e not in tracker_piers]
+                nonmatch_piers2 = [e for e in tracker_piers if e not in gis_piers]
+                nonmatch_piers_all = nonmatch_piers1 + nonmatch_piers2
+                if len(nonmatch_piers_all) > 0:
+                    compile_t.loc[0, cols[9]] = (",").join(nonmatch_piers_all)
+                else:
+                    compile_t.loc[0, cols[9]] = np.nan
+
+                # Compile cps
+                compile_all = pd.concat([compile_all, compile_t])
+                compile_all = compile_all.loc[:, cols]
+                arcpy.AddMessage("Table of Non-Matched Piers:")
+                arcpy.AddMessage(compile_all)
+            
+            # Export
+            compile_all.to_excel(os.path.join(pier_tracker_dir, '99-CHECK_Summary_N2_PierNumbers_Civil_vs_GISportal_vs_pierTracker.xlsx'),
+                                              index=False)
+
+        Workable_Pier_Table_Update()
+
 class UpdatePierWorkableTrackerML(object):
     def __init__(self):
-        self.label = "2. Update Pier Workable Tracker ML (Excel)"
+        self.label = "3. Update Pier Workable Tracker ML (Excel)"
         self.description = "Update Pier Workable Tracker ML (Excel)"
 
     def getParameterInfo(self):
@@ -495,31 +685,16 @@ class UpdatePierWorkableTrackerML(object):
             comp_piers = via_t.loc[idx, pier_num_field].values
             ids_comp = comp_table2.index[comp_table2[pier_num_field].isin(comp_piers)]
             comp_table2.loc[ids_comp, workability_field] = 'Completed'
-            # merged_table.loc[ids_comp, [util_obstruc_field,land_field,struc_field,others_field]] = 2
 
-            # ### Workable (0)
-            # ids_work = merged_table.index[merged_table[workability_field] == 'Workable']
-            # merged_table.loc[ids_work, [util_obstruc_field,land_field,struc_field,others_field]] = 0
-
-            # ## Non-workable (1)
-            # ids_nonwork = merged_table.index[merged_table[workability_field] == 'Non-workable']
-            
-            # ### Utility
-            # ids_nonwork_util = merged_table.loc[ids_nonwork, ].index[merged_table.loc[ids_nonwork, util_obstruc_field].isna()]
-            # merged_table.loc[ids_nonwork_util, util_obstruc_field] = 0
-
-            # ### Land
-            # ids_nonwork_land = merged_table.loc[ids_nonwork, ].index[merged_table.loc[ids_nonwork, land_field].isna()]
-            # merged_table.loc[ids_nonwork_land, land_field] = 0
-
-            # ### Structure
-            # ids_nonwork_struc = merged_table.loc[ids_nonwork, ].index[merged_table.loc[ids_nonwork, struc_field].isna()]
-            # merged_table.loc[ids_nonwork_struc, struc_field] = 0
-
-            # ### Others
-            # ids_nonwork_others = merged_table.loc[ids_nonwork, ].index[merged_table.loc[ids_nonwork, others_field].isna()]
-            # merged_table.loc[ids_nonwork_others, others_field] = 0
-
+            ## When workability_field = 'Completed', the other fields = np.nan 
+            # idx = comp_table2.index[(comp_table2[workability_field] == "Completed") & ((comp_table2[land_field] == 1) | (comp_table2[struc_field] == 1) | (comp_table2[util_obstruc_field] == 1) | (comp_table2[nlo_obstruc_field] == 1) | (comp_table2[others_field] == 1))]
+            # comp_table2.loc[idx, land_field] = np.nan
+            # comp_table2.loc[idx, land1_field] = np.nan
+            # comp_table2.loc[idx, struc_field] = np.nan
+            # comp_table2.loc[idx, struc1_field] = np.nan
+            # comp_table2.loc[idx, util_obstruc_field] = np.nan
+            # comp_table2.loc[idx, nlo_obstruc_field] = np.nan
+            # comp_table2.loc[idx, others_field] = np.nan
 
             ##################### Identify incosistent data entry ###############################
             ## Add case of errors to Remarks field;
@@ -596,7 +771,7 @@ class UpdatePierWorkableTrackerML(object):
 
 class UpdateWorkablePierLayer(object):
     def __init__(self):
-        self.label = "3. Update Pier Workable Layer (Polygon)"
+        self.label = "4. Update Pier Workable Layer (Polygon)"
         self.description = "Update Pier Workable Layer (Polygon)"
 
     def getParameterInfo(self):
@@ -723,7 +898,7 @@ class UpdateWorkablePierLayer(object):
                 
                 arcpy.AddMessage('Finished entering for workable piers with incomplete construction of pile cap.')
 
-                # Empty cell for AllWorkable = 1 (non-workable)
+                # For Non-workable piers, AllWorkable = 1 (non-workable)
                 with arcpy.da.UpdateCursor(gis_workable_layer, [pier_number_field,'AllWorkable',cp_field]) as cursor:
                     for row in cursor:
                         if row[0] in tuple(nonworkable_piers) and row[2] == cp:
@@ -741,7 +916,7 @@ class UpdateWorkablePierLayer(object):
                             row[1] = 1
                         cursor.updateRow(row)
 
-                # Empty cell = 0 (workable)
+                # 'LandWorkable' = 0 (workable) when 'LandWorkable' is empty.
                 with arcpy.da.UpdateCursor(gis_workable_layer, [pier_number_field,'LandWorkable',cp_field]) as cursor:
                     for row in cursor:
                         if row[1] is None and row[2] == cp:
@@ -758,7 +933,7 @@ class UpdateWorkablePierLayer(object):
                             row[1] = 1
                         cursor.updateRow(row)
 
-                # Empty cell = 0 (workable)
+                # 'StrucWorkable' = 0 (workable) when 'StrucWorkable' is empty.
                 with arcpy.da.UpdateCursor(gis_workable_layer, [pier_number_field,'StrucWorkable',cp_field]) as cursor:
                     for row in cursor:
                         if row[1] is None and row[2] == cp:
@@ -777,7 +952,7 @@ class UpdateWorkablePierLayer(object):
                         cursor.updateRow(row)
 
 
-                # Empty cell = 0 (workable)
+                # 'NLOWorkable' = 0 (workable) when 'NLOWorkable' is empty.
                 with arcpy.da.UpdateCursor(gis_workable_layer, [pier_number_field,'NLOWorkable',cp_field]) as cursor:
                     for row in cursor:
                         if row[1] is None and row[2] == cp:
@@ -793,7 +968,7 @@ class UpdateWorkablePierLayer(object):
                             row[1] = 1
                         cursor.updateRow(row)
 
-                # Empty cell = 0 (workable)
+                # 'UtilWorkable' = 0 (workable) when 'UtilWorkable' is empty.
                 with arcpy.da.UpdateCursor(gis_workable_layer, [pier_number_field,'UtilWorkable',cp_field]) as cursor:
                     for row in cursor:
                         if row[1] is None and row[2] == cp:
@@ -809,12 +984,27 @@ class UpdateWorkablePierLayer(object):
                             row[1] = 1
                         cursor.updateRow(row)
 
-                # Empty cell = 0 (workable)
+                # 'OthersWorkable' = 0 (workable) when 'OthersWorkable' is empty.
                 with arcpy.da.UpdateCursor(gis_workable_layer, [pier_number_field,'OthersWorkable',cp_field]) as cursor:
                     for row in cursor:
                         if row[1] is None and row[2] == cp:
                             row[1] = 0
                         cursor.updateRow(row)
+
+
+                # When the construction of 'pile cap' is completed, al the 'Workable' fields must be 2 (completed). 
+                # with arcpy.da.UpdateCursor(gis_workable_layer, [type_field, status_field, 'AllWorkable','LandWorkable','StrucWorkable','NLOWorkable', 'UtilWorkable', 'OthersWorkable']) as cursor:
+                #     # 0: Non-workable, 1: Workable, 2: Completed
+                #     for row in cursor:
+                #         row[0] = 'Pile Cap'
+                #         if row[1] == 4:
+                #             row[2] = 2
+                #             row[3] = 2
+                #             row[4] = 2
+                #             row[5] = 2
+                #             row[6] = 2
+                #             row[7] = 2
+                #         cursor.updateRow(row)
 
                 #############################################
                 ## Update Pier Workable Layer for 'Remarks'
@@ -837,178 +1027,9 @@ class UpdateWorkablePierLayer(object):
 
         Workable_Pier_Table_Update()
 
-class CheckPierNumbers(object):
-    def __init__(self):
-        self.label = "1. Check Pier Numbers between Civil, GIS Portal, and RAP ML"
-        self.description = "Check Pier Numbers between Civil, GIS Portal, and RAP ML"
-
-    def getParameterInfo(self):
-        pier_tracker_dir = arcpy.Parameter(
-            displayName = "N2 Pier Workability Directory",
-            name = "N2 Pier Workability Directory",
-            datatype = "DEWorkspace",
-            parameterType = "Required",
-            direction = "Input"
-        )
-
-        civil_workable_ms = arcpy.Parameter(
-            displayName = "N2 Pier Workability Civil ML (Excel)",
-            name = "N2 Pier Workability Civil ML (Excel)",
-            datatype = "DEFile",
-            parameterType = "Required",
-            direction = "Input"
-        )
-
-        gis_viaduct_ms = arcpy.Parameter(
-            displayName = "N2 Viaduct GIS ML (Excel)",
-            name = "N2 Viaduct GIS ML (Excel)",
-            datatype = "DEFile",
-            parameterType = "Required",
-            direction = "Input"
-        )
-
-        gis_pier_tracker_ms = arcpy.Parameter(
-            displayName = "N2 Pier Workability Tracker ML (Excel)",
-            name = "N2 Pier Workability Tracker ML (Excel)",
-            datatype = "DEFile",
-            parameterType = "Required",
-            direction = "Input"
-        )
-
-        params = [pier_tracker_dir, civil_workable_ms, gis_viaduct_ms, gis_pier_tracker_ms]
-        return params
-
-    def updateMessages(self, params):
-        return
-
-    def execute(self, params, messages):
-        pier_tracker_dir = params[0].valueAsText
-        civil_workable_ms = params[1].valueAsText
-        gis_viaduct_ms = params[2].valueAsText
-        gis_pier_tracker_ms = params[3].valueAsText
-        
-        arcpy.env.overwriteOutput = True
-        #arcpy.env.addOutputsToMap = True
-
-        def Workable_Pier_Table_Update():
-            def unique(lists):
-                collect = []
-                unique_list = pd.Series(lists).drop_duplicates().tolist()
-                for x in unique_list:
-                    collect.append(x)
-                return(collect)
-            
-            def non_match_elements(list_a, list_b):
-                non_match = []
-                for i in list_a:
-                    if i not in list_b:
-                        non_match.append(i)
-                return non_match
-
-            # List of fields
-            cp_field = 'CP'
-            type_field = 'Type'
-            pier_num_field = 'PierNumber'
-            unique_id_field = 'uniqueID'
-            pier_num_field_c = 'Pier No. (P)'
-
-            cps = ['N-01','N-02','N-03']
-
-            compile_all = pd.DataFrame()
-            for cp in cps:
-                arcpy.AddMessage("Contract Package: " + cp)
-                compile_t = pd.DataFrame()
-
-                cols = ['CP',
-                        'PierNumber_civil',
-                        'PierNumber_gisportal',
-                        'PierNumber_pierTracker',
-                        'Diff_Civil_vs_GISportal',
-                        'Non-matched_piers_Civil_vs_GISportal',
-                        'Diff_Civil_vs_PierTracker',
-                        'Non-matched_piers_Civil_vs_PierTracker',
-                        'Diff_GISportal_vs_PierTracker',
-                        'Non-matched_piers_GISportal_vs_PierTracker'
-                        ]
-
-                #1. Read table
-                ## N2 Viaduct portal
-                portal_t = pd.read_excel(gis_viaduct_ms)
-                ids = portal_t.index[(portal_t[cp_field] == cp) & (portal_t[type_field] == 2)]
-                portal_t = portal_t.loc[ids, [pier_num_field, unique_id_field]].reset_index(drop=True)
-                gis_piers = portal_t[pier_num_field].values
-                
-                ## N2 Civil ML
-                new_cols = ['PierNumber', 'CP', 'util1', 'util2', 'Others', 'Workability']
-                civil_t = pd.read_excel(civil_workable_ms, skiprows=2)
-                ids = civil_t.columns[civil_t.columns.str.contains(r'^Pier No.*|Contract P.*|^Name of Utilities|^Others|^Pile Cap Workable.*',regex=True,na=False)]
-                civil_t = civil_t.loc[:, ids]
-                for i, col in enumerate(ids):
-                    civil_t = civil_t.rename(columns={col: new_cols[i]})
-
-                civil_t[cp_field] = civil_t[cp_field].str.replace(r'/.*','',regex=True)
-                civil_t[cp_field] = civil_t[cp_field].str.replace(r'CPN','N-',regex=True)
-                civil_t = civil_t.query(f"{cp_field} == '{cp}'").reset_index(drop=True)
-                civil_piers = civil_t[pier_num_field].values
-                
-                ## Pier Workable Tracker (GIS Team prepared)
-                pier_track_t = pd.read_excel(gis_pier_tracker_ms, sheet_name=cp)
-                idx = pier_track_t.iloc[:, 0].index[pier_track_t.iloc[:, 0].str.contains(r'PierNumber',regex=True,na=False)]
-                pier_track_t = pier_track_t.drop(idx).reset_index(drop=True)
-                pier_track_t = pier_track_t.rename(columns={pier_track_t.columns[0]: pier_num_field}) 
-                tracker_piers = pier_track_t[pier_num_field].values
-
-                # 2. Comparing
-                compile_t.loc[0, cols[0]] = cp
-
-                ## 2.1. Civil vs GIS Portal
-                compile_t.loc[0, cols[1]] = len(civil_piers)
-                compile_t.loc[0, cols[2]] = len(gis_piers)
-                compile_t.loc[0, cols[4]] = compile_t.loc[0, cols[1]] - compile_t.loc[0, cols[2]]
-                nonmatch_piers1 = [e for e in civil_piers if e not in gis_piers]
-                nonmatch_piers2 = [e for e in gis_piers if e not in civil_piers]
-                nonmatch_piers_all = nonmatch_piers1 + nonmatch_piers2
-                if len(nonmatch_piers_all) > 0:
-                    compile_t.loc[0, cols[5]] = nonmatch_piers_all
-                else:
-                    compile_t.loc[0, cols[5]] = np.nan
-
-                ## 2.2. Civil vs Pier Tracker
-                compile_t.loc[0, cols[3]] = len(tracker_piers)
-                compile_t.loc[0, cols[6]] = compile_t.loc[0, cols[1]] - compile_t.loc[0, cols[3]]
-                nonmatch_piers1 = [e for e in civil_piers if e not in tracker_piers]
-                nonmatch_piers2 = [e for e in tracker_piers if e not in civil_piers]
-                nonmatch_piers_all = nonmatch_piers1 + nonmatch_piers2
-                if len(nonmatch_piers_all) > 0:
-                    compile_t.loc[0, cols[7]] = nonmatch_piers_all
-                else:
-                    compile_t.loc[0, cols[7]] = np.nan
-
-                ## 2.3. GIS Portal vs Pier Tracker
-                compile_t.loc[0, cols[8]] = compile_t.loc[0, cols[2]] - compile_t.loc[0, cols[3]]
-                nonmatch_piers1 = [e for e in gis_piers if e not in tracker_piers]
-                nonmatch_piers2 = [e for e in tracker_piers if e not in gis_piers]
-                nonmatch_piers_all = nonmatch_piers1 + nonmatch_piers2
-                if len(nonmatch_piers_all) > 0:
-                    compile_t.loc[0, cols[9]] = nonmatch_piers_all
-                else:
-                    compile_t.loc[0, cols[9]] = np.nan
-
-                # Compile cps
-                compile_all = pd.concat([compile_all, compile_t])
-                compile_all = compile_all.loc[:, cols]
-                arcpy.AddMessage("Table of Non-Matched Piers:")
-                arcpy.AddMessage(compile_all)
-            
-            # Export
-            compile_all.to_excel(os.path.join(pier_tracker_dir, '99-CHECK_Summary_N2_PierNumbers_Civil_vs_GISportal_vs_pierTracker.xlsx'),
-                                              index=False)
-
-        Workable_Pier_Table_Update()
-
 class UpdatePierPointLayer(object):
     def __init__(self):
-        self.label = "4. Update Pier Layer (Point)"
+        self.label = "5. Update Pier Layer (Point)"
         self.description = "Update Pier Layer (Point)"
 
     def getParameterInfo(self):
@@ -1081,7 +1102,16 @@ class UpdatePierPointLayer(object):
             arcpy.management.JoinField(new_point_layer, unique_id_field, pier_workable_layer, unique_id_field, deleteFieldsList)
 
             ## Truncate original point layer
-            arcpy.management.TruncateTable(pier_point_layer)
+            ## arcpy.management.TruncateTable(pier_point_layer)
+
+
+            ## We need to desselect Piers P-159, P159NB/SB, P-160, P-160NB-SB so it won't be deleted in the table
+            pier_number_field = 'PierNumber'
+            where_clause_pt = f"{pier_number_field} LIKE '%P-159%' OR {pier_number_field} LIKE '%P-160%'"
+            arcpy.management.SelectLayerByAttribute(pier_point_layer, 'NEW_SELECTION', where_clause_pt, 'INVERT')
+
+            ## Delete rows except Piers P-159, P159NB/SB, P-160, P-160NB-SB
+            arcpy.management.DeleteRows(pier_point_layer)
 
             ## Append a new point layer to the original
             arcpy.management.Append(new_point_layer, pier_point_layer, schema_type = 'NO_TEST')
@@ -1104,11 +1134,12 @@ class UpdatePierPointLayer(object):
             piers_status = {}
             with arcpy.da.SearchCursor(viaduct_layer, [pier_number_field, status_field]) as cursor:
                 for row in cursor:
-                    if row[0]:
+                    if row[0] and "CB" not in row[0]:
+                        pier_id = row[0].replace("CA", "")
                         if row[1] < 4:
-                            piers_status[row[0]] = 0
+                            piers_status[pier_id] = 0
                         elif row[1] == 4:
-                            piers_status[row[0]] = 2
+                            piers_status[pier_id] = 2
 
             ## {'P-160NB': 0, 'P-159': 0, 'P-159NB': 0, 'P-159SB': 0, 'P-160SB': 0, 'P-160': 0}
             ## {PierNumber: AllWorkable}, where Workable (AllWorkable = 0), Nonworkable (AllWorkable = 1), and Completed (AllWorkable = 2)
@@ -1125,7 +1156,7 @@ class UpdatePierPointLayer(object):
 
 class UpdateStripMapLayer(object):
     def __init__(self):
-        self.label = "5. Update Strip Map Layer (Polygon)"
+        self.label = "6. Update Strip Map Layer (Polygon)"
         self.description = "Update Strip Map Layer (Polygon)"
 
     def getParameterInfo(self):

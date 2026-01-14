@@ -338,6 +338,13 @@ class EditBuildingLayerStation(object):
         return
     
     def execute(self, params, messages):
+        def unique(lists):
+            collect = []
+            unique_list = pd.Series(lists).drop_duplicates().tolist()
+            for x in unique_list:
+                collect.append(x)
+            return(collect)
+        
         delete_bim = params[0].valueAsText
         new_bim = params[1].valueAsText
         # finish_date_field = params[3].valueAsText
@@ -420,10 +427,28 @@ class EditBuildingLayerStation(object):
                             cursor.updateRow(row)
 
                 # 5. Replace target layer with new observations
-                where_clause = "Station = {}".format(FTI_domain_number)
-                arcpy.management.SelectLayerByAttribute(target_layer, 'SUBSET_SELECTION',where_clause)
+                ### Note FIT Station structure has multiple revit models. We cannot just replace
+                ### all the rows in the target layer with inputs. 
+                ### We need to identify rows to be updated using DocName in the input (new) layer.
+                docNumbers = []
+                with arcpy.da.SearchCursor(new_layer, ["DocName"]) as cursor:
+                    for row in cursor:
+                        if row[0]:
+                            docNumbers.append(row[0])
 
-                # Truncate
+                ## Get a unique list of docnames
+                docNumberUnique = unique(docNumbers)
+
+                numbers = tuple([e for e in docNumberUnique])
+                docName_field = 'DocName'
+
+                if (len(docNumberUnique) == 1):
+                    where_clause = f"{docName_field} = '{numbers[0]}'"
+                else:
+                    where_clause = f"{docName_field} IN {numbers}"
+                arcpy.management.SelectLayerByAttribute(target_layer, 'NEW_SELECTION',where_clause)
+
+                # Delete Rows
                 arcpy.management.DeleteRows(target_layer)
 
                 # Append

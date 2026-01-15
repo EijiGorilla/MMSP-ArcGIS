@@ -11,10 +11,18 @@ class Toolbox(object):
     def __init__(self):
         self.label = "UpdateSCViaduct"
         self.alias = "UpdateSCViaduct"
-        self.tools = [UpdateExcelML, UpdateGISTable, 
+        self.tools = [ViaductMultipatchMessage,
+                      UpdateExcelML, UpdateGISTable, 
                       CreateWorkablePierLayer, CheckPierNumbers, 
                       UpdateWorkablePierLayer, UpdatePierPointLayer, UpdateStripMapLayer,
-                      ReSortGISTable, CheckUpdatesCivilGIS]
+                      ReSortGISTable, CheckUpdatesCivilGIS,
+                      ViaductBIMUpdateMessage,
+                      CreateBIMtoGeodatabase, CreateBuildingLayers, AddFieldsToBuildingLayerStation, EditBuildingLayerStation, DomainSettingStationStructure]
+
+class ViaductMultipatchMessage(object):
+    def __init__(self):
+        self.label = "0.----- Update Viaduct using Multipatch & Excel -----"
+        self.description = "Update Viaduct using Multipatch & Excel"
 
 class UpdateExcelML(object):
     def __init__(self):
@@ -1299,8 +1307,7 @@ class UpdateWorkablePierLayer(object):
                                     (civil_t[struc_field].isna())]
             civil_t.loc[idx, remarks_field] = error_descriptions[0]['case6']
 
-            ## Final Tweak
-            ### When 'AllWorkable' = 2, the other fields ('LandWorkable', 'StrucWorkable', 'NLOWorkable', 'UtilWorkable', 'OthersWorkable') must be 2.
+            ### When workability_field = 'Completed',the other fields = np.nan ('LandWorkable', 'StrucWorkable', 'NLOWorkable', 'UtilWorkable', 'OthersWorkable') must be 2.
             ### We need this process, as the construction of some pile caps is completed, but these piers are sometimes entered with obstructing IDs in the Civil Team's table.
             idx = civil_t.index[(civil_t[workability_field] == "Completed") & ((civil_t[land_field] == 1) | (civil_t[struc_field] == 1) | (civil_t[utility_field] == 1) | (civil_t[nlo_field] == 1) | (civil_t[others_field] == 1))]
             civil_t.loc[idx, land_field] = np.nan
@@ -1972,7 +1979,338 @@ class CheckUpdatesCivilGIS(object):
                 merged_t[idx, 'Remarks'] = duplicated_ids
         arcpy.AddMessage(merged_t)
 
+class ViaductBIMUpdateMessage(object):
+    def __init__(self):
+        self.label = "A-0.----- Update Viaduct using BIM models -----"
+        self.description = "Update Viaduct using BIM models"
 
+class CreateBIMtoGeodatabase(object):
+    def __init__(self):
+        self.label = "A-1. Create BIM To Geodatabase using revit files"
+        self.description = "Create BIM To Geodatabase using revit files"
 
+    def getParameterInfo(self):
+        fgdb_dir = arcpy.Parameter(
+            displayName = "File Geodatabase",
+            name = "File Geodatabase",
+            datatype = "DEWorkspace",
+            parameterType = "Required",
+            direction = "Input"
+        )
 
+        input_revit = arcpy.Parameter(
+            displayName = "Input BIM Workspace (revit files)",
+            name = "Input BIM Workspace (revit files)",
+            datatype = "DEFile",
+            parameterType = "Required",
+            direction = "Input",
+            multiValue = True
+        )
+
+        export_name = arcpy.Parameter(
+            displayName = "Display Name of Feature Dataset",
+            name = "Display Name of Feature Dataset",
+            datatype = "GPString",
+            parameterType = "Required",
+            direction = "Input"
+        )
+
+        params = [fgdb_dir, input_revit, export_name]
+        return params
+
+    def updateMessages(self, params):
+        return
+    
+    def execute(self, params, messages):
+        fgdb_dir = params[0].valueAsText
+        input_revit = params[1].valueAsText
+        export_name = params[2].valueAsText
+
+        arcpy.env.overwriteOutput = True
+
+        revit_tables = list(input_revit.split(';'))
         
+        arcpy.AddMessage(revit_tables)
+
+        # 1. BIM to Geodatabase
+        spatial_reference = "PRS_1992_Philippines_Zone_III"
+        arcpy.BIMFileToGeodatabase_conversion(revit_tables, fgdb_dir, export_name, spatial_reference)
+        
+        arcpy.AddMessage("BIM To Geodatabase was successful.")
+
+class CreateBuildingLayers(object):
+    def __init__(self):
+        self.label = "A-2. (Message ONLY) Make Building Layers using Feature Dataset"
+        self.description = "Make Building Layers using Feature Dataset"
+
+class AddFieldsToBuildingLayerStation(object):          
+    def __init__(self):
+        self.label = "A-3. Add Fields to New Viaduct Layers"
+        self.description = "2.1. Add Fields to New Viaduct Layers"
+
+    def getParameterInfo(self):
+        input_layers = arcpy.Parameter(
+            displayName = "Select Sublayers Layers (e.g., StructuralColumns)",
+            name = "Select Sublayers", 
+            datatype = "GPFeatureLayer",
+            parameterType = "Required",
+            direction = "Input",
+            multiValue = True
+        )
+
+        params = [input_layers]
+        return params
+
+    def updateMessage(self, params):
+        return
+    
+    def execute(self, params, messages):
+        input_layers = params[0].valueAsText
+        arcpy.env.overwriteOutput = True
+
+        layers = list(input_layers.split(";"))
+
+        # 1. Add fields
+        add_fields = ['Types', 'CP', 'Status', 'PierNumber', 'nPierNumber']
+
+        arcpy.AddMessage("Add Fields start...")
+        for layer in layers:
+            for field in add_fields:
+                if field in ('CP', 'PierNumber', 'nPierNumber'):
+                    arcpy.management.AddField(layer, field, "TEXT", "", "", "", field, "NULLABLE", "")
+                else:
+                    arcpy.management.AddField(layer, field, "SHORT", "", "", "", field, "NULLABLE", "")
+
+        # 2. Initial set for Status
+        arcpy.AddMessage("Convert 'Status' = 1.")
+        for layer in layers:
+            with arcpy.da.UpdateCursor(layer, ['Status']) as cursor:
+                for row in cursor:
+                    row[0] = 1
+                    cursor.updateRow(row)
+
+        # 3. Types of categories
+        for layer in layers:
+            with arcpy.da.UpdateCursor(layer, ['AssemblyDesc', 'Category', 'Family', 'BaseCategory', 'Types']) as cursor:
+                for row in cursor:
+                    if (row[0] is not None) and ('Piles' in row[0]):
+                        row[4] = 1
+                    elif (row[0] is not None) and ('Pile Caps' in row[0]):
+                        row[4] = 2
+                    elif (row[2] is not None) and ('Pier Head' in row[2]):
+                        row[4] = 4
+                    elif (row[1] is not None) and ('Pier Walls' in row[1]):
+                        row[4] = 8
+                    elif (row[1] is not None) and ('Pier' in row[2]):
+                        row[4] = 3
+                    elif (row[3] is not None) and ('Decks' in row[3]):
+                        row[4] = 5
+                    else:
+                        row[4] = 0
+                    cursor.updateRow(row)
+
+        # 4. CP
+        for layer in layers:
+            with arcpy.da.UpdateCursor(layer, ['DocName', 'CP']) as cursor:
+                for row in cursor:
+
+                    try:
+                        cp_all = re.search(r'[S]0\d+?[abcABC]|[S]0\d+',row[0]).group()
+                    except AttributeError:
+                        cp_all = re.search(r'[S]0\d+?[abcABC]|[S]0\d+',row[0])
+                    cp_name = re.sub(r'0','-0',str(cp_all))
+
+                    cp_name = re.sub('A','a',cp_name)
+                    cp_name = re.sub('B','b',cp_name)
+                    cp_name = re.sub('C','c',cp_name)
+
+                    row[1] = cp_name
+                    cursor.updateRow(row)
+
+class EditBuildingLayerStation(object):
+    def __init__(self):
+        self.label = "A-4 Update Viaduct Layers"
+        self.description = "2.2 Update Viaduct Layers"
+
+    def getParameterInfo(self):
+        cp_update = arcpy.Parameter(
+            displayName = "Target Contract Package",
+            name = "Target Contract Package",
+            datatype = "GPString",
+            parameterType = "Required",
+            direction = "Input",
+            multiValue = True
+        )
+        cp_update.filter.type = "ValueList"
+        cp_update.filter.list = [
+            "S-01",
+            "S-02",
+            "S-03a",
+            "S-03b",
+            "S-03c",
+            "S-04",
+            "S-05",
+            "S-06"
+        ]
+
+        delete_fc = arcpy.Parameter(
+            displayName = "Target Building Sublayers (To Be Updated)",
+            name = "Target Building Sublayers (To Be Updated)",
+            datatype = "GPFeatureLayer",
+            parameterType = "Required",
+            direction = "Input",
+            multiValue = True
+        )
+
+        new_fc = arcpy.Parameter(
+            displayName = "Input Building Sublayers (New)",
+            name = "Input Building Sublayers (New)",
+            datatype = "GPFeatureLayer",
+            parameterType = "Required",
+            direction = "Input",
+            multiValue = True
+        )
+
+        params = [cp_update, delete_fc, new_fc]
+        return params
+
+    def updateMessage(self, params):
+        return
+    
+    def execute(self, params, messages):
+        cp_update = params[0].valueAsText
+        delete_bim = params[1].valueAsText
+        new_bim = params[2].valueAsText
+
+        arcpy.env.overwriteOutput = True
+
+        # define fields
+        status_field = 'Status'
+
+        del_layers = list(delete_bim.split(";"))
+        new_layers = list(new_bim.split(";"))
+        new_cps = list(cp_update.split(";"))
+
+        # Convert station names to station domain numbers
+        cp_selected = tuple([cp for cp in new_cps])
+
+        # 1. Check names are matched between deleted layers and new layers
+        del_basenames = []
+        new_basenames = []
+
+        for layer in del_layers:
+            del_basenames.append(os.path.basename(layer))
+
+        for layer in new_layers:
+            new_basenames.append(os.path.basename(layer))
+
+        arcpy.AddMessage(f"deleted layer names: {sorted(del_basenames)}")
+        arcpy.AddMessage(f"new layer names: {sorted(new_basenames)}")
+
+        # # 2. Add and Delete
+        if sorted(del_basenames) == sorted(new_basenames):
+            arcpy.AddMessage('Sublayer names are all matched.')
+    
+            for target_layer in del_layers:
+                del_basename = os.path.basename(target_layer)
+
+                # 1. Add new layer
+                new_layers_series = pd.Series(new_layers)
+                id = new_layers_series.index[new_layers_series.str.contains(del_basename,regex=True)][0]
+                new_layer = new_layers[id]
+                arcpy.AddMessage(del_basename + "; " + new_layer)
+
+                # 2. Update 'Status' field in new_layer using 'xx_Status or xx_status' field from Revit
+                # empty cell (null): 1. To be Constructed, 
+                # 'Ongoing': 2. Ongoing
+                # 'Completed': 4. Completed
+                # 2. Extract fields
+                bim_fields = [e.name for e in arcpy.ListFields(new_layer)]
+
+                ## 3. Search field name excluding 'Project_'
+                try:
+                    bim_status_field = [re.search(r'^(?!.*Project)(.*?)_Status$|(?!.*Project)(.*?)_status$', e).group() for e in bim_fields if re.search(r'^(?!.*Project)(.*?)_Status$|(?!.*Project)(.*?)_status$', e) is not None]
+                except AttributeError:
+                    bim_status_field = [re.search(r'^(?!.*Project)(.*?)_Status$|(?!.*Project)(.*?)_status$', e) for e in bim_fields if re.search(r'^(?!.*Project)(.*?)_Status$|(?!.*Project)(.*?)_status$', e) is not None]
+
+                arcpy.AddMessage(f"The name of status field in BIM models: {bim_status_field}")
+
+                # 4. Update 'Status' field in new_layer
+                if len(bim_status_field) == 1: # Update only When status field exists in the BIM model (input)
+                    with arcpy.da.UpdateCursor(new_layer, [bim_status_field, status_field]) as cursor:
+                        for row in cursor:
+                            if row[0] == 'Ongoing':
+                                row[1] = 2
+                            elif row[0] == 'Completed':
+                                row[1] = 4
+                            elif row[0] is None:
+                                row[1] = 1
+                            cursor.updateRow(row)
+
+                # 5. Replace target layer with new observations
+                # Select layer by attribute
+                if len(cp_selected) == 1:
+                    where_clause = "CP = '{}'".format(cp_selected[0])
+                else:
+                    where_clause = "CP IN {}".format(cp_selected)
+
+                arcpy.AddMessage(where_clause)
+
+                arcpy.management.SelectLayerByAttribute(target_layer, 'SUBSET_SELECTION',where_clause)
+
+                # Truncate
+                arcpy.management.DeleteRows(target_layer)
+
+                # Append
+                arcpy.management.Append(new_layer, target_layer, schema_type = 'NO_TEST', expression = where_clause)
+        else:
+            arcpy.AddError("Matching Errors.. Select corresponding building sublayers for input and target.")
+            pass
+
+class DomainSettingStationStructure(object):
+    def __init__(self):
+        self.label = "A-5. Apply Domain to Fields (applicable only for enterprise geodatabase)"
+        self.description = "2.3. Apply Domain to Fields"
+
+    def getParameterInfo(self):
+        gis_layers = arcpy.Parameter(
+            displayName = "Building Layers (e.g., StructuralColumns)",
+            name = "Building Layers (e.g., StructuralColumns)", 
+            datatype = "GPFeatureLayer",
+            parameterType = "Required",
+            direction = "Input",
+            multiValue = True
+        )
+
+        domain_field = arcpy.Parameter(
+            displayName = "Domain Field Name",
+            name = "Domain Field Name", 
+            datatype = "GPString",
+            parameterType = "Required",
+            direction = "Input"
+        )
+
+        domain_field.filter.type = "ValueList"
+        domain_field.filter.list = ['Types','Status']
+
+        params = [gis_layers, domain_field]
+        return params
+
+    def updateMessage(self, params):
+        return
+    
+    def execute(self, params, messages):
+        gis_layers = params[0].valueAsText
+        domain_field = params[1].valueAsText
+        arcpy.env.overwriteOutput = True
+
+        layers = list(gis_layers.split(";"))
+
+        # Domain settings
+        domainList = ['ViaductType', 'ViaductStatus']
+
+        for layer in layers:
+            if domain_field == 'Status':
+                arcpy.AssignDomainToField_management(layer, "Status", domainList[1])
+            elif domain_field == 'Types':
+                arcpy.AssignDomainToField_management(layer, "Types", domainList[0])

@@ -2184,6 +2184,13 @@ class EditBuildingLayerStation(object):
 
         arcpy.env.overwriteOutput = True
 
+        def unique(lists):
+            collect = []
+            unique_list = pd.Series(lists).drop_duplicates().tolist()
+            for x in unique_list:
+                collect.append(x)
+            return(collect)
+
         # define fields
         status_field = 'Status'
 
@@ -2220,49 +2227,67 @@ class EditBuildingLayerStation(object):
                 new_layer = new_layers[id]
                 arcpy.AddMessage(del_basename + "; " + new_layer)
 
-                # 2. Update 'Status' field in new_layer using 'xx_Status or xx_status' field from Revit
-                # empty cell (null): 1. To be Constructed, 
-                # 'Ongoing': 2. Ongoing
-                # 'Completed': 4. Completed
-                # 2. Extract fields
-                bim_fields = [e.name for e in arcpy.ListFields(new_layer)]
+                # Check if the same contract package is shared between target layer and new layer
+                target_cp = arcpy.da.SearchCursor(target_layer, ["CP"])
+                target_cp_list = unique([row[0] for row in target_cp])
+                
+                new_cp = arcpy.da.SearchCursor(new_layer, ["CP"])
+                new_cp_list = unique([row[0] for row in new_cp])
 
-                ## 3. Search field name excluding 'Project_'
-                try:
-                    bim_status_field = [re.search(r'^(?!.*Project)(.*?)_Status$|(?!.*Project)(.*?)_status$', e).group() for e in bim_fields if re.search(r'^(?!.*Project)(.*?)_Status$|(?!.*Project)(.*?)_status$', e) is not None]
-                except AttributeError:
-                    bim_status_field = [re.search(r'^(?!.*Project)(.*?)_Status$|(?!.*Project)(.*?)_status$', e) for e in bim_fields if re.search(r'^(?!.*Project)(.*?)_Status$|(?!.*Project)(.*?)_status$', e) is not None]
+                arcpy.AddMessage(f"Target layer CPs: {target_cp_list}")
+                arcpy.AddMessage(f"New layer CPs: {new_cp_list}")
 
-                arcpy.AddMessage(f"The name of status field in BIM models: {bim_status_field}")
+                if (set(target_cp_list) == set(new_cp_list)):
+                    arcpy.AddMessage("The same contract package is shared between target layer and new layer.")
 
-                # 4. Update 'Status' field in new_layer
-                if len(bim_status_field) == 1: # Update only When status field exists in the BIM model (input)
-                    with arcpy.da.UpdateCursor(new_layer, [bim_status_field, status_field]) as cursor:
-                        for row in cursor:
-                            if row[0] == 'Ongoing':
-                                row[1] = 2
-                            elif row[0] == 'Completed':
-                                row[1] = 4
-                            elif row[0] is None:
-                                row[1] = 1
-                            cursor.updateRow(row)
+                    # 2. Update 'Status' field in new_layer using 'xx_Status or xx_status' field from Revit
+                    # empty cell (null): 1. To be Constructed, 
+                    # 'Ongoing': 2. Ongoing
+                    # 'Completed': 4. Completed
+                    # 2. Extract fields
+                    bim_fields = [e.name for e in arcpy.ListFields(new_layer)]
 
-                # 5. Replace target layer with new observations
-                # Select layer by attribute
-                if len(cp_selected) == 1:
-                    where_clause = "CP = '{}'".format(cp_selected[0])
+                    ## 3. Search field name excluding 'Project_'
+                    try:
+                        bim_status_field = [re.search(r'^(?!.*Project)(.*?)_Status$|(?!.*Project)(.*?)_status$', e).group() for e in bim_fields if re.search(r'^(?!.*Project)(.*?)_Status$|(?!.*Project)(.*?)_status$', e) is not None]
+                    except AttributeError:
+                        bim_status_field = [re.search(r'^(?!.*Project)(.*?)_Status$|(?!.*Project)(.*?)_status$', e) for e in bim_fields if re.search(r'^(?!.*Project)(.*?)_Status$|(?!.*Project)(.*?)_status$', e) is not None]
+
+                    arcpy.AddMessage(f"The name of status field in BIM models: {bim_status_field}")
+
+                    # 4. Update 'Status' field in new_layer
+                    if len(bim_status_field) == 1: # Update only When status field exists in the BIM model (input)
+                        with arcpy.da.UpdateCursor(new_layer, [bim_status_field, status_field]) as cursor:
+                            for row in cursor:
+                                if row[0] == 'Ongoing':
+                                    row[1] = 2
+                                elif row[0] == 'Completed':
+                                    row[1] = 4
+                                elif row[0] is None:
+                                    row[1] = 1
+                                cursor.updateRow(row)
+
+                    # 5. Replace target layer with new observations
+                    # Select layer by attribute
+                    if len(cp_selected) == 1:
+                        where_clause = "CP = '{}'".format(cp_selected[0])
+                    else:
+                        where_clause = "CP IN {}".format(cp_selected)
+
+                    arcpy.AddMessage(where_clause)
+
+                    arcpy.management.SelectLayerByAttribute(target_layer, 'SUBSET_SELECTION',where_clause)
+
+                    # Truncate
+                    arcpy.management.DeleteRows(target_layer)
+
+                    # Append
+                    arcpy.management.Append(new_layer, target_layer, schema_type = 'NO_TEST', expression = where_clause)
+
                 else:
-                    where_clause = "CP IN {}".format(cp_selected)
+                    arcpy.AddError("Contract package mismatch between target layer and new layer. Please check your input.")
+                    pass
 
-                arcpy.AddMessage(where_clause)
-
-                arcpy.management.SelectLayerByAttribute(target_layer, 'SUBSET_SELECTION',where_clause)
-
-                # Truncate
-                arcpy.management.DeleteRows(target_layer)
-
-                # Append
-                arcpy.management.Append(new_layer, target_layer, schema_type = 'NO_TEST', expression = where_clause)
         else:
             arcpy.AddError("Matching Errors.. Select corresponding building sublayers for input and target.")
             pass

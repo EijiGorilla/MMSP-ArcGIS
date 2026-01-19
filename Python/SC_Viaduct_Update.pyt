@@ -2190,6 +2190,19 @@ class EditBuildingLayerStation(object):
             for x in unique_list:
                 collect.append(x)
             return(collect)
+        
+        def are_all_items_included(sublist, mainlist):
+            """
+            Checks if all items in 'sublist' are present in 'mainlist'.
+
+            Args:
+                sublist: The list of items to check for inclusion.
+                mainlist: The list to check against.
+
+            Returns:
+                True if all items in sublist are in mainlist, False otherwise.
+            """
+            return set(sublist).issubset(set(mainlist))
 
         # define fields
         status_field = 'Status'
@@ -2197,6 +2210,8 @@ class EditBuildingLayerStation(object):
         del_layers = list(delete_bim.split(";"))
         new_layers = list(new_bim.split(";"))
         new_cps = list(cp_update.split(";"))
+
+        arcpy.AddMessage(F"cps: {cp_update}")
 
         # Convert station names to station domain numbers
         cp_selected = tuple([cp for cp in new_cps])
@@ -2214,7 +2229,7 @@ class EditBuildingLayerStation(object):
         arcpy.AddMessage(f"deleted layer names: {sorted(del_basenames)}")
         arcpy.AddMessage(f"new layer names: {sorted(new_basenames)}")
 
-        # # 2. Add and Delete
+        # 2. Add and Delete
         if sorted(del_basenames) == sorted(new_basenames):
             arcpy.AddMessage('Sublayer names are all matched.')
     
@@ -2228,17 +2243,15 @@ class EditBuildingLayerStation(object):
                 arcpy.AddMessage(del_basename + "; " + new_layer)
 
                 # Check if the same contract package is shared between target layer and new layer
-                target_cp = arcpy.da.SearchCursor(target_layer, ["CP"])
-                target_cp_list = unique([row[0] for row in target_cp])
-                
-                new_cp = arcpy.da.SearchCursor(new_layer, ["CP"])
-                new_cp_list = unique([row[0] for row in new_cp])
+                target_cp_list = unique([e[0] for e in [cp for cp in  arcpy.da.SearchCursor(target_layer, ["CP"])]])
+                new_cp_list = unique([e[0] for e in [cp for cp in  arcpy.da.SearchCursor(new_layer, ["CP"])]])
 
                 arcpy.AddMessage(f"Target layer CPs: {target_cp_list}")
                 arcpy.AddMessage(f"New layer CPs: {new_cp_list}")
 
-                if (set(target_cp_list) == set(new_cp_list)):
-                    arcpy.AddMessage("The same contract package is shared between target layer and new layer.")
+                # Check if all selected CPs are included in both target layer and new layer
+                if are_all_items_included(new_cps, target_cp_list) and are_all_items_included(new_cps, new_cp_list):
+                    arcpy.AddMessage("Both target layer and new layer have the selected CP(s), so proceed.")
 
                     # 2. Update 'Status' field in new_layer using 'xx_Status or xx_status' field from Revit
                     # empty cell (null): 1. To be Constructed, 
@@ -2285,7 +2298,7 @@ class EditBuildingLayerStation(object):
                     arcpy.management.Append(new_layer, target_layer, schema_type = 'NO_TEST', expression = where_clause)
 
                 else:
-                    arcpy.AddError("Contract package mismatch between target layer and new layer. Please check your input.")
+                    arcpy.AddError("Either the target layer or input layer does not have the selected CP(s)Please check layers.")
                     pass
 
         else:

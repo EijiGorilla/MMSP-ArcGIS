@@ -2091,23 +2091,37 @@ class AddFieldsToBuildingLayerStation(object):
 
         # 3. Types of categories
         for layer in layers:
-            with arcpy.da.UpdateCursor(layer, ['AssemblyDesc', 'Category', 'Family', 'BaseCategory', 'Types']) as cursor:
-                for row in cursor:
-                    if (row[0] is not None) and ('Piles' in row[0]):
-                        row[4] = 1
-                    elif (row[0] is not None) and ('Pile Caps' in row[0]):
-                        row[4] = 2
-                    elif (row[2] is not None) and ('Pier Head' in row[2]):
-                        row[4] = 4
-                    elif (row[1] is not None) and ('Pier Walls' in row[1]):
-                        row[4] = 8
-                    elif (row[1] is not None) and ('Pier' in row[2]):
-                        row[4] = 3
-                    elif (row[3] is not None) and ('Decks' in row[3]):
-                        row[4] = 5
-                    else:
-                        row[4] = 0
-                    cursor.updateRow(row)
+                with arcpy.da.UpdateCursor(layer, ['t00__Description', 'Types', 'Category', 'FamilyType']) as cursor:
+                    try:
+                        for row in cursor:
+                            if os.path.basename(layer) == 'Decks':
+                                if row[0] is not None:
+                                    row[1] = 5
+                                else:
+                                    row[1] = 0
+                            else:
+                                if row[0] is not None:
+                                    if 'Bored Pile' in row[0]:
+                                        row[1] = 1
+                                    elif 'Pilecap' in row[0]:
+                                        row[1] = 2
+                                    elif 'Pier' in row[0]:
+                                        row[1] = 3
+                                    elif 'Pier Head' in row[0]:
+                                        row[1] = 4
+                                    else:
+                                        row[1] = 0
+                                elif (row[0] is None) and (row[2] is not None):
+                                    if ('Pier Walls' in row[2]) and ('Noise Barrier' in row[3]):
+                                        row[1] = 8 
+                                    else:
+                                        row[1] = 0
+                                else:
+                                    row[1] = 0
+                            cursor.updateRow(row)
+                    except:
+                        arcpy.AddMessage(f"AttributeError in layer: {layer}, 't00_Description' field does not exist.")
+                        pass
 
         # 4. CP
         for layer in layers:

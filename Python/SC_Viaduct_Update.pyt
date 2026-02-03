@@ -6,6 +6,7 @@ from datetime import date, datetime
 import re
 import string
 import numpy as np
+import time
 
 class Toolbox(object):
     def __init__(self):
@@ -17,7 +18,7 @@ class Toolbox(object):
                       UpdateWorkablePierLayer, UpdatePierPointLayer, UpdateStripMapLayer,
                       ReSortGISTable, CheckUpdatesCivilGIS,
                       ViaductBIMUpdateMessage,
-                      CreateBIMtoGeodatabase, CreateBuildingLayers, AddFieldsToBuildingLayerStation, EditBuildingLayerStation, DomainSettingStationStructure]
+                      CreateBIMtoGeodatabase, CreateBuildingLayers, AppendBatchesBIM, AddFieldsToBuildingLayerStation, EditBuildingLayerStation, DomainSettingStationStructure]
 
 class ViaductMultipatchMessage(object):
     def __init__(self):
@@ -2026,27 +2027,162 @@ class CreateBIMtoGeodatabase(object):
         input_revit = params[1].valueAsText
         export_name = params[2].valueAsText
 
+        arcpy.env.gpuId = None 
         arcpy.env.overwriteOutput = True
 
         revit_tables = list(input_revit.split(';'))
         
-        arcpy.AddMessage(revit_tables)
+        revit_files = [os.path.basename(e) for e in revit_tables]
+        arcpy.AddMessage(revit_files)
 
         # 1. BIM to Geodatabase
         spatial_reference = "PRS_1992_Philippines_Zone_III"
-        arcpy.BIMFileToGeodatabase_conversion(revit_tables, fgdb_dir, export_name, spatial_reference)
+        arcpy.conversion.BIMFileToGeodatabase(revit_tables, fgdb_dir, export_name, spatial_reference)
         
         arcpy.AddMessage("BIM To Geodatabase was successful.")
 
+
+        #----------------------------------------------------------------------------------#
+        # spatial_reference = "PRS_1992_Philippines_Zone_III"
+        # revit_files = list(input_revit.split(';'))
+
+        # for i, revit_file in enumerate(revit_files):
+        #     arcpy.AddMessage(f"Process {revit_file}")
+        #     start_time = time.time()
+        #     try:                
+        #         # Run the BIM File To Geodatabase tool
+        #         arcpy.conversion.BIMFileToGeodatabase(revit_file, fgdb_dir, export_name, spatial_reference)
+        #         arcpy.AddMessage(f"Successfully processed {os.path.basename(revit_file)}")
+
+        #         if i == 0:
+        #             target_feature_classes = arcpy.ListFeatureClasses(feature_dataset=export_name)
+        #         else:
+        #             # Append each feature class1,2... to the first feature class0
+        #             input_feature_classes = arcpy.ListFeatureClasses(feature_dataset=export_name)
+        #             input_feature_classes_filtered = [e for e in input_feature_classes if e.endswith(('_1','_2','_3','_4','_5'))]
+        #             # arcpy.AddMessage(f"All the appending layers: {input_feature_classes_filtered}")
+
+        #             for target_feature_class in target_feature_classes:
+        #                 arcpy.AddMessage(f"Target_Feature_Class: {target_feature_class}")
+
+        #                 input_feature_class_append = [e for e in input_feature_classes_filtered if target_feature_class in e]
+        #                 arcpy.AddMessage(f"Appending layer: {input_feature_class_append}")
+
+        #                 schemaType = "NO_TEST"
+        #                 fieldMappings = ""
+        #                 subtype = ""
+        #                 arcpy.management.Append(input_feature_class_append, target_feature_class, schemaType, fieldMappings, subtype)
+        #                 arcpy.management.Delete(input_feature_class_append)
+                    
+        #                 arcpy.AddMessage(f"Successfully appended {os.path.basename(revit_file)}")
+                    
+                
+        #         end_time = time.time()
+        #         arcpy.AddMessage(f"Processing time: {((end_time - start_time)/60)} minutes.(start time: {start_time})")
+            
+        #     except:
+        #         arcpy.AddError(f"Error processing {os.path.basename(revit_file)}")
+        #         pass
+
+class AppendBatchesBIM(object):
+    def __init__(self):
+        self.label = "A-2. (Optional) Append Input Geodatabases to Target Geodatabase"
+        self.description = "(Optional) Append Input Geodatabases to Target Geodatabase"
+
+    def getParameterInfo(self):
+        fgdb_dir = arcpy.Parameter(
+            displayName = "File Geodatabase",
+            name = "File Geodatabase",
+            datatype = "DEWorkspace",
+            parameterType = "Required",
+            direction = "Input"
+        )
+
+        target_feature_dataset = arcpy.Parameter(
+            displayName = "Feature Dataset (Target)",
+            name = "Feature Dataset (Target)",
+            datatype = "DEFeatureDataset",
+            parameterType = "Required",
+            direction = "Input"
+        )
+
+        input_fd = arcpy.Parameter(
+            displayName = "Feature Dataset (Input)",
+            name = "Feature Dataset (Input)",
+            datatype = "DEFeatureDataset",
+            parameterType = "Required",
+            direction = "Input",
+            multiValue = True
+        )
+
+
+        params = [fgdb_dir, target_feature_dataset, input_fd]
+        return params
+
+    def updateMessages(self, params):
+        return
+    
+    def execute(self, params, messages):
+        fgdb_dir = params[0].valueAsText
+        target_feature_dataset = params[1].valueAsText
+        input_fd = params[2].valueAsText
+
+        arcpy.env.gpuId = None 
+        arcpy.env.overwriteOutput = True
+        arcpy.env.workspace = fgdb_dir
+
+        # Get target layers in target FD
+        target_feature_dataset_name = os.path.basename(target_feature_dataset)
+        target_feature_classes = arcpy.ListFeatureClasses(feature_dataset=target_feature_dataset_name)
+        input_feature_datasets = list(input_fd.split(';'))
+
+        try:
+            for feature_dataset in input_feature_datasets:
+                input_feature_dataset_name = Path(feature_dataset).name.replace("'","")
+                arcpy.AddMessage(f"--------- Input Feature Dataset: {input_feature_dataset_name} -----------")
+                arcpy.AddMessage("\n")
+
+                input_feature_classes = arcpy.ListFeatureClasses(feature_dataset=input_feature_dataset_name)
+                input_features = [re.sub(f"_{input_feature_dataset_name}", "", e) for e in input_feature_classes]    
+
+                for target_feature_class in target_feature_classes:
+                    ## Remove feature datase name from the target feaure class
+                    target_feature = re.sub(f"_{target_feature_dataset_name}", "", target_feature_class)
+                    # arcpy.AddMessage(f"Target_Feature_Class: {target_feature}")
+
+                    # input_feature_class_append = [e for e in input_features if e.startswith(target_feature)]
+                    input_feature_class_match= [e for e in input_features if re.fullmatch(target_feature, e)]
+                    input_feature_class_append = [f"{e}_{input_feature_dataset_name}" for e in input_feature_class_match] # Back to the original name
+                    
+                    if len(input_feature_class_match) > 1:
+                        arcpy.AddMessage(f"!!! {target_feature} was not appended because there are more than one appending layers: {input_feature_class_append}.")
+                    elif len(input_feature_class_match) == 0:
+                        arcpy.AddMessage(f"{target_feature} does not have any corresponding input layers..")
+                        # arcpy.AddMessage(f"Appending layer: {input_feature_class_append}")
+                    else:
+                        schemaType = "NO_TEST"
+                        fieldMappings = ""
+                        subtype = ""
+                        arcpy.management.Append(input_feature_class_append, target_feature_class, schemaType, fieldMappings, subtype)
+                        arcpy.AddMessage(f"Successfully appended {input_feature_class_append}")
+                        
+                        # Delete input feature dataset, only when append is successful.
+                        # arcpy.management.Delete(feature_dataset)
+
+        except:
+            # arcpy.AddError(f"Error processing {feature_dataset}")
+            arcpy.AddError(f"Error processing {feature_dataset}")
+            pass
+
 class CreateBuildingLayers(object):
     def __init__(self):
-        self.label = "A-2. (Message ONLY) Make Building Layers using Feature Dataset"
+        self.label = "A-3. (Message ONLY) Make Building Layers using Feature Dataset"
         self.description = "Make Building Layers using Feature Dataset"
 
 class AddFieldsToBuildingLayerStation(object):          
     def __init__(self):
-        self.label = "A-3. Add Fields to New Viaduct Layers"
-        self.description = "2.1. Add Fields to New Viaduct Layers"
+        self.label = "A-4. Add Fields to New Viaduct Layers"
+        self.description = "Add Fields to New Viaduct Layers"
 
     def getParameterInfo(self):
         input_layers = arcpy.Parameter(
@@ -2091,37 +2227,49 @@ class AddFieldsToBuildingLayerStation(object):
 
         # 3. Types of categories
         for layer in layers:
-                with arcpy.da.UpdateCursor(layer, ['t00__Description', 'Types', 'Category', 'FamilyType']) as cursor:
-                    try:
-                        for row in cursor:
-                            if os.path.basename(layer) == 'Decks':
-                                if row[0] is not None:
-                                    row[1] = 5
-                                else:
-                                    row[1] = 0
+            if os.path.basename(layer) == 'Decks':
+                with arcpy.da.UpdateCursor(layer, ['t00__Description', 'Types']) as cursor:
+                    for row in cursor:
+                        if row[0] is not None:
+                            row[1] = 5
+                        else:
+                            row[1] = 0
+                        cursor.updateRow(row)
+
+            elif os.path.basename(layer) == 'StructuralFoundation':
+                with arcpy.da.UpdateCursor(layer, ['t00__Description', 'Types', 'Category']) as cursor:
+                    for row in cursor:
+                        if row[0] is not None:
+                            if ('Bored Pile' in row[0]) or ('Bore Pile' in row[0]):
+                                row[1] = 1
+                            elif 'Pilecap' in row[0]:
+                                row[1] = 2
                             else:
-                                if row[0] is not None:
-                                    if 'Bored Pile' in row[0]:
-                                        row[1] = 1
-                                    elif 'Pilecap' in row[0]:
-                                        row[1] = 2
-                                    elif 'Pier' in row[0]:
-                                        row[1] = 3
-                                    elif 'Pier Head' in row[0]:
-                                        row[1] = 4
-                                    else:
-                                        row[1] = 0
-                                elif (row[0] is None) and (row[2] is not None):
-                                    if ('Pier Walls' in row[2]) and ('Noise Barrier' in row[3]):
-                                        row[1] = 8 
-                                    else:
-                                        row[1] = 0
-                                else:
-                                    row[1] = 0
-                            cursor.updateRow(row)
-                    except:
-                        arcpy.AddMessage(f"AttributeError in layer: {layer}, 't00_Description' field does not exist.")
-                        pass
+                                row[1] = 0
+                        else:
+                            row[1] = 0
+                        cursor.updateRow(row)
+
+            elif os.path.basename(layer) == 'Piers':
+                with arcpy.da.UpdateCursor(layer, ['Types', 'Family', 'Category', 'FamilyType']) as cursor:
+                    for row in cursor:
+                        if (row[1] is not None) or (row[2] is not None):
+                            if 'Pier Head' in row[1]:
+                                row[0] = 4
+                            elif 'Pier' in row[1]:
+                                row[0] = 3
+                            elif ('Pier Walls' in row[2]) and ('Noise Barrier' in row[3]):
+                                row[0] = 8
+                            else:
+                                row[0] = 0
+                        else:
+                            row[0] = 0
+                        cursor.updateRow(row)
+            else:
+                with arcpy.da.UpdateCursor(layer, ['Types']) as cursor:
+                    for row in cursor:
+                        row[0] = 0
+                        cursor.updateRow(row)
 
         # 4. CP
         for layer in layers:
@@ -2143,8 +2291,8 @@ class AddFieldsToBuildingLayerStation(object):
 
 class EditBuildingLayerStation(object):
     def __init__(self):
-        self.label = "A-4 Update Viaduct Layers"
-        self.description = "2.2 Update Viaduct Layers"
+        self.label = "A-5 Update Viaduct Layers"
+        self.description = "Update Viaduct Layers"
 
     def getParameterInfo(self):
         cp_update = arcpy.Parameter(
@@ -2228,7 +2376,7 @@ class EditBuildingLayerStation(object):
         arcpy.AddMessage(F"cps: {cp_update}")
 
         # Convert station names to station domain numbers
-        cp_selected = tuple([cp for cp in new_cps])
+        # cp_selected = tuple([cp for cp in new_cps])
 
         # 1. Check names are matched between deleted layers and new layers
         del_basenames = []
@@ -2296,12 +2444,33 @@ class EditBuildingLayerStation(object):
 
                     # 5. Replace target layer with new observations
                     # Select layer by attribute
-                    if len(cp_selected) == 1:
-                        where_clause = "CP = '{}'".format(cp_selected[0])
-                    else:
-                        where_clause = "CP IN {}".format(cp_selected)
+                    # if len(cp_selected) == 1:
+                    #     where_clause = "CP = '{}'".format(cp_selected[0])
+                    # else:
+                    #     where_clause = "CP IN {}".format(cp_selected)
 
-                    arcpy.AddMessage(where_clause)
+                    # arcpy.AddMessage(where_clause)
+
+                    # 5. Replace target layer with new observations
+                    ### Note if multiple revit models exist, We cannot just replace
+                    ### all the rows in the target layer with inputs. 
+                    ### We need to identify rows to be updated using DocName in the input (new) layer.
+                    docNumbers = []
+                    with arcpy.da.SearchCursor(new_layer, ["DocName"]) as cursor:
+                        for row in cursor:
+                            if row[0]:
+                                docNumbers.append(row[0])
+
+                    ## Get a unique list of docnames
+                    docNumberUnique = unique(docNumbers)
+
+                    numbers = tuple([e for e in docNumberUnique])
+                    docName_field = 'DocName'
+
+                    if (len(docNumberUnique) == 1):
+                        where_clause = f"{docName_field} = '{numbers[0]}'"
+                    else:
+                        where_clause = f"{docName_field} IN {numbers}"
 
                     arcpy.management.SelectLayerByAttribute(target_layer, 'SUBSET_SELECTION',where_clause)
 
@@ -2321,8 +2490,8 @@ class EditBuildingLayerStation(object):
 
 class DomainSettingStationStructure(object):
     def __init__(self):
-        self.label = "A-5. Apply Domain to Fields (applicable only for enterprise geodatabase)"
-        self.description = "2.3. Apply Domain to Fields"
+        self.label = "A-6. Apply Domain to Fields (applicable only for enterprise geodatabase)"
+        self.description = "Apply Domain to Fields"
 
     def getParameterInfo(self):
         gis_layers = arcpy.Parameter(

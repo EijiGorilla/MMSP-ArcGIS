@@ -2185,6 +2185,26 @@ class AddFieldsToBuildingLayerStation(object):
         self.description = "Add Fields to New Viaduct Layers"
 
     def getParameterInfo(self):
+        cp_update = arcpy.Parameter(
+            displayName = "Target Contract Package",
+            name = "Target Contract Package",
+            datatype = "GPString",
+            parameterType = "Required",
+            direction = "Input",
+            # multiValue = True
+        )
+        cp_update.filter.type = "ValueList"
+        cp_update.filter.list = [
+            "S-01",
+            "S-02",
+            "S-03a",
+            "S-03b",
+            "S-03c",
+            "S-04",
+            "S-05",
+            "S-06"
+        ]
+    
         input_layers = arcpy.Parameter(
             displayName = "Select Sublayers Layers (e.g., StructuralColumns)",
             name = "Select Sublayers", 
@@ -2194,14 +2214,15 @@ class AddFieldsToBuildingLayerStation(object):
             multiValue = True
         )
 
-        params = [input_layers]
+        params = [cp_update, input_layers]
         return params
 
     def updateMessage(self, params):
         return
     
     def execute(self, params, messages):
-        input_layers = params[0].valueAsText
+        cp_update = params[0].valueAsText
+        input_layers = params[1].valueAsText
         arcpy.env.overwriteOutput = True
 
         layers = list(input_layers.split(";"))
@@ -2226,50 +2247,81 @@ class AddFieldsToBuildingLayerStation(object):
                     cursor.updateRow(row)
 
         # 3. Types of categories
-        for layer in layers:
-            if os.path.basename(layer) == 'Decks':
-                with arcpy.da.UpdateCursor(layer, ['t00__Description', 'Types']) as cursor:
-                    for row in cursor:
-                        if row[0] is not None:
-                            row[1] = 5
-                        else:
-                            row[1] = 0
-                        cursor.updateRow(row)
-
-            elif os.path.basename(layer) == 'StructuralFoundation':
-                with arcpy.da.UpdateCursor(layer, ['t00__Description', 'Types', 'Category']) as cursor:
-                    for row in cursor:
-                        if row[0] is not None:
-                            if ('Bored Pile' in row[0]) or ('Bore Pile' in row[0]):
-                                row[1] = 1
-                            elif 'Pilecap' in row[0]:
-                                row[1] = 2
+        if cp_update == 'S-01':
+            for layer in layers:
+                if os.path.basename(layer) == 'Decks':
+                    with arcpy.da.UpdateCursor(layer, ['t00__Description', 'Types']) as cursor:
+                        for row in cursor:
+                            if row[0] is not None:
+                                row[1] = 5
                             else:
                                 row[1] = 0
-                        else:
-                            row[1] = 0
-                        cursor.updateRow(row)
+                            cursor.updateRow(row)
 
-            elif os.path.basename(layer) == 'Piers':
-                with arcpy.da.UpdateCursor(layer, ['Types', 'Family', 'Category', 'FamilyType']) as cursor:
-                    for row in cursor:
-                        if (row[1] is not None) or (row[2] is not None):
-                            if 'Pier Head' in row[1]:
-                                row[0] = 4
-                            elif 'Pier' in row[1]:
-                                row[0] = 3
-                            elif ('Pier Walls' in row[2]) and ('Noise Barrier' in row[3]):
-                                row[0] = 8
+                elif os.path.basename(layer) == 'StructuralFoundation':
+                    with arcpy.da.UpdateCursor(layer, ['t00__Description', 'Types', 'Category']) as cursor:
+                        for row in cursor:
+                            if row[0] is not None:
+                                if ('Bored Pile' in row[0]) or ('Bore Pile' in row[0]):
+                                    row[1] = 1
+                                elif 'Pilecap' in row[0]:
+                                    row[1] = 2
+                                else:
+                                    row[1] = 0
+                            else:
+                                row[1] = 0
+                            cursor.updateRow(row)
+
+                elif os.path.basename(layer) == 'Piers':
+                    with arcpy.da.UpdateCursor(layer, ['Types', 'Family', 'Category', 'FamilyType']) as cursor:
+                        for row in cursor:
+                            if (row[1] is not None) or (row[2] is not None):
+                                if 'Pier Head' in row[1]:
+                                    row[0] = 4
+                                elif 'Pier' in row[1]:
+                                    row[0] = 3
+                                elif ('Pier Walls' in row[2]) and ('Noise Barrier' in row[3]):
+                                    row[0] = 8
+                                else:
+                                    row[0] = 0
                             else:
                                 row[0] = 0
-                        else:
+                            cursor.updateRow(row)
+                else:
+                    with arcpy.da.UpdateCursor(layer, ['Types']) as cursor:
+                        for row in cursor:
                             row[0] = 0
-                        cursor.updateRow(row)
-            else:
-                with arcpy.da.UpdateCursor(layer, ['Types']) as cursor:
-                    for row in cursor:
-                        row[0] = 0
-                        cursor.updateRow(row)
+                            cursor.updateRow(row)
+
+        elif cp_update == 'S-06':
+            for layer in layers:
+                arcpy.AddMessage(layer)
+                if os.path.basename(layer) == 'Bearings':
+                    with arcpy.da.UpdateCursor(layer, ['Types']) as cursor:
+                        for row in cursor:
+                            row[0] = 0
+                            cursor.updateRow(row)
+                else:
+                    with arcpy.da.UpdateCursor(layer, ['t00__Description', 'Types']) as cursor:
+                        for row in cursor:
+                            if row[0] is not None:
+                                if 'Bored Pile' in row[0]:
+                                    row[1] = 1
+                                elif 'Pile Cap' in row[0]:
+                                    row[1] = 2
+                                elif 'Pier Column' in row[0]:
+                                    row[1] = 3
+                                elif 'Pier Head' in row[0]:
+                                    row[1] = 4
+                                elif 'Viaduct-PCS' in row[0] or 'Viaduct-PSM' in row[0]:
+                                    row[1] = 5
+                                elif 'Pier Walls' in row[0]:
+                                    row[1] = 8
+                                else:
+                                    row[1] = 0
+                            else:
+                                row[1] = 0
+                            cursor.updateRow(row)
 
         # 4. CP
         for layer in layers:
@@ -2301,7 +2353,7 @@ class EditBuildingLayerStation(object):
             datatype = "GPString",
             parameterType = "Required",
             direction = "Input",
-            multiValue = True
+            # multiValue = True
         )
         cp_update.filter.type = "ValueList"
         cp_update.filter.list = [
@@ -2371,7 +2423,7 @@ class EditBuildingLayerStation(object):
 
         del_layers = list(delete_bim.split(";"))
         new_layers = list(new_bim.split(";"))
-        new_cps = list(cp_update.split(";"))
+        # new_cps = list(cp_update.split(";"))
 
         arcpy.AddMessage(F"cps: {cp_update}")
 
@@ -2412,7 +2464,7 @@ class EditBuildingLayerStation(object):
                 arcpy.AddMessage(f"New layer CPs: {new_cp_list}")
 
                 # Check if all selected CPs are included in both target layer and new layer
-                if are_all_items_included(new_cps, target_cp_list) and are_all_items_included(new_cps, new_cp_list):
+                if are_all_items_included(cp_update, target_cp_list) and are_all_items_included(cp_update, new_cp_list):
                     arcpy.AddMessage("Both target layer and new layer have the selected CP(s), so proceed.")
 
                     # 2. Update 'Status' field in new_layer using 'xx_Status or xx_status' field from Revit
@@ -2432,15 +2484,27 @@ class EditBuildingLayerStation(object):
 
                     # 4. Update 'Status' field in new_layer
                     if len(bim_status_field) == 1: # Update only When status field exists in the BIM model (input)
-                        with arcpy.da.UpdateCursor(new_layer, [bim_status_field, status_field]) as cursor:
-                            for row in cursor:
-                                if row[0] == 'Ongoing':
-                                    row[1] = 2
-                                elif row[0] == 'Completed':
-                                    row[1] = 4
-                                elif row[0] is None:
-                                    row[1] = 1
-                                cursor.updateRow(row)
+                        if cp_update == 'S-01':
+                            with arcpy.da.UpdateCursor(new_layer, [bim_status_field, status_field]) as cursor:
+                                for row in cursor:
+                                    if row[0] == 'Ongoing':
+                                        row[1] = 2
+                                    elif row[0] == 'Completed':
+                                        row[1] = 4
+                                    elif row[0] is None:
+                                        row[1] = 1
+                                    cursor.updateRow(row)
+                        
+                        elif cp_update == 'S-06':
+                            with arcpy.da.UpdateCursor(new_layer, [bim_status_field, status_field]) as cursor:
+                                for row in cursor:
+                                    if row[0] == 'In-Progress':
+                                        row[1] = 2
+                                    elif row[0] == 'Complete':
+                                        row[1] = 4
+                                    elif row[0] is None:
+                                        row[1] = 1
+                                    cursor.updateRow(row)
 
                     # 5. Replace target layer with new observations
                     # Select layer by attribute

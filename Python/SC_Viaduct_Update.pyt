@@ -246,6 +246,7 @@ class UpdateExcelML(object):
                     ## Make sure to have no hypen for P. (e.g., P684-2 (O), P-684-2 (X))
                     table[civil_pier_field] = table[civil_pier_field].apply(lambda x: x.upper())
                     table[civil_pier_field] = table[civil_pier_field].apply(lambda x: x.replace(r'P-','P'))
+                    table[civil_pier_field] = table[civil_pier_field].apply(lambda x: x.replace(r'STR-','STR'))
                     table[No_field] = table[No_field].astype(str)
                     table[id_field] = table[civil_pier_field].str.cat(table[No_field], sep = "-")
                     # idx = table.index[table[civil_pier_field] == 'P686']
@@ -301,6 +302,7 @@ class UpdateExcelML(object):
 
                     # Re-format 'P-' to 'P'
                     civil_table[civil_pier_field] = civil_table[civil_pier_field].apply(lambda x: x.replace(r'P-','P'))
+                    civil_table[civil_pier_field] = civil_table[civil_pier_field].apply(lambda x: x.replace(r'STR-','STR'))
 
                     # Drop rows with empty pier numbers
                     # idx = civil_table.index[~civil_table[civil_pier_field].isna()]
@@ -1920,6 +1922,9 @@ class CheckUpdatesCivilGIS(object):
             ids = x.index[x[pier_field].str.contains(r'^ES', regex=True, na=False)]
             x = x.drop(ids).reset_index(drop=True)
 
+            x[pier_field] = x[pier_field].astype(str)
+            x[pier_field] = x[pier_field].apply(lambda x: re.sub(r'STR-', 'STR', x))
+
             # "---------------------------------------------------------------------------------------"
             # 1. Summary statistics:
             # Re-formata 'Package'
@@ -1977,7 +1982,7 @@ class CheckUpdatesCivilGIS(object):
                 ids = gis_fil[id_field].duplicated()
                 idx = ids.index[ids == True]
                 duplicated_ids = gis_fil.loc[idx, id_field].values
-                merged_t[idx, 'Remarks'] = duplicated_ids
+                merged_t.loc[idx, 'Remarks'] = duplicated_ids
         arcpy.AddMessage(merged_t)
 
 class ViaductBIMUpdateMessage(object):
@@ -2037,7 +2042,7 @@ class CreateBIMtoGeodatabase(object):
 
         # 1. BIM to Geodatabase
         spatial_reference = "PRS_1992_Philippines_Zone_III"
-        arcpy.conversion.BIMFileToGeodatabase(revit_tables, fgdb_dir, export_name, spatial_reference)
+        arcpy.conversion.BIMFileToGeodatabase(revit_tables, fgdb_dir, export_name, spatial_reference, "", False)
         
         arcpy.AddMessage("BIM To Geodatabase was successful.")
 
@@ -2302,25 +2307,30 @@ class AddFieldsToBuildingLayerStation(object):
                             row[0] = 0
                             cursor.updateRow(row)
                 else:
-                    with arcpy.da.UpdateCursor(layer, ['t00__Description', 'Types']) as cursor:
+                    with arcpy.da.UpdateCursor(layer, ['t00__Description', 'Category', 'Types']) as cursor:
                         for row in cursor:
                             if row[0] is not None:
                                 if 'Bored Pile' in row[0]:
-                                    row[1] = 1
+                                    row[2] = 1
                                 elif 'Pile Cap' in row[0]:
-                                    row[1] = 2
-                                elif 'Pier Column' in row[0]:
-                                    row[1] = 3
+                                    row[2] = 2
+                                elif ('Pier Column' in row[0]) or ('Pier Colum' in row[0]):
+                                    row[2] = 3
                                 elif 'Pier Head' in row[0]:
-                                    row[1] = 4
-                                elif 'Viaduct-PCS' in row[0] or 'Viaduct-PSM' in row[0]:
-                                    row[1] = 5
-                                elif 'Pier Walls' in row[0]:
-                                    row[1] = 8
+                                    row[2] = 4
+                                elif ('Viaduct' in row[0]) or ('BR' in row[0]):
+                                    row[2] = 5
+                                elif ('At Grade' in row[0]) or ('Abutment' in row[0]):
+                                    row[2] = 7
                                 else:
-                                    row[1] = 0
+                                    row[2] = 0
+                            elif row[1] is not None:
+                                if 'Pier Wall' in row[1]:
+                                    row[2] = 8
+                                else:
+                                    row[2] = 0
                             else:
-                                row[1] = 0
+                                row[2] = 0
                             cursor.updateRow(row)
 
         # 4. CP
@@ -2396,6 +2406,7 @@ class EditBuildingLayerStation(object):
         delete_bim = params[1].valueAsText
         new_bim = params[2].valueAsText
 
+        arcpy.env.gpuId = None 
         arcpy.env.overwriteOutput = True
 
         def unique(lists):
@@ -2464,7 +2475,7 @@ class EditBuildingLayerStation(object):
                 arcpy.AddMessage(f"New layer CPs: {new_cp_list}")
 
                 # Check if all selected CPs are included in both target layer and new layer
-                if are_all_items_included(cp_update, target_cp_list) and are_all_items_included(cp_update, new_cp_list):
+                if are_all_items_included([cp_update], target_cp_list) and are_all_items_included([cp_update], new_cp_list):
                     arcpy.AddMessage("Both target layer and new layer have the selected CP(s), so proceed.")
 
                     # 2. Update 'Status' field in new_layer using 'xx_Status or xx_status' field from Revit
@@ -2499,7 +2510,7 @@ class EditBuildingLayerStation(object):
                             with arcpy.da.UpdateCursor(new_layer, [bim_status_field, status_field]) as cursor:
                                 for row in cursor:
                                     if row[0] == 'In-Progress':
-                                        row[1] = 2
+                                        row[1] = 1
                                     elif row[0] == 'Complete':
                                         row[1] = 4
                                     elif row[0] is None:

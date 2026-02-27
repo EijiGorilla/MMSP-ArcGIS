@@ -2700,7 +2700,7 @@ class CheckLotUpdatedStatusGIS(object):
 
         # Input Feature Layers
         gis_layer = arcpy.Parameter(
-            displayName = "GIS Portal File (Excel)",
+            displayName = "GIS Portal ML File (Excel)",
             name = "GIS Portal File (Excel)",
             datatype = "DEFile",
             parameterType = "Required",

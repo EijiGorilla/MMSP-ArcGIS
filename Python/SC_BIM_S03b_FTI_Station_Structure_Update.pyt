@@ -95,6 +95,7 @@ class CreateBIMtoGeodatabase(object):
         input_revit = params[1].valueAsText
         export_name = params[2].valueAsText
 
+        arcpy.env.gpuId = None 
         arcpy.env.overwriteOutput = True
 
         revit_tables = list(input_revit.split(';'))
@@ -236,37 +237,43 @@ class AddFieldsToBuildingLayerStation(object):
         # Add sub-components for Below-ground
         ## Only sublayers (with t00__Description)
         for layer in layers:
-            with arcpy.da.UpdateCursor(layer, [component_field, "Types", "Family", "Workset"]) as cursor:
-                for row in cursor:
-                    # Underground
-                    if row[0] and row[2]:
-                        if row[0] == "UG":
-                            if "D-Wall" in row[2]:
-                                row[1] = "D-Wall"
-                            elif "Floor" in row[2]:
-                                row[1] = "Underground Slab"
-                            elif "Column" in row[2]:
-                                row[1] = "Underground Piles"
-                            elif "Basic Wall" in row[2]:
-                                row[1] = "Underground Walls"
-                    cursor.updateRow(row)
+            with arcpy.da.UpdateCursor(layer, [component_field, "Types", "Family"]) as cursor:
+                try:
+                    for row in cursor:
+                        # Underground
+                        if row[0] and row[2]:
+                            if row[0] == "UG":
+                                if "D-Wall" in row[2]:
+                                    row[1] = "D-Wall"
+                                elif "Floor" in row[2]:
+                                    row[1] = "Underground Slab"
+                                elif "Column" in row[2]:
+                                    row[1] = "Underground Piles"
+                        cursor.updateRow(row)
+                except:
+                    arcpy.AddMessage(f"Skip layer: {layer}")
+                    pass
 
         # Add sub-components for Above-ground
         for layer in layers:
             with arcpy.da.UpdateCursor(layer, [component_field, 'Types', "Family", "Workset"]) as cursor:
-                for row in cursor:
-                    # Underground
-                    if row[0] and row[2] and row[3]:
-                        if row[0] == "ATG":
-                            if "Slab" in row[3] or "Foundation" in row[3]:
-                                row[1] = "Foundation"
-                            elif "Column" in row[2]:
-                                row[1] = "Piles"
-                            elif "Roof" in row[3]:
-                                row[1] = "Roof"
-                            elif "Beam" in row[2]:
-                                row[1] = "Beam"
-                    cursor.updateRow(row)
+                try:
+                    for row in cursor:
+                        # Underground
+                        if row[0] and row[2] and row[3]:
+                            if row[0] == "ATG":
+                                if "Slab" in row[3] or "Foundation" in row[3]:
+                                    row[1] = "Foundation"
+                                elif "Column" in row[2]:
+                                    row[1] = "Piles"
+                                elif "Roof" in row[3]:
+                                    row[1] = "Roof"
+                                elif "Beam" in row[2]:
+                                    row[1] = "Beam"
+                        cursor.updateRow(row)
+                except:
+                    arcpy.AddMessage(f"Skip layer: {layer}")
+                    pass
                     
         ## Use 'DocName' field to extract CP and Station
         stations = {

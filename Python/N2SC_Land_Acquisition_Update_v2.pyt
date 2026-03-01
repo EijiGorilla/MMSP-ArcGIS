@@ -158,48 +158,112 @@ class CompileRAPtables(object):
                     table[name] = table[name].str.title()
                 return table
             
-
+            def find_duplicates_ordered(arr):
+                seen = set()
+                duplicates = set()
+                for item in arr:
+                    if item in seen:
+                        duplicates.add(item) # Use a set to avoid adding the same duplicate multiple times
+                    else:
+                        seen.add(item)
+                return list(duplicates)
+                
+            lotid_field = 'LotID'
             status_field = 'StatusLA'
             handedOverArea_field = 'HandedOverArea'
             affectedArea_field = 'AffectedArea'
             
             # Read and compile a list of RAP ML files from each directory:
-            rap_dirs = [dir for dir in os.listdir(rap_ml_dir) if dir.startswith('20')]
-            rap_files_dirs = [os.path.join(rap_ml_dir, file) for file in rap_dirs]
+            rap_dirs = [dir for dir in os.listdir(rap_ml_dir) if dir.startswith('20') and os.path.isdir(os.path.join(rap_ml_dir, dir))]# extract ONLY folder starting with '20..'
+            rap_files_dirs = [os.path.join(rap_ml_dir, file) for file in rap_dirs] # rap_ml_dir = "'C:\\Users\\oc3512\\Dropbox\\01-Railway\\02-NSCR-Ex\\01-N2\\02-Pre-Construction\\01-Environment\\01-LAR\\99-MasterList\\00-N2_RAP_Compiled"
             rap_files = [os.path.join(dir, file) for dir in rap_files_dirs for file in os.listdir(dir) if file.endswith('.xlsx')]
         
             # Each ML is merged with the latest ML
             yyyymm_latest = os.path.basename(rap_files[-1])[:6]
             latest_ml = pd.read_excel(rap_files[-1])
             latest_ml['x' + yyyymm_latest] = latest_ml[status_field]
-            # latest_ml['x' + yyyymm + '_HO'] = latest_ml['HandedOver']
             latest_ml['x' + yyyymm_latest + '_HOA'] = latest_ml[handedOverArea_field]
             latest_ml['x' + yyyymm_latest + '_TAA'] = latest_ml[affectedArea_field]
+            latest_ml['note'] = ""
 
             # compiled_ml = pd.DataFrame()
             for file in rap_files[:-1]:
+                arcpy.AddMessage(f"Check input table: {file}")
                 table = pd.read_excel(file)
-
-                # Extract yyyymm
-                arcpy.AddMessage(os.path.basename(file))
                 yyyymm = os.path.basename(file)[:6]
 
-                # Keep only 'LotID', 'TotalAffectedArea', 'HandedOverArea'
-                table = table[['LotID', status_field, affectedArea_field, handedOverArea_field]]
-                table = table.rename(columns={status_field: 'x' + yyyymm, affectedArea_field: 'x' + yyyymm + '_TAA', handedOverArea_field: 'x' + yyyymm + '_HOA'})
+                # Check if lotIds are matched with the latest ML
+                input_lotids = table[lotid_field].values
+                target_lotids = latest_ml[lotid_field].values
 
-                arcpy.AddMessage(table.head())
+                # Check duplicated LotID, if found, exit the loop.
+                input_duplicated = find_duplicates_ordered(input_lotids)
+                target_duplicated = find_duplicates_ordered(target_lotids)
 
-                # Merge to the latest
-                latest_ml = pd.merge(left=latest_ml, right=table, how='left', left_on='LotID', right_on='LotID')
-                arcpy.AddMessage(latest_ml.head())
+                arcpy.AddMessage(f"Input duplicated: {input_duplicated}")
+                arcpy.AddMessage(f"Target duplicated: {target_duplicated}")
+
+                if (not input_duplicated) and (not target_duplicated):
+                    ## when no duplication, proceed:
+                    # Check LotIDs are matched between input and target tables.
+                    if np.array_equal(input_lotids, target_lotids):
+                        # Extract yyyymm
+                        arcpy.AddMessage(os.path.basename(file))
+
+                        # Keep only 'LotID', 'TotalAffectedArea', 'HandedOverArea'
+                        table = table[['LotID', status_field, affectedArea_field, handedOverArea_field]]
+                        table = table.rename(columns={status_field: 'x' + yyyymm, affectedArea_field: 'x' + yyyymm + '_TAA', handedOverArea_field: 'x' + yyyymm + '_HOA'})
+
+                        arcpy.AddMessage(table.head())
+
+                        # Merge to the latest
+                        latest_ml = pd.merge(left=latest_ml, right=table, how='left', left_on='LotID', right_on='LotID')
+                        arcpy.AddMessage(latest_ml.head())
+                    
+                    else:
+                        # when lotID is not matched, there are two scenarios:
+                        ## 1. Unmatched LotIDs arise from the same lot:
+                        ## 1.1. The lotID was subdivided before but merged into one lot.
+                        ### E.g., Input table: 003A, 003B, Target table: 003
+
+                        ## 1.2. The lotID has been subdivided but was one lot.
+                        ### E.g., Input table: 003, Target table: 003A, 003B
+                        input_non_match_ids = list(np.setdiff1d(input_lotids, target_lotids))
+                        target_non_match_ids = list(np.setdiff1d(target_lotids, input_lotids))
+
+                        # Case 1: lot was subdivided in the past.
+                        arcpy.AddMessage(f"Input non-match ids: {input_non_match_ids}")
+                        arcpy.AddMessage(f"Target non-match ids: {target_non_match_ids}")
+
+                        for i, lot in enumerate(target_non_match_ids):
+                            arcpy.AddMessage(f"target lot: {lot}")
+                            items = [item for item in input_non_match_ids if item.startswith("".join([i for i in lot if i.isdigit()]))]
+                            arcpy.AddMessage(f"items: {items}")
+
+                            if items:
+                                id = latest_ml.query(f"{lotid_field} == '{lot}'").index
+                                add_items = ','.join(np.array(items).flatten())
+                                existing = latest_ml.loc[id, 'note'].values[0]
+                                if existing:
+                                    new_items = existing + "; " + add_items + " (" + yyyymm + ")"
+                                    latest_ml.loc[id, 'note'] = new_items
+                                else:
+                                    latest_ml.loc[id, 'note'] = add_items + " (" + yyyymm + ")"
+
+                        ## 2. Unmatched LotIDs arise from different lots:
+                        ### In this case, we ignore.
+
+                            # Save the compiled master list
+                    yyyymmdd_latest = os.path.basename(rap_files[-1])[:8]
+                    export_file_name = str(yyyymmdd_latest) + "_" + proj + '_Compiled_RAP_Master_List' + '.xlsx'
+                    export_file_path = os.path.join(rap_ml_dir, export_file_name)
+                    latest_ml.to_excel(export_file_path, index=False)
+                else:
+                    arcpy.AddError('There are duplicated Ids in RAP table shown above. The Process stopped. Please correct the duplicated rows.')
+                    break
                 
 
-            # Save the compiled master list
-            yyyymmdd_latest = os.path.basename(rap_files[-1])[:8]
-            export_file_name = str(yyyymmdd_latest) + "_" + proj + '_Compiled_RAP_Master_List' + '.xlsx'
-            export_file_path = os.path.join(rap_ml_dir, export_file_name)
-            latest_ml.to_excel(export_file_path, index=False)
+
 
         N2SC_Compile_RAP_tables()
 

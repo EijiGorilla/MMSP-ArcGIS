@@ -213,7 +213,8 @@ class DroneImagePoints(object):
 
             full_path = Path(image_folder)
             parts = full_path.parts
-            temp_path = str(Path(*parts[:7]))
+            print(f"Parts: {parts}")
+            temp_path = str(Path(*parts[:9]))
             temp_folder = os.path.join(temp_path, 'temp')
 
             if os.path.exists(temp_folder) and os.path.isdir(temp_folder):
@@ -236,7 +237,7 @@ class DroneImagePoints(object):
 
             arcpy.management.GeoTaggedPhotosToPoints(temp_folder, photo_points, badPhotoist, photoOption, attachmentsOption)
 
-            fields = ['Name', 'Type', 'TimeStamp', 'temp', 'Project', 'Keyword', 'id', 'CP']
+            fields = ['Name', 'Type', 'TimeStamp', 'temp', 'Project', 'Keyword', 'CP']
             for field in fields:
                 if (field == 'temp') or (field == 'id'):
                     arcpy.management.AddField(photo_points, field, "SHORT", "", "", "", field, "NULLABLE", "REQUIRED")
@@ -358,28 +359,45 @@ class DroneImagePoints(object):
                 def convert_nongeoimage_to_point_feature(input_point_feature, temp_layer, feature_field, kwd_field, kwd, timestamp):
                     ## Get a point feature from pier point layer:
                     where_clause = f"{feature_field} = '{kwd}'"
+                    output_layer = 'output_layer'
                     arcpy.management.MakeFeatureLayer(input_point_feature, temp_layer, where_clause)
-                    arcpy.management.CopyFeatures(temp_layer, temp_layer)
-                    arcpy.management.DeleteField(temp_layer, [feature_field], "KEEP_FIELDS")
+                    arcpy.management.CopyFeatures(temp_layer, output_layer)
+                    # arcpy.management.MakeFeatureLayer(temp_layer, output_layer)
+                    arcpy.management.DeleteField(output_layer, [feature_field], "KEEP_FIELDS")
 
                     ## Select nongeo layer
                     where_clause = f"{kwd_field} = '{kwd}'"
                     arcpy.management.SelectLayerByAttribute(nongeo_layer, "NEW_SELECTION", where_clause)
                     where_clause = f"{kwd_field} = '{kwd}' and {timestamp_field} = '{timestamp[i]}'"
                     arcpy.management.SelectLayerByAttribute(nongeo_layer, "NEW_SELECTION", where_clause)
-                    arcpy.management.JoinField(temp_layer, feature_field, nongeo_layer, kwd_field, main_fields) 
-                    arcpy.management.Append(temp_layer, nongeotag_layers, schema_type = 'NO_TEST')
+                    arcpy.management.JoinField(output_layer, feature_field, nongeo_layer, kwd_field, main_fields) 
+                    arcpy.management.Append(output_layer, nongeotag_layers, schema_type = 'NO_TEST')
 
                 for i, kwd in enumerate(kwds):
                     temp_layer = 'temp_layer'
                     if kwd in tuple(station_names):
+                        # where_clause = f"{station_name_field} = '{kwd}'"
+                        # # output_layer = 'output_layer'
+                        # arcpy.management.MakeFeatureLayer(station_point_feature, temp_layer, where_clause)
+                        # arcpy.management.CopyFeatures(temp_layer, temp_layer)
+                        # # arcpy.management.MakeFeatureLayer(temp_layer, output_layer)
+                        # arcpy.management.DeleteField(temp_layer, [station_name_field], "KEEP_FIELDS")
+
+                        # ## Select nongeo layer
+                        # where_clause = f"{keyword_field} = '{kwd}'"
+                        # arcpy.management.SelectLayerByAttribute(nongeo_layer, "NEW_SELECTION", where_clause)
+                        # where_clause = f"{keyword_field} = '{kwd}' and {timestamp_field} = '{timestamp[i]}'"
+                        # arcpy.management.SelectLayerByAttribute(nongeo_layer, "NEW_SELECTION", where_clause)
+                        # arcpy.management.JoinField(temp_layer, station_name_field, nongeo_layer, keyword_field, main_fields) 
+                        # arcpy.management.Append(temp_layer, nongeotag_layers, schema_type = 'NO_TEST')
                         convert_nongeoimage_to_point_feature(station_point_feature, temp_layer, station_name_field, keyword_field, kwd, timestamp)
                     
                     else:
                         convert_nongeoimage_to_point_feature(pier_point_feauture, temp_layer, piern_field, keyword_field, kwd, timestamp)
+                        arcpy.AddMessage("pier")
 
                 # Delete templayer
-                arcpy.management.Delete(temp_layer)
+                # arcpy.management.Delete([temp_layer, output_layer])
                     
             ## Geotagged photos 
             where_clause = f"{x_field} is not Null"
@@ -454,12 +472,14 @@ class DroneImagePoints(object):
 
             # Truncate target layer
             arcpy.TruncateTable_management(target_layer)
+            arcpy.AddMessage("Target layer was successfully truncated")
 
             # Append new point layer to target layer
             arcpy.management.Append(compile_layer, target_layer, schema_type = 'NO_TEST')
+            arcpy.AddMessage("Target layer was successfully appended")
 
             # Delete all temporary layers
-            arcpy.management.Delete([nongeotag_layers, nongeo_layer, photo_points, geotag_layer])
+            # arcpy.management.Delete([nongeotag_layers, nongeo_layer, photo_points, geotag_layer])
 
 
         Medeia_tables()

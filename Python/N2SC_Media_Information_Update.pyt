@@ -96,8 +96,8 @@ class LowerResolutionImages(object):
 
 class DroneImagePoints(object):
     def __init__(self):
-        self.label = "1.2. Generate Geotagged Points and Add Dropbox Link to Images"
-        self.description = "Generate Geotagged Points and Add Dropbox Link to Images"
+        self.label = "1.2. Generate Drone Image Points"
+        self.description = "Generate Drone Image Points"
 
     def getParameterInfo(self):
         proj = arcpy.Parameter(
@@ -474,8 +474,8 @@ class DroneImagePoints(object):
 
 class DroneViedoPoints(object):
     def __init__(self):
-        self.label = "1.2. Generate Geotagged Points and Add Dropbox Link to Images"
-        self.description = "Generate Geotagged Points and Add Dropbox Link to Images"
+        self.label = "1.3. Generate Drone Video Footage Points"
+        self.description = "Generate Drone Video Footage Points"
 
     def getParameterInfo(self):
         proj = arcpy.Parameter(
@@ -487,6 +487,14 @@ class DroneViedoPoints(object):
         )
         proj.filter.type = "ValueList"
         proj.filter.list = ['N2', 'SC']
+
+        fgdb = arcpy.Parameter(
+            displayName = "File Geodatabase",
+            name = "File Geodatabase",
+            datatype = "DEWorkspace",
+            parameterType = "Required",
+            direction = "Input"
+        )
 
         video_folder = arcpy.Parameter(
             displayName = "Directory of Video Footage",
@@ -505,7 +513,7 @@ class DroneViedoPoints(object):
         )
 
         pier_point_fc = arcpy.Parameter(
-            displayName = "Pier Point Feature Layer",
+            displayName = "Pier Point Feature Layer (prs92)",
             name = "Pier Point Feature Layer",
             datatype = "GPFeatureLayer",
             parameterType = "Required",
@@ -513,7 +521,7 @@ class DroneViedoPoints(object):
         )
 
         station_point_fc = arcpy.Parameter(
-            displayName = "Station Point Feature Layer",
+            displayName = "Station Point Feature Layer (prs92)",
             name = "Station Point Feature Layer",
             datatype = "GPFeatureLayer",
             parameterType = "Required",
@@ -528,7 +536,7 @@ class DroneViedoPoints(object):
             direction = "Input"
         )
 
-        params = [proj, video_folder, dbx_linke_file, pier_point_fc, station_point_fc, target_point_layer]
+        params = [proj, fgdb, video_folder, dbx_linke_file, pier_point_fc, station_point_fc, target_point_layer]
         return params
 
     def updateMessages(self, params):
@@ -536,21 +544,45 @@ class DroneViedoPoints(object):
 
     def execute(self, params, messages):
         proj = params[0].valueAsText
-        video_folder = params[1].valueAsText
-        dbx_link_table = params[2].valueAsText
-        pier_point_feauture = params[3].valueAsText
-        station_point_feature = params[4].valueAsText
-        target_layer = params[5].valueAsText
+        fgdb = params[1].valueAsText
+        video_folder = params[2].valueAsText
+        dbx_link_table = params[3].valueAsText
+        pier_point_prs92 = params[4].valueAsText
+        station_point_prs92 = params[5].valueAsText
+        target_layer = params[6].valueAsText
 
         def Medeia_tables():
             arcpy.env.overwriteOutput = True
 
-            # Create a table with all video footage
-            items = os.listdir(video_folder)
-            
-            main_fields = ['Path', 'Name', 'Type', 'TimeStamp', 'temp', 'Project', 'Keyword', 'CP']
-            item_table = pd.DataFrame(columns=main_fields)
+            # Convert PRSS92 to WGS84
+            station_point_feature = "station_point_feature"
+            pier_point_feature = "pier_point_feature"
 
+            # prs92 = arcpy.SpatialReference(3123)
+            wgs84 = arcpy.SpatialReference(4326)
+            geo_trans = "PRS_1992_To_WGS_1984_1"
+            arcpy.management.Project(station_point_prs92, station_point_feature, wgs84, geo_trans)
+            arcpy.management.Project(pier_point_prs92, pier_point_feature, wgs84, geo_trans)
+
+            # Extract station names
+            station_point_field = [f.name for f in arcpy.ListFields(station_point_feature) if (f.name == 'Station') or (f.name == 'station')][0]
+            station_names = [f[0] for f in arcpy.da.SearchCursor(station_point_feature, [station_point_field])]
+            station_names_lower = [f[0].lower() for f in arcpy.da.SearchCursor(station_point_feature, [station_point_field])]
+ 
+            # Create an empty feature class and add fields
+            geometry_type = "POINT" # Other options: POLYLINE, POLYGON, MULTIPOINT, MULTIPATCH
+            spatial_reference = arcpy.SpatialReference(4326) # WGS 1984 spatial reference
+            nongeo_video = 'nongeo_video'
+            arcpy.management.CreateFeatureclass(fgdb, nongeo_video, geometry_type, spatial_reference=spatial_reference)
+
+            main_fields = ['Path', 'Name', 'Type', 'TimeStamp', 'temp', 'Project', 'Keyword', 'CP']
+            for field in main_fields:
+                if (field == 'temp') or (field == 'id'):
+                    arcpy.management.AddField(nongeo_video, field, "SHORT", "", "", "", field, "NULLABLE", "REQUIRED")
+                else:
+                    arcpy.management.AddField(nongeo_video, field, "TEXT", "", "", "", field, "NULLABLE", "REQUIRED")
+
+            # Add video contents from the folder
             imageName_field= "Name"
             type_field = "Type"
             timestamp_field = "TimeStamp"
@@ -564,11 +596,8 @@ class DroneViedoPoints(object):
             id_field = 'id'
             cp_field = 'CP'
 
-            # Get station names from station point feature
-            station_point_field = [f.name for f in arcpy.ListFields(station_point_feature) if (f.name == 'Station') or (f.name == 'station')][0]
-            station_names = [f[0] for f in arcpy.da.SearchCursor(station_point_feature, [station_point_field])]
-            station_names_lower = [f[0].lower() for f in arcpy.da.SearchCursor(station_point_feature, [station_point_field])]
-            # Get pier number from photo points layer
+            item_table = pd.DataFrame(columns=main_fields)
+            items = [item for item in os.listdir(video_folder) if item.endswith('.mp4')]
 
             row_values = []
             for i, item in enumerate(items):
@@ -578,157 +607,65 @@ class DroneViedoPoints(object):
                 try:
                     kwd = re.search(r"P[-]?\d+[NS]?|P[-]?\d+[-]?[AB]?|BUE[-]?P\d+[NS]?|DAT[-]?\d+[NS]?|MT[-]?\d+-\d+|MT[-]?\d+-[ABUT]|SCT[-]?P\d+[NS]?|STR[-]?[Pp]\d+[NS]?", item.upper()).group()
                 except:
-                    print('no pier')
+                    # arcpy.AddMessage('no pier')
+                    pass
                 try:
                     kwd = [station for station in station_names_lower if station in item.lower()][0]
                 except:
-                    print('no station')
+                    # arcpy.AddMessage('no station')
+                    pass
 
                 try:
                     kwd = re.search(r"DEPOT", item.upper()).group()
                 except:
-                    print('no depot')
+                    # arcpy.AddMessage('no depot')
+                    pass
 
-                row_values.append((item, "video", item.split('_')[-1].split('.')[0], i+1, proj, kwd.title(), re.search(r"[NS]-?0\d+[abc]?", item).group()))
+                row_values.append((None, item, "video", item.split('_')[-1].split('.')[0], i+1, proj, kwd.title(), re.search(r"[NS]-?0\d+[abc]?", item).group()))
 
             # Insert rows
-            with arcpy.da.InsertCursor(nongeo_layer, main_fields) as cursor:
+            with arcpy.da.InsertCursor(nongeo_video, main_fields) as cursor:
                 for row in row_values:
                     cursor.insertRow(row)
 
-            kwds = [f[0] for f in arcpy.da.SearchCursor(nongeo_layer, [keyword_field])]
-            nongeotag_layers = 'nongeotag_layers'
-            arcpy.management.CopyFeatures(nongeo_layer, nongeotag_layers)
-            arcpy.management.TruncateTable(nongeotag_layers)
-            timestamp = [f[0] for f in arcpy.da.SearchCursor(nongeo_layer, ['TimeStamp'])]
-
-            def convert_nongeoimage_to_point_feature(input_point_feature, temp_layer, feature_field, kwd_field, kwd, timestamp):
-                ## Get a point feature from pier point layer:
-                where_clause = f"{feature_field} = '{kwd}'"
-                output_layer = 'output_layer'
-                arcpy.management.MakeFeatureLayer(input_point_feature, temp_layer, where_clause)
-                arcpy.management.CopyFeatures(temp_layer, output_layer)
-                arcpy.management.DeleteField(output_layer, [feature_field], "KEEP_FIELDS")
-
-                ## Select nongeo layer
-                where_clause = f"{kwd_field} = '{kwd}'"
-                arcpy.management.SelectLayerByAttribute(nongeo_layer, "NEW_SELECTION", where_clause)
-                where_clause = f"{kwd_field} = '{kwd}' and {timestamp_field} = '{timestamp[i]}'"
-                arcpy.management.SelectLayerByAttribute(nongeo_layer, "NEW_SELECTION", where_clause)
-                arcpy.management.JoinField(output_layer, feature_field, nongeo_layer, kwd_field, main_fields) 
-                arcpy.management.Append(output_layer, nongeotag_layers, schema_type = 'NO_TEST')
-
-            
+            # Fill in information in the fields
+            kwds = [f[0] for f in arcpy.da.SearchCursor(nongeo_video, [keyword_field])]
+            row_values_coordinates = []
             for i, kwd in enumerate(kwds):
-                temp_layer = 'temp_layer'
-                if kwd in tuple(station_names):
-                    convert_nongeoimage_to_point_feature(station_point_feature, temp_layer, station_name_field, keyword_field, kwd, timestamp)
-                
-                else:
-                    convert_nongeoimage_to_point_feature(pier_point_feauture, temp_layer, piern_field, keyword_field, kwd, timestamp)
-                    arcpy.AddMessage("pier")
+                # arcpy.AddMessage(kwd)
+                if kwd == "Depot":
+                    if proj == "N2":
+                        kwd = "Mabalacat Depot"
+                    elif proj == "SC":
+                        kwd = "Banlic Depot"
 
-
-
-
-
-
-
-
-            ######### For Non-Geotagged Images ##########################
-            # If images are not geotagged, filter out all the geotagged layers.
-            nongeo_layer = 'nongeo_images'
-            x_field = 'X'
-            where_clause = f"{x_field} is Null"
-            arcpy.management.MakeFeatureLayer(photo_points, nongeo_layer, where_clause)
-
-            ## Count rows of nongeotagged images
-            result = arcpy.management.GetCount(nongeo_layer)
-            kwds = [f[0] for f in arcpy.da.SearchCursor(nongeo_layer, [keyword_field])]
-
-            if int(result[0]) > 0:
-                # Create an empty layer for compilation
-                nongeotag_layers = 'nongeotag_layers'
-                arcpy.management.CopyFeatures(photo_points, nongeotag_layers)
-                arcpy.management.TruncateTable(nongeotag_layers)
-                timestamp = [f[0] for f in arcpy.da.SearchCursor(nongeo_layer, ['TimeStamp'])]
-
-
-                def convert_nongeoimage_to_point_feature(input_point_feature, temp_layer, feature_field, kwd_field, kwd, timestamp):
-                    ## Get a point feature from pier point layer:
-                    where_clause = f"{feature_field} = '{kwd}'"
+                def convert_video_to_point_feature(point_feature, query_field, kwd):
+                    where_clause = f"{query_field} = '{kwd}'"
                     output_layer = 'output_layer'
-                    arcpy.management.MakeFeatureLayer(input_point_feature, temp_layer, where_clause)
-                    arcpy.management.CopyFeatures(temp_layer, output_layer)
-                    # arcpy.management.MakeFeatureLayer(temp_layer, output_layer)
-                    arcpy.management.DeleteField(output_layer, [feature_field], "KEEP_FIELDS")
+                    arcpy.MakeFeatureLayer_management(point_feature, output_layer)
+                    arcpy.management.SelectLayerByAttribute(output_layer, "NEW_SELECTION", where_clause)
+                    xy = [f[0] for f in arcpy.da.SearchCursor(output_layer, ["SHAPE@XY"])]
+                    row_values_coordinates.append(xy[0])
 
-                    ## Select nongeo layer
-                    where_clause = f"{kwd_field} = '{kwd}'"
-                    arcpy.management.SelectLayerByAttribute(nongeo_layer, "NEW_SELECTION", where_clause)
-                    where_clause = f"{kwd_field} = '{kwd}' and {timestamp_field} = '{timestamp[i]}'"
-                    arcpy.management.SelectLayerByAttribute(nongeo_layer, "NEW_SELECTION", where_clause)
-                    arcpy.management.JoinField(output_layer, feature_field, nongeo_layer, kwd_field, fields) 
-                    arcpy.management.Append(output_layer, nongeotag_layers, schema_type = 'NO_TEST')
-
-                for i, kwd in enumerate(kwds):
-                    temp_layer = 'temp_layer'
-                    if kwd in tuple(station_names):
-                        # where_clause = f"{station_name_field} = '{kwd}'"
-                        # # output_layer = 'output_layer'
-                        # arcpy.management.MakeFeatureLayer(station_point_feature, temp_layer, where_clause)
-                        # arcpy.management.CopyFeatures(temp_layer, temp_layer)
-                        # # arcpy.management.MakeFeatureLayer(temp_layer, output_layer)
-                        # arcpy.management.DeleteField(temp_layer, [station_name_field], "KEEP_FIELDS")
-
-                        # ## Select nongeo layer
-                        # where_clause = f"{keyword_field} = '{kwd}'"
-                        # arcpy.management.SelectLayerByAttribute(nongeo_layer, "NEW_SELECTION", where_clause)
-                        # where_clause = f"{keyword_field} = '{kwd}' and {timestamp_field} = '{timestamp[i]}'"
-                        # arcpy.management.SelectLayerByAttribute(nongeo_layer, "NEW_SELECTION", where_clause)
-                        # arcpy.management.JoinField(temp_layer, station_name_field, nongeo_layer, keyword_field, main_fields) 
-                        # arcpy.management.Append(temp_layer, nongeotag_layers, schema_type = 'NO_TEST')
-                        convert_nongeoimage_to_point_feature(station_point_feature, temp_layer, station_name_field, keyword_field, kwd, timestamp)
-                    
-                    else:
-                        convert_nongeoimage_to_point_feature(pier_point_feauture, temp_layer, piern_field, keyword_field, kwd, timestamp)
-                        arcpy.AddMessage("pier")
-
-                # Delete templayer
-                # arcpy.management.Delete([temp_layer, output_layer])
-                    
-            ## Geotagged photos 
-            where_clause = f"{x_field} is not Null"
-            geotag_layer = arcpy.management.SelectLayerByAttribute(photo_points, "NEW_SELECTION", where_clause)
-            result = arcpy.management.GetCount(geotag_layer)
-            compile_layer = "compile_layer"
-
-            if int(result[0]) > 0:
-                compile_layer = arcpy.management.Append(nongeotag_layers, geotag_layer)
-
-            else:
-                arcpy.management.CopyFeatures(nongeotag_layers, compile_layer)
-
-            # Sequantial numbers for 'temp' field
-            global rec
-            with arcpy.da.UpdateCursor(compile_layer, [temp_field]) as cursor:
-                rec=0
-                pStart = 1
-                pInterval = 1
-                for row in cursor:
-                    if rec == 0:
-                        rec = pStart
-                        row[0] = rec
-                    else:
-                        rec = rec + pInterval
-                        row[0] = rec
+                # print(kwd)
+                if kwd in tuple(station_names):
+                    convert_video_to_point_feature(station_point_feature, station_name_field, kwd)
+ 
+                else:
+                    convert_video_to_point_feature(pier_point_feature, piern_field, kwd)
+                
+            # Update xy coordinates in nongeo_layer
+            arcpy.AddMessage(row_values_coordinates)
+            with arcpy.da.UpdateCursor(nongeo_video, ['SHAPE@XY']) as cursor:
+                for i, row in enumerate(cursor):
+                    row[0] = row_values_coordinates[i]
                     cursor.updateRow(row)
 
-            # Generate Near Table
-            near_table = 'near_table'
-            arcpy.analysis.GenerateNearTable(compile_layer, compile_layer, near_table, "", "", "", False, 1, "PLANAR", "", "")
-            arcpy.management.AddField(near_table, id_field, "SHORT", "", "", "", id_field, "NULLABLE", "REQUIRED")
 
+            # Generate Near Table and assign unique numbers to 'id' field
+            near_table = 'near_table'
+            arcpy.analysis.GenerateNearTable(nongeo_video, nongeo_video, near_table, "", "", "", False, 1, "PLANAR", "", "")
+            arcpy.management.AddField(near_table, id_field, "SHORT", "", "", "", id_field, "NULLABLE", "REQUIRED")
 
             # Assign group id
             fid_list = []
@@ -750,34 +687,35 @@ class DroneViedoPoints(object):
                         fid_list = [row[0], row[1]]
                     cursor.updateRow(row)
 
+            ## Join 'id' to nongeo_video layer
             # Join field
-            arcpy.management.JoinField(in_data=compile_layer,
+            arcpy.management.JoinField(in_data=nongeo_video,
                                     in_field=temp_field, 
                                     join_table=near_table,
                                     join_field="IN_FID",
                                     fields=id_field)
-
+            
             # Update Path using dropbox usercontent link
             table = pd.read_excel(dbx_link_table)
             todict = table.to_dict()
             dbx_link_dict = {name[1]: link[1] for name, link in zip(todict[imageName_field].items(), todict['dbx_link'].items())}
 
-            with arcpy.da.UpdateCursor(compile_layer, [path_field, imageName_field]) as cursor:
+            with arcpy.da.UpdateCursor(nongeo_video, [path_field, imageName_field]) as cursor:
                 for row in cursor:
-                    if row[0]:
+                    if row[1]:
                         row[0] = dbx_link_dict[row[1]]
                     cursor.updateRow(row)
-
+            
             # Truncate target layer
             arcpy.TruncateTable_management(target_layer)
             arcpy.AddMessage("Target layer was successfully truncated")
 
             # Append new point layer to target layer
-            arcpy.management.Append(compile_layer, target_layer, schema_type = 'NO_TEST')
+            arcpy.management.Append(nongeo_video, target_layer, schema_type = 'NO_TEST')
             arcpy.AddMessage("Target layer was successfully appended")
 
             # Delete all temporary layers
-            # arcpy.management.Delete([nongeotag_layers, nongeo_layer, photo_points, geotag_layer])
+            arcpy.management.Delete([station_point_feature, pier_point_feature])
 
 
         Medeia_tables()

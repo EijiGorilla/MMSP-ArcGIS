@@ -281,7 +281,9 @@ class DroneImagePoints(object):
                 for row in cursor:
                     if row[0]:
                         try:
-                            cp = re.search(r"[NS]-?0\d+[abc]?", row[0]).group()
+                            cp = re.search(r"[NS][-_]?0\d+[abc]?", row[0]).group()
+                            cp = re.sub(r'S-', 'S', cp)
+                            cp = re.sub(r'N-', 'N', cp)
                             row[1] = cp
                         except:
                             arcpy.AddMessage(f"No CPs were found.")
@@ -303,9 +305,14 @@ class DroneImagePoints(object):
                 for row in cursor:
                     if row[0]:
                         try:
-                            pier_number = re.search(r"[Pp]\d+[NS]?", row[0].upper()).group()
+                            pier_number = re.search(r"P[-_]?\d+[NS]?[SB]?|P[-_]?\d+[-]?[AB]?|BUE[-_]?P\d+[NS]?|DAT[-_]?\d+[NS]?|MT[-_]?\d+-\d+|MT[-_]?\d+-[ABUT]|SCT[-_]?P\d+[NS]?|STR[-_]?[Pp]\d+[NS]?", row[0].upper()).group()
+                            # pier_number = re.search(r"[Pp][-_]?\d+[NS]?", row[0].upper()).group()
                             arcpy.AddMessage(pier_number)
-                            row[1] = re.sub("P", "P-", pier_number)
+
+                            piern = re.sub("P", "P-", pier_number)
+                            piern = re.sub("--","-", piern)
+                            piern = re.sub("_","", piern)
+                            row[1] = piern.upper()
                         except:
                             arcpy.AddMessage(f"No pier numbers for this image.")
                         cursor.updateRow(row)
@@ -337,6 +344,8 @@ class DroneImagePoints(object):
                 for row in cursor:
                     if row[0]:
                         timeStamp = row[0].split('_')[-1].split('.')[0]
+                        if len(timeStamp) >= 8:
+                            timeStamp = timeStamp[:6]
                         row[1] = timeStamp
                         cursor.updateRow(row)
             
@@ -393,10 +402,27 @@ class DroneImagePoints(object):
             result = arcpy.management.GetCount(geotag_layer)
             compile_layer = "compile_layer"
 
-            if int(result[0]) > 0:
-                compile_layer = arcpy.management.Append(nongeotag_layers, geotag_layer)
+            ##
+            # If no nongeotag images,  'nongeo_layer'
+            # If nongeotag images exist, use 'nongeotag_layers'
+            # result_nongeo = arcpy.management.GetCount(nongeotag_layers)
 
-            else:
+            ## if geotag_images and nongeotag images:
+            try:
+                result_nongeo = arcpy.management.GetCount(nongeotag_layers)
+            except:
+                result_nongeo = arcpy.management.GetCount(nongeo_layer)
+            
+
+            if int(result[0]) > 0 and int(result_nongeo[0]) > 0:
+                compile_layer = arcpy.management.Append(nongeotag_layers, geotag_layer)
+            
+            ## only geotag_images:
+            elif int(result[0]) > 0 and int(result_nongeo[0]) == 0:
+                arcpy.management.CopyFeatures(geotag_layer, compile_layer)
+            
+            ## only nongeotag images:
+            elif int(result[0]) == 0 and int(result_nongeo[0]) > 0:
                 arcpy.management.CopyFeatures(nongeotag_layers, compile_layer)
 
             # Sequantial numbers for 'temp' field
@@ -604,11 +630,11 @@ class DroneViedoPoints(object):
                 # cp = re.search(r"[NS]-?0\d+[abc]?", item).group()
                 # Add pier nuber first, so when station exists, station name is prioritized.
                 try:
-                    kwd = re.search(r"P[-]?\d+[NS]?|P[-]?\d+[-]?[AB]?|BUE[-]?P\d+[NS]?|DAT[-]?\d+[NS]?|MT[-]?\d+-\d+|MT[-]?\d+-[ABUT]|SCT[-]?P\d+[NS]?|STR[-]?[Pp]\d+[NS]?", item.upper()).group()
+                    kwd = re.search(r"P[-]?\d+[NS]?[SB]?|P[-]?\d+[-]?[AB]?|BUE[-]?P\d+[NS]?|DAT[-]?\d+[NS]?|MT[-]?\d+-\d+|MT[-]?\d+-[ABUT]|SCT[-]?P\d+[NS]?|STR[-]?[Pp]\d+[NS]?", item.upper()).group().upper()
                 except:
                     pass
                 try:
-                    kwd = [station for station in station_names_lower if station in item.lower()][0]
+                    kwd = [station for station in station_names_lower if station in item.lower()][0].title()
                 except:
                     pass
 
@@ -617,7 +643,7 @@ class DroneViedoPoints(object):
                 except:
                     pass
 
-                row_values.append((None, item, "video", item.split('_')[-1].split('.')[0], i+1, proj, kwd.title(), re.search(r"[NS]-?0\d+[abc]?", item).group()))
+                row_values.append((None, item, "video", item.split('_')[-1].split('.')[0], i+1, proj, kwd, re.search(r"[NS]-?0\d+[abc]?", item).group()))
 
             # Insert rows
             with arcpy.da.InsertCursor(nongeo_video, main_fields) as cursor:
@@ -633,7 +659,7 @@ class DroneViedoPoints(object):
             kwds = [f[0] for f in arcpy.da.SearchCursor(nongeo_video, [keyword_field])]
             row_values_coordinates = []
             for i, kwd in enumerate(kwds):
-                # arcpy.AddMessage(kwd)
+                arcpy.AddMessage(kwd)
                 if kwd == "Depot":
                     if proj == "N2":
                         kwd = "Mabalacat Depot"

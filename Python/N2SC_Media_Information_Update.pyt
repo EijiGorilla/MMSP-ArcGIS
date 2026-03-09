@@ -601,24 +601,20 @@ class DroneViedoPoints(object):
 
             row_values = []
             for i, item in enumerate(items):
-                cp = re.search(r"[NS]-?0\d+[abc]?", item).group()
-
+                # cp = re.search(r"[NS]-?0\d+[abc]?", item).group()
                 # Add pier nuber first, so when station exists, station name is prioritized.
                 try:
                     kwd = re.search(r"P[-]?\d+[NS]?|P[-]?\d+[-]?[AB]?|BUE[-]?P\d+[NS]?|DAT[-]?\d+[NS]?|MT[-]?\d+-\d+|MT[-]?\d+-[ABUT]|SCT[-]?P\d+[NS]?|STR[-]?[Pp]\d+[NS]?", item.upper()).group()
                 except:
-                    # arcpy.AddMessage('no pier')
                     pass
                 try:
                     kwd = [station for station in station_names_lower if station in item.lower()][0]
                 except:
-                    # arcpy.AddMessage('no station')
                     pass
 
                 try:
                     kwd = re.search(r"DEPOT", item.upper()).group()
                 except:
-                    # arcpy.AddMessage('no depot')
                     pass
 
                 row_values.append((None, item, "video", item.split('_')[-1].split('.')[0], i+1, proj, kwd.title(), re.search(r"[NS]-?0\d+[abc]?", item).group()))
@@ -627,6 +623,11 @@ class DroneViedoPoints(object):
             with arcpy.da.InsertCursor(nongeo_video, main_fields) as cursor:
                 for row in row_values:
                     cursor.insertRow(row)
+
+            # If keyword field is empty, it will fail to create a point:
+            null_keyword = [f[0] for f in arcpy.da.SearchCursor(nongeo_video, [keyword_field]) if f[0] is None]
+            if null_keyword:
+                arcpy.AddMessage('You fail to extract a keyword. Check your code and run again.')
 
             # Fill in information in the fields
             kwds = [f[0] for f in arcpy.da.SearchCursor(nongeo_video, [keyword_field])]

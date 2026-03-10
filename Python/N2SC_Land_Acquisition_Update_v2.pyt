@@ -112,8 +112,8 @@ class CompileRAPtables(object):
         proj.filter.list = ['N2', 'SC']
 
         rap_ml_dir = arcpy.Parameter(
-            displayName = "Storage Directory of RAP Master Lists (Latest ML in the last of the latest year folder)",
-            name = "Storage Directory of RAP Master Lists",
+            displayName = "Directory of RAP Master Lists (Latest ML in the last of the latest year folder)",
+            name = "Directory of RAP Master Lists",
             datatype = "DEWorkspace",
             parameterType = "Required",
             direction = "Input"
@@ -150,7 +150,8 @@ class CompileRAPtables(object):
             def toString(table, to_string_fields):
                 for field in to_string_fields:
                     table[field] = table[field].astype(str)
-                    table[field] = table[field].replace(r'\s+|^\w\s$','',regex=True)
+                    # table[field] = table[field].replace(r'\s+|^\w\s$','',regex=True)
+                    table[field] = table[field].replace(r'\s+', '', regex=True)
                 return table
 
             def first_letter_capital(table, column_names): # column_names are list
@@ -172,6 +173,7 @@ class CompileRAPtables(object):
             status_field = 'StatusLA'
             handedOverArea_field = 'HandedOverArea'
             affectedArea_field = 'AffectedArea'
+            note_field = 'note'
             
             # Read and compile a list of RAP ML files from each directory:
             rap_dirs = [dir for dir in os.listdir(rap_ml_dir) if dir.startswith('20') and os.path.isdir(os.path.join(rap_ml_dir, dir))]# extract ONLY folder starting with '20..'
@@ -179,21 +181,23 @@ class CompileRAPtables(object):
             rap_files = [os.path.join(dir, file) for dir in rap_files_dirs for file in os.listdir(dir) if file.endswith('.xlsx')]
         
             # Each ML is merged with the latest ML
-            yyyymm_latest = os.path.basename(rap_files[-1])[:6]
+            yyyymm_latest = os.path.basename(rap_files[-1])[:8]
             latest_ml = pd.read_excel(rap_files[-1])
+            latest_ml = toString(latest_ml, [lotid_field])
             latest_ml['x' + yyyymm_latest] = latest_ml[status_field]
-            latest_ml['x' + yyyymm_latest + '_HOA'] = latest_ml[handedOverArea_field]
-            latest_ml['x' + yyyymm_latest + '_TAA'] = latest_ml[affectedArea_field]
-            latest_ml['note'] = ""
+            latest_ml['x' + yyyymm_latest + '_HOA'] = latest_ml[handedOverArea_field] # HOA: Handed-Over Area
+            latest_ml['x' + yyyymm_latest + '_TAA'] = latest_ml[affectedArea_field] # TAA: Total Affected Area
+            latest_ml[note_field] = ""
 
             # compiled_ml = pd.DataFrame()
             for file in rap_files[:-1]:
                 arcpy.AddMessage(f"Check input table: {file}")
-                table = pd.read_excel(file)
-                yyyymm = os.path.basename(file)[:6]
+                table0 = pd.read_excel(file)
+                table0 = toString(table0, [lotid_field])
+                yyyymm = os.path.basename(file)[:8]
 
                 # Check if lotIds are matched with the latest ML
-                input_lotids = table[lotid_field].values
+                input_lotids = table0[lotid_field].values
                 target_lotids = latest_ml[lotid_field].values
 
                 # Check duplicated LotID, if found, exit the loop.
@@ -207,18 +211,14 @@ class CompileRAPtables(object):
                     ## when no duplication, proceed:
                     # Check LotIDs are matched between input and target tables.
                     if np.array_equal(input_lotids, target_lotids):
-                        # Extract yyyymm
-                        arcpy.AddMessage(os.path.basename(file))
+                        # Keep only 'LotID', 'StatusLA', 'TotalAffectedArea', 'HandedOverArea'
+                        table = table0[[lotid_field, status_field, affectedArea_field, handedOverArea_field]]
 
-                        # Keep only 'LotID', 'TotalAffectedArea', 'HandedOverArea'
-                        table = table[['LotID', status_field, affectedArea_field, handedOverArea_field]]
+                        # Rename columns
                         table = table.rename(columns={status_field: 'x' + yyyymm, affectedArea_field: 'x' + yyyymm + '_TAA', handedOverArea_field: 'x' + yyyymm + '_HOA'})
-
-                        arcpy.AddMessage(table.head())
 
                         # Merge to the latest
                         latest_ml = pd.merge(left=latest_ml, right=table, how='left', left_on='LotID', right_on='LotID')
-                        arcpy.AddMessage(latest_ml.head())
                     
                     else:
                         # when lotID is not matched, there are two scenarios:
@@ -228,6 +228,8 @@ class CompileRAPtables(object):
 
                         ## 1.2. The lotID has been subdivided but was one lot.
                         ### E.g., Input table: 003, Target table: 003A, 003B
+                        arcpy.AddMessage(input_lotids)
+                        arcpy.AddMessage(target_lotids)
                         input_non_match_ids = list(np.setdiff1d(input_lotids, target_lotids))
                         target_non_match_ids = list(np.setdiff1d(target_lotids, input_lotids))
 
@@ -236,24 +238,45 @@ class CompileRAPtables(object):
                         arcpy.AddMessage(f"Target non-match ids: {target_non_match_ids}")
 
                         for i, lot in enumerate(target_non_match_ids):
-                            arcpy.AddMessage(f"target lot: {lot}")
+                            # arcpy.AddMessage(f"target lot: {lot}")
                             items = [item for item in input_non_match_ids if item.startswith("".join([i for i in lot if i.isdigit()]))]
-                            arcpy.AddMessage(f"items: {items}")
+                            # arcpy.AddMessage(f"items: {items}")
 
                             if items:
                                 id = latest_ml.query(f"{lotid_field} == '{lot}'").index
                                 add_items = ','.join(np.array(items).flatten())
-                                existing = latest_ml.loc[id, 'note'].values[0]
+                                existing = latest_ml.loc[id, note_field].values[0]
                                 if existing:
                                     new_items = existing + "; " + add_items + " (" + yyyymm + ")"
-                                    latest_ml.loc[id, 'note'] = new_items
+                                    latest_ml.loc[id, note_field] = new_items
                                 else:
-                                    latest_ml.loc[id, 'note'] = add_items + " (" + yyyymm + ")"
+                                    latest_ml.loc[id, note_field] = add_items + " (" + yyyymm + ")"
+                        
+                        # Keep only 'LotID', 'TotalAffectedArea', 'HandedOverArea'
+                        table = table0[[lotid_field, status_field, affectedArea_field, handedOverArea_field]]
+                        table = table.rename(columns={status_field: 'x' + yyyymm, affectedArea_field: 'x' + yyyymm + '_TAA', handedOverArea_field: 'x' + yyyymm + '_HOA'})
+                        # table = table.rename(columns={status_field: 'x' + yyyymm, lotid_field: 'x' + yyyymm + '_LOT', affectedArea_field: 'x' + yyyymm + '_TAA', handedOverArea_field: 'x' + yyyymm + '_HOA'})
+                        # table[lotid_field] = table0[lotid_field]
+
+                        arcpy.AddMessage(table.head())
+                        arcpy.AddMessage(latest_ml.head())
+                        latest_ml = pd.merge(left=latest_ml, right=table, how='left', left_on='LotID', right_on='LotID')
 
                         ## 2. Unmatched LotIDs arise from different lots:
                         ### In this case, we ignore.
 
-                            # Save the compiled master list
+                    
+                    # 'StatusLA' = 0 => None
+                    cols = latest_ml.filter(regex='\\d+$', axis=1).columns
+                    for col in cols:
+                        idx = latest_ml.query(f"{col} == 0").index
+                        if len(idx) > 0:
+                            latest_ml.loc[idx, col] = None
+                    idx = latest_ml.query(f"{status_field} == 0").index
+                    latest_ml.loc[idx, status_field] = None
+
+                    # Save the compiled master list
+                    latest_ml[note_field] = latest_ml.pop(note_field)
                     yyyymmdd_latest = os.path.basename(rap_files[-1])[:8]
                     export_file_name = str(yyyymmdd_latest) + "_" + proj + '_Compiled_RAP_Master_List' + '.xlsx'
                     export_file_path = os.path.join(rap_ml_dir, export_file_name)
@@ -261,9 +284,6 @@ class CompileRAPtables(object):
                 else:
                     arcpy.AddError('There are duplicated Ids in RAP table shown above. The Process stopped. Please correct the duplicated rows.')
                     break
-                
-
-
 
         N2SC_Compile_RAP_tables()
 
@@ -812,7 +832,7 @@ class UpdateISF(object):
             ## 1.0.1. Original rap_table (before updating)
             # For summary stats
             id = rap_table_stats.index[rap_table_stats[nlo_status_field] == 0]
-            rap_table_stats.loc[id, nlo_status_field] = np.NAN
+            rap_table_stats.loc[id, nlo_status_field] = np.nan
 
             groupby_fields = [municipality_field, nlo_status_field]
             rap_table0_stats = rap_table_stats.groupby(groupby_fields)[nlo_status_field].count().reset_index(name=count_name)
@@ -825,7 +845,7 @@ class UpdateISF(object):
             ## 1.0.3. Merge
             # table_stats = rap_table0_stats.join(rap_table1_stats, lsuffix=lsuffix_rap, rsuffix=rsuffix_gis)
             table_stats = pd.merge(left=rap_table0_stats, right=rap_table1_stats, how='outer', left_on=[municipality_field, nlo_status_field], right_on=[municipality_field, nlo_status_field])
-            table_stats['count_diff'] = np.NAN
+            table_stats['count_diff'] = np.nan
             table_stats['count_diff'] = table_stats['counts_y'] - table_stats['counts_x']
             table_stats = table_stats.rename(columns={"counts_x": str(counts_rap), "counts_y": str(counts_gis)})
 
@@ -1150,7 +1170,7 @@ class UpdateStructure(object):
                 rap_table_stats = first_letter_capital(rap_table_stats, [municipality_field])
                 
                 id = rap_table_stats.index[rap_table_stats[structure_status_field] == 0]
-                rap_table_stats.loc[id, structure_status_field] = np.NAN
+                rap_table_stats.loc[id, structure_status_field] = np.nan
 
                 groupby_fields = [municipality_field, structure_status_field]
                 rap_table0_stats = rap_table_stats.groupby(groupby_fields)[structure_status_field].count().reset_index(name=count_name)
@@ -1163,7 +1183,7 @@ class UpdateStructure(object):
                 ## 1.0.3. Merge
                 # table_stats = rap_table0_stats.join(rap_table1_stats, lsuffix=lsuffix_rap, rsuffix=rsuffix_gis)
                 table_stats = pd.merge(left=rap_table0_stats, right=rap_table1_stats, how='outer', left_on=[municipality_field, structure_status_field], right_on=[municipality_field, structure_status_field])
-                table_stats['count_diff'] = np.NAN
+                table_stats['count_diff'] = np.nan
                 table_stats['count_diff'] = table_stats['counts_y'] - table_stats['counts_x']
                 table_stats = table_stats.rename(columns={"counts_x": str(counts_rap), "counts_y": str(counts_gis)})
                             
@@ -1181,7 +1201,7 @@ class UpdateStructure(object):
                 ## 2.0.3. Merge
                 # table_stats_handedover = rap_table0_stats.join(rap_table1_stats, lsuffix=lsuffix_rap, rsuffix=rsuffix_gis)
                 table_stats_handedover = pd.merge(left=rap_table0_stats, right=rap_table1_stats, how='outer', left_on=[municipality_field, handover_field], right_on=[municipality_field, handover_field])
-                table_stats_handedover['count_diff'] = np.NAN
+                table_stats_handedover['count_diff'] = np.nan
                 table_stats_handedover["count_diff"] = table_stats_handedover['counts_y'] - table_stats_handedover['counts_x']
                 table_stats_handedover = table_stats_handedover.rename(columns={"counts_x": str(counts_rap), "counts_y": str(counts_gis)})
 
@@ -2819,7 +2839,7 @@ class CheckLotUpdatedStatusGIS(object):
 
         ## 1.0.3. Merge
         table = pd.merge(left=gis_portal_statusla, right=gis_ml_statusla, how='outer', left_on=[municipality_field, statusla_field], right_on=[municipality_field, statusla_field])
-        table['count_diff'] = np.NAN
+        table['count_diff'] = np.nan
         table['count_diff'] = table['counts_y'] - table['counts_x']
         table = table.rename(columns={"counts_x": str(counts_portal), "counts_y": str(counts_excel)})
 
@@ -2839,7 +2859,7 @@ class CheckLotUpdatedStatusGIS(object):
 
         ## 2.0.3. Merge
         table_handedover = pd.merge(left=gis_portal_handedover, right=gis_ml_handedover, how='outer', left_on=[municipality_field, handedover_field], right_on=[municipality_field, handedover_field])
-        table_handedover['count_diff'] = np.NAN
+        table_handedover['count_diff'] = np.nan
         table_handedover['count_diff'] = table_handedover['counts_y'] - table_handedover['counts_x']
         table_handedover = table_handedover.rename(columns={"counts_x": str(counts_portal), "counts_y": str(counts_excel)})
 
@@ -2937,12 +2957,12 @@ class CheckStructureUpdatedStatusGIS(object):
 
         ## 1.0.3. Merge
         table = pd.merge(left=gis_portal_statusla, right=gis_ml_statusla, how='outer', left_on=[municipality_field, statusla_field], right_on=[municipality_field, statusla_field])
-        table['count_diff'] = np.NAN
+        table['count_diff'] = np.nan
         table['count_diff'] = table['counts_y'] - table['counts_x']
         table = table.rename(columns={"counts_x": str(counts_portal), "counts_y": str(counts_excel)})
         
         # table = gis_portal_statusla.join(gis_ml_statusla,lsuffix=lsuffix_portal,rsuffix=rsuffix_excel)
-        # table['count_diff'] = np.NAN
+        # table['count_diff'] = np.nan
         # table['count_diff'] = table[counts_portal] - table[counts_excel]
 
         arcpy.AddMessage('Merge completed..')
@@ -3038,12 +3058,12 @@ class CheckIsfUpdatedStatusGIS(object):
 
         ## 1.0.3. Merge
         table = pd.merge(left=gis_portal_statusla, right=gis_ml_statusla, how='outer', left_on=[municipality_field, statusla_field], right_on=[municipality_field, statusla_field])
-        table['count_diff'] = np.NAN
+        table['count_diff'] = np.nan
         table['count_diff'] = table['counts_y'] - table['counts_x']
         table = table.rename(columns={"counts_x": str(counts_portal), "counts_y": str(counts_excel)})
         
         # table = gis_portal_statusla.join(gis_ml_statusla,lsuffix=lsuffix_portal,rsuffix=rsuffix_excel)
-        # table['count_diff'] = np.NAN
+        # table['count_diff'] = np.nan
         # table['count_diff'] = table[counts_portal] - table[counts_excel]
 
         arcpy.AddMessage('Merge completed..')

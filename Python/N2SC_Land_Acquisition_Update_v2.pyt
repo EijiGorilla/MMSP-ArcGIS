@@ -1731,7 +1731,7 @@ class N2UpdateWorkablePierStructureTable(object):
                 gis_struc_t.loc[ids, obstruc_field] = 'Yes'
 
                 # #### Extract obstructing LotIDs from the GIS Attribute table (GIS_portal)
-                idcp = gis_struc_portal_t.query(f"{cp_field} == {cp}").index
+                idcp = gis_struc_portal_t.query(f"{cp_field} == '{cp}'").index
                 ids_portal = gis_struc_portal_t.loc[idcp, ].query(f"{struc_id_field}.isin({x_struc_ids})").index
                 # ids_portal = gis_struc_portal_t.loc[idcp, ].index[gis_struc_portal_t.loc[idcp, struc_id_field].isin(x_struc_ids)]
                 y_struc_portal_ids = gis_struc_portal_t.loc[ids_portal, struc_id_field].values

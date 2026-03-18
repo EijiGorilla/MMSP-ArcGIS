@@ -11,8 +11,11 @@ class Toolbox(object):
     def __init__(self):
         self.label = "UpdateN2Viaduct"
         self.alias = "UpdateN2Viaduct"
-        self.tools = [JustMessage1, 
-                      JustMessage2,
+        self.tools = [JustMessage2,
+                      CompileViaductMasterList,
+                      UpdateGISExcelML,
+                      UpdateGISTable,
+                      JustMessage3,
                       CreateWorkablePierLayer,
                       CheckPierNumbers,
                       UpdatePierWorkableTrackerML,
@@ -20,19 +23,435 @@ class Toolbox(object):
                       UpdatePierPointLayer,
                       UpdateStripMapLayer]
 
-class JustMessage1(object):
-    def __init__(self):
-        self.label = "0. Update N2 Land, Structure, and NLO (Just message) "
-        self.description = "Update N2 Vidaduct Layer (Just message)"
-
 class JustMessage2(object):
     def __init__(self):
-        self.label = "0. Update N2 Vidaduct Layer (Just message) "
-        self.description = "Update N2 Vidaduct Layer (Just message)"
+        self.label = "2.0. ----- Update N2 Viaduct -----"
+        self.description = "Update N2 Viaduct (Just message)"
+
+class CompileViaductMasterList(object):
+    def __init__(self):
+        self.label = "2.1. Compile Civil ML Tables (N2 Viaduct) incomplete.."
+        self.description = "Compile Civil ML Tables (N2 Viaduct)"
+
+    def getParameterInfo(self):
+        proj = arcpy.Parameter(
+            displayName = "Project Extension: N2 or SC",
+            name = "Project Extension: N2 or SC",
+            datatype = "GPString",
+            parameterType = "Required",
+            direction = "Input"
+        )
+        proj.filter.type = "ValueList"
+        proj.filter.list = ['N2', 'SC']
+
+        via_dir = arcpy.Parameter(
+            displayName = "Output Directory for N2 Viaduct",
+            name = "Output Directory for N2 Viaduct",
+            datatype = "DEWorkspace",
+            parameterType = "Required",
+            direction = "Input"
+        )
+
+        civil_ml = arcpy.Parameter(
+            displayName = "Civil Master List Table (Excel)",
+            name = "Civil Master List Table",
+            datatype = "DEFile",
+            parameterType = "Required",
+            direction = "Input"
+        )
+
+        params = [proj, via_dir, civil_ml]
+        return params
+
+    def updateMessages(self, params):
+        return
+
+    def execute(self, params, messages):
+        proj = params[0].valueAsText
+        via_dir = params[1].valueAsText
+        civil_ml = params[2].valueAsText
+
+        def N2_Compile_viaduct_tables():
+
+            ## 2. Return unique values
+            def unique(lists):
+                collect = []
+                unique_list = pd.Series(lists).drop_duplicates().tolist()
+                for x in unique_list:
+                    collect.append(x)
+                return(collect)
+            
+            ## 3. Return non-matched values between two lists
+            def non_match_elements(list_a, list_b):
+                non_match = []
+                for i in list_a:
+                    if i not in list_b:
+                        non_match.append(i)
+                return non_match
+            
+            def toString(table, to_string_fields):
+                for field in to_string_fields:
+                    table[field] = table[field].astype(str)
+                    # table[field] = table[field].replace(r'\s+|^\w\s$','',regex=True)
+                    table[field] = table[field].replace(r'\s+', '', regex=True)
+                return table
+
+            def first_letter_capital(table, column_names): # column_names are list
+                for name in column_names:
+                    table[name] = table[name].str.title()
+                return table
+            
+            def find_duplicates_ordered(arr):
+                seen = set()
+                duplicates = set()
+                for item in arr:
+                    if item in seen:
+                        duplicates.add(item) # Use a set to avoid adding the same duplicate multiple times
+                    else:
+                        seen.add(item)
+                return list(duplicates)
+            
+            def add_status(table, start_field, finish_field, status_field):
+                ## if finishdate, completed (Status = 4)
+                idx = table.query(f"{finish_field}.notna()").index
+                table.loc[idx, status_field] = 4
+
+                ## if startdate & !finishdate, ongoing (Status = 2)
+                idx = table.query(f"{start_field}.notna() and {finish_field}.isna()").index
+                table.loc[idx, status_field] = 2
+                return table
+                
+            cp_field = "CP"
+            npierno_field = 'nPierNumber'
+            pierno_field = 'PierNo'
+            pileno_field = 'PileNo'
+            status_field = 'Status'
+            type_field = 'Type'
+            temp_id = 'piern_pilen_type'
+            startdate_field = 'Start'
+            finishdate_field = 'Finish'
+            viaduct_types = ['BoredPile', 'PileCap', 'PierColumn', 'PierHead', 'Precast']
+
+            compile_table = pd.DataFrame(columns=[cp_field, type_field, npierno_field, status_field, startdate_field, finishdate_field])
+            
+            for i, type in enumerate(viaduct_types):
+                x = pd.read_excel(civil_ml, sheet_name = type)
+
+                # Bored Pile:
+                # x = toString(x, [pierno_field, pileno_field])
+                if type == viaduct_types[0]:
+                    x[npierno_field] = x[pierno_field] + x[pileno_field]
+                    x[cp_field] = x[cp_field].replace(r'^CPN', 'N-', regex=True)
+                    x[status_field] = 1
+
+                    # Add 'Status'
+                    x = add_status(x, startdate_field, finishdate_field, status_field)
+
+                    arcpy.AddMessage(x.head())
+
+                    # Add Type
+                    x[type_field] = i + 1
+
+                    # Create unique ID to join (PierNumber + "-" + PileNo + "-" + Type)
+                    x[type_field] = x[type_field].astype(str)
+                    x[temp_id] = x[pierno_field] + "-" + x[pileno_field] + "-" + x[type_field]
+
+                    # Remove pileno field
+                    x = x.drop(pileno_field, axis=1)
+
+                else:
+                    x[npierno_field] = x[pierno_field]
+                    x[cp_field] = x[cp_field].replace(r'^CPN', 'N-', regex=True)
+                    x[status_field] = 1
+
+                    # Add 'Status'
+                    x = add_status(x, startdate_field, finishdate_field, status_field)
+
+                    # Add Type
+                    x[type_field] = i + 1
+
+                    # Create unique ID to join (PierNumber + "-" + PileNo + "-" + Type)
+                    x[type_field] = x[type_field].astype(str)
+                    x[temp_id] = x[pierno_field] + "-" + x[type_field]
+                
+                # Compile table
+                compile_table = pd.concat([compile_table, x])
+            
+            # Conver type_field to integer
+            compile_table[type_field] = compile_table[type_field].astype('int64')
+            arcpy.AddMessage(f"Dupcliated: {compile_table[temp_id].duplicated()}")
+
+            # Export to excel
+            excel_file = proj + "_Viaduct_ML_Civil_compiled.xlsx"
+            compile_table.to_excel(os.path.join(via_dir, excel_file), index=False)
+
+        N2_Compile_viaduct_tables()
+
+class UpdateGISExcelML(object):
+    def __init__(self):
+        self.label = "2.2. Update GIS Excel ML (N2 Viaduct) incomplete.."
+        self.description = "1. Update GIS Excel ML (N2 Viaduct)"
+
+    def getParameterInfo(self):
+        gis_dir = arcpy.Parameter(
+            displayName = "N2 Viaduct Directory",
+            name = "N2 Viaduct Directory",
+            datatype = "DEWorkspace",
+            parameterType = "Required",
+            direction = "Input"
+        )
+
+        gis_ml = arcpy.Parameter(
+            displayName = "N2 Viaducut GIS ML (Excel)",
+            name = "N2 Viaducut GIS ML (Excel)",
+            datatype = "DEFile",
+            parameterType = "Required",
+            direction = "Input"
+        )
+
+        civil_ml = arcpy.Parameter(
+            displayName = "N2 Viaduct Civil ML (Excel)",
+            name = "N2 Viaduct Civil ML (Excel)",
+            datatype = "DEFile",
+            parameterType = "Required",
+            direction = "Input"
+        )
+
+
+        params = [gis_dir, gis_ml, civil_ml]
+        return params
+
+    def updateMessages(self, params):
+        return
+
+    def execute(self, params, messages):
+        gis_dir = params[0].valueAsText
+        gis_ml = params[1].valueAsText
+        civil_ml = params[2].valueAsText
+
+        arcpy.env.overwriteOutput = True
+        #arcpy.env.addOutputsToMap = True
+
+        def N2_Viaduct_Update():
+            def whitespace_removal(dataframe, field):
+                try:
+                    dataframe[field] = dataframe[field].apply(lambda x: x.strip())
+                except:
+                    pass
+
+            def unique(lists):
+                collect = []
+                unique_list = pd.Series(lists).drop_duplicates().tolist()
+                for x in unique_list:
+                    collect.append(x)
+                return(collect)
+            
+            def match_elements(list_a, list_b):
+                matched = []
+                for i in list_a:
+                    if i in list_b:
+                        matched.append(i)
+                return matched
+            
+            def toString(table, to_string_fields): # list of fields to be converted to string
+                for field in to_string_fields:
+                    ## Need to convert string first, then apply space removal, and then convert to string again
+                    ## If you do not apply string conversion twice, it will fail to join with the GIS attribute table
+                    table[field] = table[field].astype(str)
+                    table[field] = table[field].apply(lambda x: x.replace(r'/s+', ''))
+                    table[field] = table[field].astype(str)
+                    
+            def rename_columns_title(table, search_names, renamed_word): # one by one
+                colname_change = table.columns[table.columns.str.contains(search_names,regex=True)]
+                try:
+                    table = table.rename(columns={str(colname_change[0]): renamed_word})
+                except:
+                    pass
+                return table
+            
+            def check_matches_list_and_merge(target_table, input_table, join_field):
+                id1 =  unique(target_table[join_field])
+                id2 = unique(input_table[join_field])
+                    
+                table = pd.merge(left=target_table, right=input_table, how='left', left_on=join_field, right_on=join_field)
+                return table
+            
+            def convert_status_to_numeric(table, dic, input_field, new_field):
+                for i in range(len(dic)):
+                    id = table.index[table[input_field] == list(dic.keys())[i]]
+                    table.loc[id, new_field] = list(dic.values())[i]
+                    
+            def toNumeric(table, fields):
+                for i in range(len(fields)):
+                    table[fields[i]] = pd.to_numeric(table[fields[i]])
+                    
+            def toString(table, to_string_fields): # list of fields to be converted to string
+                for field in to_string_fields:
+                    ## Need to convert string first, then apply space removal, and then convert to string again
+                    ## If you do not apply string conversion twice, it will fail to join with the GIS attribute table
+                    table[field] = table[field].astype(str)
+                    
+            def toDate(table, field):
+                table[field] = pd.to_datetime(table[field],errors='coerce').dt.date
+                #table[field] = table[field].astype('datetime64[ns]')
+
+            # Main workflow
+            # 1. Compile civil tables for viaduct types
+            # 2. Split GIS ML tables with only respective rows from the Civil.
+            # 3. Join the compiled civil table to the split GIS table using ID field (we ned ID field to join)
+            # 4. Append the split GIS tables into one table (final table)
+            # 5. Export the final table as a new GIS ML table.
+
+        N2_Viaduct_Update()
+
+class UpdateGISTable(object):
+    def __init__(self):
+        self.label = "2.3. Update GIS Attribute Table (N2 Viaduct) incomplete.."
+        self.description = "Update SC Viaduct multipatch layer (N2 Viaduct)"
+
+    def getParameterInfo(self):
+        gis_dir = arcpy.Parameter(
+            displayName = "N2 Viaduct Directory",
+            name = "N2 Viaduct Directory",
+            datatype = "DEWorkspace",
+            parameterType = "Required",
+            direction = "Input"
+        )
+        gis_layer = arcpy.Parameter(
+            displayName = "N2 Viaduct Layer (Multipatch)",
+            name = "N2 Viaduct Layer (Multipatch)",
+            datatype = "GPFeatureLayer",
+            parameterType = "Required",
+            direction = "Input"
+        )
+
+        excel_table = arcpy.Parameter(
+            displayName = "N2 Viaduct ML (Feature Table)",
+            name = "N2 Viaduct ML (Feature Table)",
+            datatype = "GPTableView",
+            parameterType = "Required",
+            direction = "Input"
+        )
+
+        params = [gis_dir, gis_layer, excel_table]
+        return params
+    
+    def updateMessages(self, params):
+        return
+    
+    def execute(self, params, messages):
+        gis_dir = params[0].valueAsText
+        gis_layer = params[1].valueAsText
+        excel_table = params[2].valueAsText
+
+        def unique_values(table, field):  ##uses list comprehension
+            with arcpy.da.SearchCursor(table, [field]) as cursor:
+                return sorted({row[0] for row in cursor if row[0] is not None})
+
+        arcpy.AddMessage('Updating SC Viaduct layer has started..')
+
+        # For Removing dummy dates if any specified in the first tool
+        start_actual_field = 'start_actual'
+        finish_plan_field = 'finish_plan'
+        finish_actual_field = 'finish_actual'
+        date_fields = [start_actual_field, finish_plan_field, finish_actual_field]
+
+        uniqueID = 'uniqueID'
+
+        # 1. Copy Original Feature Layers
+        copied_name = 'tempLayer'               
+        gis_copied = arcpy.CopyFeatures_management(gis_layer, copied_name)
+            
+        arcpy.AddMessage("Stage 1: Copy feature layer was success")
+                
+        # 2. Delete Field
+        gis_fields = [f.name for f in arcpy.ListFields(gis_copied)]
+            
+        ## 2.1. Identify fields to be dropped
+        gis_drop_fields_check = [e for e in gis_fields if e not in (uniqueID,'Shape','Shape_Length','Shape_Area','Shape.STArea()','Shape.STLength()','OBJECTID','GlobalID')]
+            
+        ## 2.2. Extract existing fields
+        arcpy.AddMessage("Stage 1: Extract existing fields was success")
+            
+        ## 2.3. Check if there are fields to be dropped
+        gis_drop_fields = [f for f in gis_fields if f in tuple(gis_drop_fields_check)]
+            
+        arcpy.AddMessage("Stage 1: Checking for Fields to be dropped was success")
+            
+        ## 2.4 Drop
+        if len(gis_drop_fields) == 0:
+            arcpy.AddMessage("There is no field that can be dropped from the feature layer")
+        else:
+            arcpy.DeleteField_management(gis_copied, gis_drop_fields)
+                
+        arcpy.AddMessage("Stage 1: Dropping Fields was success")
+        arcpy.AddMessage("Section 2 of Stage 1 was successfully implemented")
+
+        # 3. Join Field
+        ## 3.1. Convert Excel tables to feature table
+        viaduct_ml = arcpy.conversion.ExportTable(excel_table, 'viaduct_ml')
+
+        # Check if LotID match between ML and GIS
+        uniqueid_gis = unique_values(gis_copied, uniqueID)
+        uniqueid_ml = unique_values(viaduct_ml, uniqueID)
+        
+        uniqueid_miss_gis = [e for e in uniqueid_gis if e not in uniqueid_ml]
+        uniqueid_miss_ml = [e for e in uniqueid_ml if e not in uniqueid_gis]
+
+        if uniqueid_miss_ml or uniqueid_miss_gis:
+            arcpy.AddMessage('The following IDs do not match between ML and GIS.')
+            arcpy.AddMessage('Missing LotIDs in GIS table: {}'.format(uniqueid_miss_gis))
+            arcpy.AddMessage('Missing LotIDs in ML Excel table: {}'.format(uniqueid_miss_ml))
+            
+        ## 3.2. Get Join Field from MasterList gdb table: Gain all fields except 'Id'
+        viaduct_ml_fields = [f.name for f in arcpy.ListFields(viaduct_ml)]
+        viaduct_ml_transfer_fields = [e for e in viaduct_ml_fields if e not in ('LotId', uniqueID,'OBJECTID')]
+            
+        ## 3.3. Extract a Field from MasterList and Feature Layer to be used to join two tables
+        gis_join_field = ' '.join(map(str, [f for f in gis_fields if f in ('LotId', uniqueID)]))                      
+        viaduct_ml_join_field =' '.join(map(str, [f for f in viaduct_ml_fields if f in ('LotId', uniqueID)]))
+            
+        ## 3.4 Join
+        arcpy.JoinField_management(in_data=gis_copied, in_field=gis_join_field, join_table=viaduct_ml, join_field=viaduct_ml_join_field, fields=viaduct_ml_transfer_fields)
+
+        ## 3.5. Remove dummy date from GIS attribute table if any
+        try:
+            for field in date_fields:
+                with arcpy.da.UpdateCursor(gis_copied, [field]) as cursor:
+                    for row in cursor:
+                        if row[0]:
+                            year = row[0].strftime("%Y")
+                            if int(year) < 2000:
+                                row[0] = None
+                            else:
+                                row[0] = row[0]
+                        cursor.updateRow(row)
+        except:
+            pass
+
+        # 4. Trucnate
+        arcpy.TruncateTable_management(gis_layer)
+
+        # 5. Append
+        arcpy.Append_management(gis_copied, gis_layer, schema_type = 'NO_TEST')
+
+        # 6. Table to Excel
+        # (This ensures that SC_Viaduct_ML.xlsx is always consistent with SC Viaduct GIS attribute table)
+        # Reason: uniqueID is sometimes updated in the GIS attribute table
+        arcpy.conversion.TableToExcel(gis_layer, os.path.join(gis_dir, 'SC_Viaduct_ML.xlsx'))
+        
+        # Delete the copied feature layer
+        deleteTempLayers = [gis_copied, viaduct_ml]
+        arcpy.Delete_management(deleteTempLayers)
+
+class JustMessage3(object):
+    def __init__(self):
+        self.label = "3.0. ----- Update Pier Workability -----"
+        self.description = "Update Pier Workability (Just message)"
 
 class CreateWorkablePierLayer(object):
     def __init__(self):
-        self.label = "1. Create Pier Workable Layer (Polygon)"
+        self.label = "3.1. Create Pier Workable Layer (Polygon)"
         self.description = "Create Pier Workable Layer"
 
     def getParameterInfo(self):
@@ -179,7 +598,7 @@ class CreateWorkablePierLayer(object):
 
 class CheckPierNumbers(object):
     def __init__(self):
-        self.label = "2. Check Pier Numbers between Civil, GIS Portal, and RAP ML"
+        self.label = "3.2. Check Pier Numbers between Civil, GIS Portal, and RAP ML"
         self.description = "Check Pier Numbers between Civil, GIS Portal, and RAP ML"
 
     def getParameterInfo(self):
@@ -348,7 +767,7 @@ class CheckPierNumbers(object):
 
 class UpdatePierWorkableTrackerML(object):
     def __init__(self):
-        self.label = "3. Update Pier Workable Tracker ML (Excel)"
+        self.label = "3.3. Update Pier Workable Tracker ML (Excel)"
         self.description = "Update Pier Workable Tracker ML (Excel)"
 
     def getParameterInfo(self):
@@ -369,24 +788,24 @@ class UpdatePierWorkableTrackerML(object):
         )
 
         civil_workable_ms = arcpy.Parameter(
-            displayName = "N2 Pier Workability Civil ML (Excel)",
-            name = "N2 Pier Workability Civil ML (Excel)",
+            displayName = "N2 Civil Pier Workability ML (Excel)",
+            name = "N2 Civil Pier Workability ML (Excel)",
             datatype = "DEFile",
             parameterType = "Required",
             direction = "Input"
         )
 
         pier_workable_tracker_ms = arcpy.Parameter(
-            displayName = "N2 Pier Workability Tracker ML (Excel)",
-            name = "N2 Pier Workability Tracker ML (Excel)",
+            displayName = "N2 GIS Pier Workability Tracker ML (this can be RAP Tracker ML if GIS Tracker does not exist) (Excel)",
+            name = "N2 GIS Pier Workability Tracker ML (Excel)",
             datatype = "DEFile",
             parameterType = "Required",
             direction = "Input"
         )
 
         rap_obstruction_ms = arcpy.Parameter(
-            displayName = "N2 RAP Obstructing Lot and Structure ML (Excel)",
-            name = "N2 RAP Obstructing Lot and Structure ML (Excel)",
+            displayName = "N2 RAP Pier Workability Tracker (Obstructing Lot and Structures) (Excel)",
+            name = "N2 RAP Pier Workability Tracker (Obstructing Lot and Structures) (Excel)",
             datatype = "DEFile",
             parameterType = "Required",
             direction = "Input"
@@ -486,7 +905,7 @@ class UpdatePierWorkableTrackerML(object):
             idx_workable = civil_t.index[civil_t[workability_field] == 'Workable']
 
             ### Update 'Utility'
-            civil_t[util_obstruc_field] = np.nan
+            # civil_t[util_obstruc_field] = np.nan
             ids = civil_t.index[(civil_t[new_cols[2]].notna()) | (civil_t[new_cols[3]].notna())]
             civil_t.loc[ids, util_obstruc_field] = 1
             civil_t = civil_t.drop([new_cols[2],new_cols[3]], axis=1)
@@ -498,13 +917,13 @@ class UpdatePierWorkableTrackerML(object):
             idx = civil_t.index[~civil_t[new_cols[4]].isna()]
             civil_t.loc[idx, new_cols[4]] = 1
             idx = civil_t.index[civil_t[workability_field] == 'Workable']
-            civil_t.loc[idx_workable, others_field] = np.nan
+            # civil_t.loc[idx_workable, others_field] = np.nan
 
             ## If either Utility or Others has obstruction, Pile Cap must be 'Non-Workable'
             ##.query(f"((~{land_field}.isna()) & (`{land1_field}`.isna())) | (({land_field}.isna()) & (~`{land1_field}`.isna()))")
-            ids = civil_t.index[((~civil_t[util_obstruc_field].isna()) | (~civil_t[others_field].isna())) & (civil_t[workability_field] == 'Workable')]
-            if len(ids) > 0:
-                civil_t.loc[ids, workability_field] = 'Non-workable'
+            # ids = civil_t.index[((~civil_t[util_obstruc_field].isna()) | (~civil_t[others_field].isna())) & (civil_t[workability_field] == 'Workable')]
+            # if len(ids) > 0:
+            #     civil_t.loc[ids, workability_field] = 'Non-workable'
 
             # tracker fields ordered
             tracker_fields_ordered = [pier_num_field,
@@ -686,15 +1105,25 @@ class UpdatePierWorkableTrackerML(object):
             ids_comp = comp_table2.index[comp_table2[pier_num_field].isin(comp_piers)]
             comp_table2.loc[ids_comp, workability_field] = 'Completed'
 
-            ## When workability_field = 'Completed', the other fields = np.nan 
-            # idx = comp_table2.index[(comp_table2[workability_field] == "Completed") & ((comp_table2[land_field] == 1) | (comp_table2[struc_field] == 1) | (comp_table2[util_obstruc_field] == 1) | (comp_table2[nlo_obstruc_field] == 1) | (comp_table2[others_field] == 1))]
-            # comp_table2.loc[idx, land_field] = np.nan
-            # comp_table2.loc[idx, land1_field] = np.nan
-            # comp_table2.loc[idx, struc_field] = np.nan
-            # comp_table2.loc[idx, struc1_field] = np.nan
-            # comp_table2.loc[idx, util_obstruc_field] = np.nan
-            # comp_table2.loc[idx, nlo_obstruc_field] = np.nan
-            # comp_table2.loc[idx, others_field] = np.nan
+            ## When workability_field = 'Completed', the other fields = np.nan
+            idx = comp_table2.index[(comp_table2[workability_field] == "Completed") & ((comp_table2[land_field] == 1) | (comp_table2[struc_field] == 1) | (comp_table2[util_obstruc_field] == 1) | (comp_table2[nlo_obstruc_field] == 1) | (comp_table2[others_field] == 1))]
+            comp_table2.loc[idx, land_field] = np.nan
+            comp_table2.loc[idx, land1_field] = np.nan
+            comp_table2.loc[idx, struc_field] = np.nan
+            comp_table2.loc[idx, struc1_field] = np.nan
+            comp_table2.loc[idx, util_obstruc_field] = np.nan
+            comp_table2.loc[idx, nlo_obstruc_field] = np.nan
+            comp_table2.loc[idx, others_field] = np.nan
+
+            ## When workability_field = 'Workable', the other fields = np.nan
+            idx = comp_table2.index[(comp_table2[workability_field] == "Workable") & ((comp_table2[land_field] == 1) | (comp_table2[struc_field] == 1) | (comp_table2[util_obstruc_field] == 1) | (comp_table2[nlo_obstruc_field] == 1) | (comp_table2[others_field] == 1))]
+            comp_table2.loc[idx, land_field] = np.nan
+            comp_table2.loc[idx, land1_field] = np.nan
+            comp_table2.loc[idx, struc_field] = np.nan
+            comp_table2.loc[idx, struc1_field] = np.nan
+            comp_table2.loc[idx, util_obstruc_field] = np.nan
+            comp_table2.loc[idx, nlo_obstruc_field] = np.nan
+            comp_table2.loc[idx, others_field] = np.nan
 
             ##################### Identify incosistent data entry ###############################
             ## Add case of errors to Remarks field;
@@ -704,10 +1133,10 @@ class UpdatePierWorkableTrackerML(object):
             ## 4. Piers with obstructing Lot or Structure IDs in Land.1 or Structure.1 field do not have '1' in Land or Structure field.
 
             comp_table2[remarks_field] = np.nan
-            obstruc_fields_all = [util_obstruc_field,land_field,struc_field,others_field,land1_field,struc1_field]
+            # obstruc_fields_all = [util_obstruc_field,land_field,struc_field,others_field,land1_field,struc1_field]
             error_descriptions = [
                 {
-                    'case1': 'Workable or completed piers should not have obstructions in one or more columns.',
+                    # 'case1': 'Workable or completed piers should not have obstructions in one or more columns.',
                     'case2': 'Non-workable piers should have at least one obstruction in columns.',
                     'case3': 'This pier is missing obstructing LotIDs.',
                     'case4': 'This pier is missing obstructing StructureIDs.',
@@ -716,12 +1145,12 @@ class UpdatePierWorkableTrackerML(object):
                 }
             ]
 
-            obstruc_fields_notna = ((~comp_table2[util_obstruc_field].isna()) |
-                                    (~comp_table2[land_field].isna()) |
-                                    (~comp_table2[struc_field].isna()) |
-                                    (~comp_table2[others_field].isna()) |
-                                    (~comp_table2[land1_field].isna()) |
-                                    (~comp_table2[struc1_field].isna()))
+            # obstruc_fields_notna = ((~comp_table2[util_obstruc_field].isna()) |
+            #                         (~comp_table2[land_field].isna()) |
+            #                         (~comp_table2[struc_field].isna()) |
+            #                         (~comp_table2[others_field].isna()) |
+            #                         (~comp_table2[land1_field].isna()) |
+            #                         (~comp_table2[struc1_field].isna()))
             
             obstruc_fields_na = ((comp_table2[util_obstruc_field].isna()) &
                         (comp_table2[land_field].isna()) &
@@ -731,9 +1160,9 @@ class UpdatePierWorkableTrackerML(object):
                         (comp_table2[struc1_field].isna()))
 
             ### Case 1:
-            idx = comp_table2.index[((comp_table2[workability_field] == 'Completed') | (comp_table2[workability_field] == 'Workable')) & 
-                                    obstruc_fields_notna]
-            comp_table2.loc[idx, remarks_field] = error_descriptions[0]['case1']
+            # idx = comp_table2.index[((comp_table2[workability_field] == 'Completed') | (comp_table2[workability_field] == 'Workable')) & 
+            #                         obstruc_fields_notna]
+            # comp_table2.loc[idx, remarks_field] = error_descriptions[0]['case1']
 
             ### Case 2:
             idx = comp_table2.index[(comp_table2[workability_field] == 'Non-workable') &
@@ -771,7 +1200,7 @@ class UpdatePierWorkableTrackerML(object):
 
 class UpdateWorkablePierLayer(object):
     def __init__(self):
-        self.label = "4. Update Pier Workable Layer (Polygon)"
+        self.label = "3.4. Update Pier Workable Layer (Polygon)"
         self.description = "Update Pier Workable Layer (Polygon)"
 
     def getParameterInfo(self):
@@ -993,18 +1422,18 @@ class UpdateWorkablePierLayer(object):
 
 
                 # When the construction of 'pile cap' is completed, al the 'Workable' fields must be 2 (completed). 
-                # with arcpy.da.UpdateCursor(gis_workable_layer, [type_field, status_field, 'AllWorkable','LandWorkable','StrucWorkable','NLOWorkable', 'UtilWorkable', 'OthersWorkable']) as cursor:
-                #     # 0: Non-workable, 1: Workable, 2: Completed
-                #     for row in cursor:
-                #         row[0] = 'Pile Cap'
-                #         if row[1] == 4:
-                #             row[2] = 2
-                #             row[3] = 2
-                #             row[4] = 2
-                #             row[5] = 2
-                #             row[6] = 2
-                #             row[7] = 2
-                #         cursor.updateRow(row)
+                with arcpy.da.UpdateCursor(gis_workable_layer, [type_field, status_field, 'AllWorkable','LandWorkable','StrucWorkable','NLOWorkable', 'UtilWorkable', 'OthersWorkable']) as cursor:
+                    # 0: Non-workable, 1: Workable, 2: Completed
+                    for row in cursor:
+                        row[0] = 'Pile Cap'
+                        if row[1] == 4:
+                            row[2] = 2
+                            row[3] = 2
+                            row[4] = 2
+                            row[5] = 2
+                            row[6] = 2
+                            row[7] = 2
+                        cursor.updateRow(row)
 
                 #############################################
                 ## Update Pier Workable Layer for 'Remarks'
@@ -1029,7 +1458,7 @@ class UpdateWorkablePierLayer(object):
 
 class UpdatePierPointLayer(object):
     def __init__(self):
-        self.label = "5. Update Pier Layer (Point)"
+        self.label = "3.5. Update Pier Layer (Point)"
         self.description = "Update Pier Layer (Point)"
 
     def getParameterInfo(self):
@@ -1134,13 +1563,14 @@ class UpdatePierPointLayer(object):
             piers_status = {}
             with arcpy.da.SearchCursor(viaduct_layer, [pier_number_field, status_field]) as cursor:
                 for row in cursor:
-                    if row[0] and "CB" not in row[0]:
+                    if row[0]:
                         pier_id = row[0].replace("CA", "")
                         if row[1] < 4:
                             piers_status[pier_id] = 0
                         elif row[1] == 4:
                             piers_status[pier_id] = 2
 
+            arcpy.AddMessage(piers_status)
             ## {'P-160NB': 0, 'P-159': 0, 'P-159NB': 0, 'P-159SB': 0, 'P-160SB': 0, 'P-160': 0}
             ## {PierNumber: AllWorkable}, where Workable (AllWorkable = 0), Nonworkable (AllWorkable = 1), and Completed (AllWorkable = 2)
             where_clause = f"{pier_number_field} LIKE '%P-159%' OR {pier_number_field} LIKE '%P-160%'"
@@ -1156,7 +1586,7 @@ class UpdatePierPointLayer(object):
 
 class UpdateStripMapLayer(object):
     def __init__(self):
-        self.label = "6. Update Strip Map Layer (Polygon)"
+        self.label = "3.6. Update Strip Map Layer (Polygon)"
         self.description = "Update Strip Map Layer (Polygon)"
 
     def getParameterInfo(self):

@@ -23,8 +23,8 @@ class Toolbox(object):
 
 class RestoreScaleForLot(object):
     def __init__(self):
-        self.label = "0.0. Add Scale To GIS Excel ML (Lot)"
-        self.description = "Add Scale To GIS Excel ML (Lot)"
+        self.label = "0.0. Add Scale To GIS Excel ML for Lot (Optional)"
+        self.description = "Add Scale To GIS Excel ML for Lot (Optional)"
 
     def getParameterInfo(self):
         gis_dir = arcpy.Parameter(
@@ -130,23 +130,6 @@ class CompileRAPtables(object):
         rap_ml_dir = params[1].valueAsText
 
         def N2SC_Compile_RAP_tables():
-
-            ## 2. Return unique values
-            def unique(lists):
-                collect = []
-                unique_list = pd.Series(lists).drop_duplicates().tolist()
-                for x in unique_list:
-                    collect.append(x)
-                return(collect)
-            
-            ## 3. Return non-matched values between two lists
-            def non_match_elements(list_a, list_b):
-                non_match = []
-                for i in list_a:
-                    if i not in list_b:
-                        non_match.append(i)
-                return non_match
-            
             def toString(table, to_string_fields):
                 for field in to_string_fields:
                     table[field] = table[field].astype(str)
@@ -172,6 +155,7 @@ class CompileRAPtables(object):
             lotid_field = 'LotID'
             status_field = 'StatusLA'
             handedOverArea_field = 'HandedOverArea'
+            handedOverDate_field = 'HandedOverDate'
             affectedArea_field = 'AffectedArea'
             note_field = 'note'
             
@@ -182,12 +166,14 @@ class CompileRAPtables(object):
         
             # Each ML is merged with the latest ML
             yyyymm_latest = os.path.basename(rap_files[-1])[:8]
+            arcpy.AddMessage(rap_files[-1])
             latest_ml = pd.read_excel(rap_files[-1])
             latest_ml = toString(latest_ml, [lotid_field])
             latest_ml['x' + yyyymm_latest] = latest_ml[status_field]
             latest_ml['x' + yyyymm_latest + '_HOA'] = latest_ml[handedOverArea_field] # HOA: Handed-Over Area
             latest_ml['x' + yyyymm_latest + '_TAA'] = latest_ml[affectedArea_field] # TAA: Total Affected Area
             latest_ml[note_field] = ""
+            latest_ml[lotid_field] = latest_ml[lotid_field].astype(str)
 
             # compiled_ml = pd.DataFrame()
             for file in rap_files[:-1]:
@@ -213,12 +199,13 @@ class CompileRAPtables(object):
                     if np.array_equal(input_lotids, target_lotids):
                         # Keep only 'LotID', 'StatusLA', 'TotalAffectedArea', 'HandedOverArea'
                         table = table0[[lotid_field, status_field, affectedArea_field, handedOverArea_field]]
+                        table[lotid_field] = table[lotid_field].astype(str)
 
                         # Rename columns
                         table = table.rename(columns={status_field: 'x' + yyyymm, affectedArea_field: 'x' + yyyymm + '_TAA', handedOverArea_field: 'x' + yyyymm + '_HOA'})
 
                         # Merge to the latest
-                        latest_ml = pd.merge(left=latest_ml, right=table, how='left', left_on='LotID', right_on='LotID')
+                        latest_ml = pd.merge(left=latest_ml, right=table, how='left', left_on=lotid_field, right_on=lotid_field)
                     
                     else:
                         # when lotID is not matched, there are two scenarios:
@@ -274,6 +261,10 @@ class CompileRAPtables(object):
                             latest_ml.loc[idx, col] = None
                     idx = latest_ml.query(f"{status_field} == 0").index
                     latest_ml.loc[idx, status_field] = None
+
+                    # HandedOverDate
+                    ## remove "-", "_"
+                    latest_ml[handedOverDate_field] = latest_ml[handedOverDate_field].replace(r'^[-_]','',regex=True)
 
                     # Save the compiled master list
                     latest_ml[note_field] = latest_ml.pop(note_field)
@@ -395,7 +386,7 @@ class UpdateLot(object):
                 return table
             
             # Read as xlsx
-            rap_table_stats = pd.read_excel(rap_lot_ms)
+            rap_table_origin = pd.read_excel(rap_lot_ms)
             rap_table = pd.read_excel(rap_lot_ms)
             gis_table = pd.read_excel(gis_lot_ms)
 
@@ -427,6 +418,9 @@ class UpdateLot(object):
             count_name = 'counts'
             counts_rap = count_name + '_RAP'
             counts_gis = count_name + '_GIS'
+            sum_name = 'sum'
+            sum_rap = sum_name + '_RAP'
+            sum_gis = sum_name + '_GIS'
 
             # Create backup files
             try:
@@ -452,7 +446,6 @@ class UpdateLot(object):
                     municipal_col_index = column_indices[city_field]
                     to_numeric_fields = numeric_fields_common
 
-
                 rap_table = rap_table.rename(columns={column_names[municipal_col_index]: renamed_city})
                 
                 cols = rap_table.columns
@@ -464,12 +457,12 @@ class UpdateLot(object):
                     rap_table[field] = rap_table[field].replace(r'\s+|[^\w\s$]','',regex=True)
                     rap_table[field] = pd.to_numeric(rap_table[field])
 
-                    rap_table_stats[field] = rap_table_stats[field].replace(r'\s+|[^\w\s$]','',regex=True)
-                    rap_table_stats[field] = pd.to_numeric(rap_table_stats[field])
+                    rap_table_origin[field] = rap_table_origin[field].replace(r'\s+|[^\w\s$]','',regex=True)
+                    rap_table_origin[field] = pd.to_numeric(rap_table_origin[field])
                     
                 # Conver to string
                 rap_table = toString(rap_table, to_string_fields)
-                rap_table_stats = toString(rap_table_stats, to_string_fields)
+                rap_table_origin = toString(rap_table_origin, to_string_fields)
 
                 # Reformat CP
                 if proj == 'N2':
@@ -497,10 +490,10 @@ class UpdateLot(object):
                 rap_table[package_field] = rap_table[package_field].apply(lambda x: re.sub(r',.*','',x))
 
                 ## for stats
-                rap_table_stats[package_field] = rap_table_stats[package_field].replace(r'3A|3A|3a', '3a',regex=True)
-                rap_table_stats[package_field] = rap_table_stats[package_field].replace(r'3B|3B|3b', '3b',regex=True)
-                rap_table_stats[package_field] = rap_table_stats[package_field].replace(r'3C|3C|3c', '3c',regex=True)
-                rap_table_stats[package_field] = rap_table_stats[package_field].apply(lambda x: re.sub(r',.*','',x))
+                rap_table_origin[package_field] = rap_table_origin[package_field].replace(r'3A|3A|3a', '3a',regex=True)
+                rap_table_origin[package_field] = rap_table_origin[package_field].replace(r'3B|3B|3b', '3b',regex=True)
+                rap_table_origin[package_field] = rap_table_origin[package_field].replace(r'3C|3C|3c', '3c',regex=True)
+                rap_table_origin[package_field] = rap_table_origin[package_field].apply(lambda x: re.sub(r',.*','',x))
                     
                 # Conver to date   
                 to_date_fields = [handover_date_field, handedover_date_field]
@@ -519,19 +512,11 @@ class UpdateLot(object):
                 # Add scale from old master list
                 rap_table = rap_table.drop(scale_field,axis=1)
                 lot_gis_scale = gis_table[[scale_field, joinField]]
-                rap_table = pd.merge(left=rap_table, right=lot_gis_scale, how='left', left_on=joinField, right_on=joinField)
+                rap_table = pd.merge(left=rap_table, right=lot_gis_scale, how='left', left_on=joinField, right_on=joinField, validate="one_to_one")
 
                 # Check and Fix StatusLA, HandedOverDate, HandOverDate, and HandedOverArea
                 ## 1. StatusLA =0 -> StatusLA = empty
                 rap_table.loc[rap_table.query(f'{statusla_field} == 0').index, statusla_field] = None
-
-                ## 2. HandedOver = 1 & !is.na(HandOverDate) -> HandedOverDate = HandOverDate
-                id = rap_table.query(f'{handedover_field} == 1 and {handover_date_field}.notna()').index
-                rap_table.loc[id, handedover_date_field] = rap_table.loc[id, handover_date_field]
-                rap_table.loc[id, handover_date_field] = None
-
-                ## 3. HandedOver = 0 & !is.na(HandedOverDate) -> HandedOverDate = empty
-                rap_table.loc[rap_table.query(f'{handedover_field} == 0 and {handedover_date_field}.notna()').index, handedover_date_field] = None
 
                 ## 4. if the first row is empty, temporarily add the first row for 'HandedOverDate' and 'HandOverDate'
                 for field in to_date_fields:
@@ -574,20 +559,22 @@ class UpdateLot(object):
 
                 ##############################################################################
                 # Create summary statistics between rap_table and updated GIS table to confirm matching.
+                # Count each status for each municipality
                 ### 1.0. StatusLA = 0 -> NA          
                 ## 1.0.1. rap_table (before updating)
-                colname_change = rap_table_stats.columns[rap_table_stats.columns.str.contains('|'.join([city_field, rap_muni_field]))]
-                rap_table_stats = rap_table_stats.rename(columns={str(colname_change[0]): renamed_city})
-                rap_table_stats = first_letter_capital(rap_table_stats, [renamed_city])
+                colname_change = rap_table_origin.columns[rap_table_origin.columns.str.contains('|'.join([city_field, rap_muni_field]))]
+                rap_table_origin = rap_table_origin.rename(columns={str(colname_change[0]): renamed_city})
+                rap_table_origin = first_letter_capital(rap_table_origin, [renamed_city])
                 
-                id = rap_table_stats.index[rap_table_stats[statusla_field] == 0]
-                rap_table_stats.loc[id, statusla_field] = np.nan
+                id = rap_table_origin.index[rap_table_origin[statusla_field] == 0]
+                rap_table_origin.loc[id, statusla_field] = np.nan
 
                 groupby_fields = [renamed_city, statusla_field]
-                rap_table0_stats = rap_table_stats.groupby(groupby_fields)[statusla_field].count().reset_index(name=count_name)
+                rap_table0_stats = rap_table_origin.groupby(groupby_fields)[statusla_field].count().reset_index(name=count_name)
                 rap_table0_stats = rap_table0_stats.sort_values(by=groupby_fields)
 
                 ## 1.0.2. Updated rap_table (After updating)
+                ### Count each status for each Municipality
                 rap_table1_stats = rap_table.groupby(groupby_fields)[statusla_field].count().reset_index(name=count_name)
                 rap_table1_stats = rap_table1_stats.sort_values(by=groupby_fields)
 
@@ -600,9 +587,9 @@ class UpdateLot(object):
             
                 ### 2.0. HandedOver = 1
                 ## 2.0.1. Original rap_table (before updating)
-                id = rap_table_stats.index[rap_table_stats[handedover_field] == 1]
+                id = rap_table_origin.index[rap_table_origin[handedover_field] == 1]
                 groupby_fields = [renamed_city, handedover_field]
-                rap_table0_stats = rap_table_stats.groupby(groupby_fields)[handedover_field].count().reset_index(name=count_name)
+                rap_table0_stats = rap_table_origin.groupby(groupby_fields)[handedover_field].count().reset_index(name=count_name)
                 rap_table0_stats = rap_table0_stats.sort_values(by=groupby_fields)
 
                 ## 2.0.2. Updated rap_table (After updating)
@@ -1368,18 +1355,18 @@ class UpdateBarangay(object):
 
 class JustMessage10(object):
     def __init__(self):
-        self.label = "1.6.0 ----- Update Land & Structure for Workable Pier -----"
+        self.label = "4.0 ----- Update Land & Structure for Workable Pier -----"
         self.description = "Update Excel Master List"
 
 class N2UpdateWorkablePierLandTable(object):
     def __init__(self):
-        self.label = "1.6.1 (N2) Add Obstruction to Excel Master List (Lot)"
+        self.label = "4.1 (N2) Add Obstruction to Excel Master List (Lot)"
         self.description = "(N2) Add Obstruction to Excel Master List (Lot)"
 
     def getParameterInfo(self):
         gis_rap_dir = arcpy.Parameter(
-            displayName = "N2 GIS RAP Directory",
-            name = "N2 GIS RAP Directory",
+            displayName = "N2 GIS Directory for RAP",
+            name = "N2 GIS Directory for RAP",
             datatype = "DEWorkspace",
             parameterType = "Required",
             direction = "Input"
@@ -1410,8 +1397,8 @@ class N2UpdateWorkablePierLandTable(object):
         )
 
         pier_workable_tracker = arcpy.Parameter(
-            displayName = "N2 Pier Workable Tracker (Excel)",
-            name = "N2 Pier Workability Tracker (Excel))",
+            displayName = "N2 Pier Workable Tracker (Excel compiled with RAP and Civil)",
+            name = "N2 Pier Workability Tracker (Excel compiled with RAP and Civil)",
             datatype = "DEFile",
             parameterType = "Required",
             direction = "Input"
@@ -1518,7 +1505,7 @@ class N2UpdateWorkablePierLandTable(object):
                 gis_lot_t.loc[ids, obstruc_field] = 'Yes'
 
                 # #### Extract obstructing LotIDs from the GIS Attribute table (GIS_portal)
-                idcp = gis_lot_portal_t.query(f"{cp_field} == {cp}").index
+                idcp = gis_lot_portal_t.query(f"{cp_field} == '{cp}'").index
                 # arcpy.AddMessage(x_lot_ids)
                 ids_portal = gis_lot_portal_t.loc[idcp, ].index[gis_lot_portal_t.loc[idcp, lot_id_field].isin(x_lot_ids)]
                 y_lot_portal_ids = gis_lot_portal_t.loc[ids_portal, lot_id_field].values
@@ -1592,13 +1579,13 @@ class N2UpdateWorkablePierLandTable(object):
 
 class N2UpdateWorkablePierStructureTable(object):
     def __init__(self):
-        self.label = "1.6.1 (N2) Add Obstruction to Excel Master List (Structure/NLO)"
+        self.label = "4.2. (N2) Add Obstruction to Excel Master List (Structure/NLO)"
         self.description = "(N2) Add Obstruction to Excel Master List (Structure/NLO)"
 
     def getParameterInfo(self):
         gis_rap_dir = arcpy.Parameter(
-            displayName = "N2 GIS RAP Directory",
-            name = "N2 GIS RAP Directory",
+            displayName = "N2 GIS Directory",
+            name = "N2 GIS Directory",
             datatype = "DEWorkspace",
             parameterType = "Required",
             direction = "Input"
@@ -1848,13 +1835,13 @@ class N2UpdateWorkablePierStructureTable(object):
 
 class SCUpdateWorkablePierLandTable(object):
     def __init__(self):
-        self.label = "1.6.2 (SC) Add Obstruction to Excel Master List (Lot)"
+        self.label = "4.3. (SC) Add Obstruction to Excel Master List (Lot)"
         self.description = "(SC) Add Obstruction to Excel Master List (Lot)"
 
     def getParameterInfo(self):
         gis_rap_dir = arcpy.Parameter(
-            displayName = "SC GIS RAP Directory",
-            name = "GIS RAP Directory",
+            displayName = "SC GIS Directory",
+            name = "SC GIS Directory",
             datatype = "DEWorkspace",
             parameterType = "Required",
             direction = "Input"
@@ -2038,13 +2025,13 @@ class SCUpdateWorkablePierLandTable(object):
 
 class SCUpdateWorkablePierStructureTable(object):
     def __init__(self):
-        self.label = "1.6.3 (SC) Add Obstruction to Excel Master List (Structure & NLO)"
+        self.label = "4.4. (SC) Add Obstruction to Excel Master List (Structure & NLO)"
         self.description = "(SC) Add Obstruction to Excel Master List (Structure & NLO)"
 
     def getParameterInfo(self):
         gis_rap_dir = arcpy.Parameter(
-            displayName = "SC GIS RAP Directory",
-            name = "SC GIS RAP Directory",
+            displayName = "SC GIS Directory",
+            name = "SC GIS Directory",
             datatype = "DEWorkspace",
             parameterType = "Required",
             direction = "Input"
@@ -2278,12 +2265,12 @@ class SCUpdateWorkablePierStructureTable(object):
 
 class JustMessage2(object):
     def __init__(self):
-        self.label = "2.0. ----- Update GIS Layers -----"
+        self.label = "5.0. ----- Update GIS Layers -----"
         self.description = "Update Excel Master List"
 
 class UpdateLotGIS(object):
     def __init__(self):
-        self.label = "2.1. Update GIS Attribute Table (Lot) - Disconnect Layer before execution"
+        self.label = "5.1. Update GIS Attribute Table (Lot) - Disconnect Layer before execution"
         self.description = "Update feature layer for land acquisition"
 
     def getParameterInfo(self):
@@ -2357,9 +2344,14 @@ class UpdateLotGIS(object):
         except:
             pass
 
+        ## Copy feature layer 
+        basename = os.path.basename(target_feature)
+        copy_feature = basename + '_copy'
+        arcpy.management.CopyFeatures(target_feature, copy_feature)
+
         # Join fields to attribute table
         # 2. Delete Field
-        gis_fields = [f.name for f in arcpy.ListFields(target_feature)]
+        gis_fields = [f.name for f in arcpy.ListFields(copy_feature)]
             
         ## 2.1. Identify fields to be dropped
         gis_drop_fields_check = [e for e in gis_fields if e not in ('LotId', 'LotID','created_user', 'created_date', 'last_edited_user', 'last_edited_date', 'Shape','Shape_Length','Shape_Area','Shape.STArea()','Shape.STLength()','OBJECTID','GlobalID')]
@@ -2377,7 +2369,7 @@ class UpdateLotGIS(object):
         if len(gis_drop_fields) == 0:
             arcpy.AddMessage("There is no field that can be dropped from the feature layer")
         else:
-            arcpy.management.DeleteField(target_feature, gis_drop_fields)
+            arcpy.management.DeleteField(copy_feature, gis_drop_fields)
 
 
         # arcpy.AddMessage("Deleted Fields from Polygon: ", [e.name for e in arcpy.ListFields(target_feature)])     
@@ -2390,7 +2382,7 @@ class UpdateLotGIS(object):
 
         # Check if LotID match between ML and GIS
         lotid_field = 'LotID'
-        lotid_gis = unique_values(target_feature, lotid_field)
+        lotid_gis = unique_values(copy_feature, lotid_field)
         lotid_ml = unique_values(lot_ml, lotid_field)
         
         lotid_miss_gis = [e for e in lotid_gis if e not in lotid_ml]
@@ -2411,16 +2403,35 @@ class UpdateLotGIS(object):
         gis_join_field = ' '.join(map(str, [f for f in gis_fields if f in ('LotId', lotid_field)]))                      
         lot_ml_join_field =' '.join(map(str, [f for f in lot_ml_fields if f in ('LotId', lotid_field)]))
             
-        ## 3.4 Join
-        arcpy.management.JoinField(in_data=target_feature, in_field=gis_join_field, join_table=lot_ml, join_field=lot_ml_join_field, fields=lot_ml_transfer_fields)
+        ## 3.4 Join fields 
+        arcpy.management.JoinField(in_data=copy_feature, in_field=gis_join_field, join_table=lot_ml, join_field=lot_ml_join_field, fields=lot_ml_transfer_fields)
 
-        # Export
+        ## 3.5. Truncate SDE
+        arcpy.management.TruncateTable(target_feature)
+
+        # ## 3.6. Append copy_feature to target feature
+        arcpy.management.Append(copy_feature, target_feature, schema_type = 'NO_TEST')
+
+        # ## 3.7 Join missing fields in copy_feature to target feature
+        ### Unmatched fields
+        target_fields = [f.name for f in arcpy.ListFields(target_feature)]
+        miss_fields = [item for item in gis_fields if item not in target_fields]
+
+        ## 3.8. Join missing_fields to target feature
+        arcpy.management.JoinField(in_data=target_feature, in_field=gis_join_field, join_table=copy_feature, join_field=gis_join_field, fields=miss_fields)
+
+        ## 3.9. Check all the fields are matched between copy_feature and target_feature
+        new_target_fields = [f.name for f in arcpy.ListFields(target_feature)]
+        missing_fields = [item for item in gis_fields if item not in target_fields]
+        arcpy.AddMessage(f"Missing LotIDs: {missing_fields}")
+
+        # # Export
         file_name = project + "_" + "GIS_Land_Portal.xlsx"
         arcpy.conversion.TableToExcel(target_feature, os.path.join(gis_dir, file_name))
 
 class UpdateStructureGIS(object):
     def __init__(self):
-        self.label = "2.2. Update GIS Attribute Tables (Structures/Occupancy/ISF Relocation)"
+        self.label = "5.2. Update GIS Attribute Tables (Structures/Occupancy/ISF Relocation)"
         self.description = "Update feature layers for structures including occupany and ISF Relocation"
 
     def getParameterInfo(self):
@@ -2652,7 +2663,7 @@ class UpdateStructureGIS(object):
 
 class UpdateBarangayGIS(object):
     def __init__(self):
-        self.label = "2.4. Update GIS Attribute Tables (SC1 Barangay)"
+        self.label = "5.3. Update GIS Attribute Tables (SC1 Barangay)"
         self.description = "Update GIS Attribute Tables (SC1 Barangay)"
 
     def getParameterInfo(self):
@@ -2755,12 +2766,12 @@ class UpdateBarangayGIS(object):
 
 class JustMessage3(object):
     def __init__(self):
-        self.label = "3.0. ----- Summary Statistics GIS ML and GIS Portal -----"
+        self.label = "7.0. ----- Summary Statistics GIS ML and GIS Portal -----"
         self.description = "Update Excel Master List"
 
 class CheckLotUpdatedStatusGIS(object):
     def __init__(self):
-        self.label = "3.1. Summary Stats for Lot Status (GIS Portal and GIS ML)"
+        self.label = "7.1. Summary Stats for Lot Status (GIS Portal and GIS ML)"
         self.description = "Summary Stats for Lot Status (GIS Portal and GIS ML)"
 
     def getParameterInfo(self):
@@ -2879,7 +2890,7 @@ class CheckLotUpdatedStatusGIS(object):
 
 class CheckStructureUpdatedStatusGIS(object):
     def __init__(self):
-        self.label = "3.2. Summary Stats for Structure Status (GIS Portal and GIS ML)"
+        self.label = "7.2. Summary Stats for Structure Status (GIS Portal and GIS ML)"
         self.description = "Summary Stats for Structure Status (GIS Portal and GIS ML)"
 
     def getParameterInfo(self):
@@ -2980,7 +2991,7 @@ class CheckStructureUpdatedStatusGIS(object):
 
 class CheckIsfUpdatedStatusGIS(object):
     def __init__(self):
-        self.label = "3.3. Summary Stats for ISF Status (GIS Portal and GIS ML)"
+        self.label = "7.3. Summary Stats for ISF Status (GIS Portal and GIS ML)"
         self.description = "Summary Stats for ISF Status (GIS Portal and GIS ML)"
 
     def getParameterInfo(self):
@@ -3081,12 +3092,12 @@ class CheckIsfUpdatedStatusGIS(object):
 
 class JustMessage4(object):
     def __init__(self):
-        self.label = "4.0. ----- Identify Missing IDs -----"
+        self.label = "6.0. ----- Identify Missing IDs -----"
         self.description = "Update Excel Master List"
 
 class CheckMissingLotIDs(object):
     def __init__(self):
-        self.label = "4.1. Check Missing Lot IDs (Rap ML, GIS ML, and GIS Portal)"
+        self.label = "6.1. Check Missing Lot IDs (Rap ML, GIS ML, and GIS Portal)"
         self.description = "Check Missing Lot IDs (Rap ML, GIS ML, and GIS Portal)"
 
     def getParameterInfo(self):
@@ -3340,7 +3351,7 @@ class CheckMissingLotIDs(object):
 
 class CheckMissingStructureIDs(object):
     def __init__(self):
-        self.label = "4.2. Check Missing Structure IDs (Rap ML, GIS ML, and GIS Portal)"
+        self.label = "6.2. Check Missing Structure IDs (Rap ML, GIS ML, and GIS Portal)"
         self.description = "Check Missing Structure IDs (Rap ML, GIS ML, and GIS Portal)"
 
     def getParameterInfo(self):
@@ -3527,7 +3538,7 @@ class CheckMissingStructureIDs(object):
 
 class CheckMissingIsfIDs(object):
     def __init__(self):
-        self.label = "4.3. Check Missing ISF (NLO) IDs (Rap ML, GIS ML, and GIS Portal)"
+        self.label = "6.3. Check Missing ISF (NLO) IDs (Rap ML, GIS ML, and GIS Portal)"
         self.description = "Check Missing ISF (NLO) IDs (Rap ML, GIS ML, and GIS Portal)"
 
     def getParameterInfo(self):

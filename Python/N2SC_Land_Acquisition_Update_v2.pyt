@@ -385,6 +385,75 @@ class UpdateLot(object):
                     table[name] = table[name].str.title()
                 return table
             
+            def reformat_cp_label(table, cp_field):
+                table[cp_field] = table[cp_field].replace(r'3A|3A|3a', '3a',regex=True)
+                table[cp_field] = table[cp_field].replace(r'3B|3B|3b', '3b',regex=True)
+                table[cp_field] = table[cp_field].replace(r'3C|3C|3c', '3c',regex=True)
+                table[cp_field] = table[cp_field].apply(lambda x: re.sub(r',.*','',x))
+                return table
+            
+            ## Definition for calculating summary statistics
+            def summary_field_by_count(table, stats_type, stats_field, groupby_fields, cities):
+                count_name = 'temp'
+                if stats_type == 'count':
+                    table = table.groupby(groupby_fields)[stats_field].count().reset_index(name=count_name)
+                    table = table.sort_values(by=groupby_fields)
+                else:
+                    ## For sum, stats_field should not be included in groupby_fields
+                    groupby_fields = groupby_fields[0]
+                    table = table.groupby(groupby_fields)[stats_field].sum().reset_index(name=count_name)
+                values_array = {}
+                status_array = {}
+                for city in cities:
+                    idx = table.query(f"{renamed_city} == '{city}'").index
+                    if stats_type == 'count':
+                        status_n = table.loc[idx, stats_field].astype(int)
+                        status_array[f"{city}"] = status_n
+                    
+                    value_n = table.loc[idx, count_name]
+                    values_array[f"{city}"] = value_n 
+                return {'status': status_array, 'values': values_array}
+
+
+            def generate_counts_before_after(table_origin, table_after, stats_type, stats_field, groupby_fields, cities):                    
+                # Summary for original table:
+                summary_original = summary_field_by_count(table_origin, stats_type, stats_field, groupby_fields, cities)
+
+                # Summary for updated table:
+                summary_after = summary_field_by_count(table_after, stats_type, stats_field, groupby_fields, cities)
+                
+                return {"original": summary_original, "after": summary_after}
+
+
+            def calculate_differene_before_after(table_origin, table_after, stats_type, stats_field, groupby_fields, discarded_city=None):
+                groupby_fields = [groupby_fields, stats_field]
+                cities = set(table_origin[renamed_city])
+                cities.discard(discarded_city)
+            
+                stats = generate_counts_before_after(table_origin, table_after, stats_type, stats_field, groupby_fields, cities)
+                # Generate an array for difference in counts between original table and updated table
+
+                comp = pd.DataFrame(columns=['Municipality', 'status', 'rap','gis', 'diff'])
+                for city in cities:
+                    val_original = [stats['original']['values'][city]]
+                    val_after = [stats['after']['values'][city]]
+                    diff = (np.array(val_original) - np.array(val_after))[0]
+
+                    if stats_type == 'count':
+                        status_original = [stats['original']['status'][city]]
+                        status_after = [stats['after']['status'][city]]
+                    
+                        for vo, va, so, sa, diff in zip(val_original, val_after, status_original, status_after, diff):
+                            temp = pd.DataFrame({'status': np.array(so),'rap': np.array(vo), 'gis': np.array(va), 'diff': np.array(diff)})
+                            temp['Municipality'] = city
+                            comp = pd.concat([comp, temp])
+                    else:
+                        for vo, va, diff in zip(val_original, val_after, diff):
+                            temp = pd.DataFrame({'rap': np.array(vo), 'gis': np.array(va), 'diff': np.array(diff)})
+                            temp['Municipality'] = city
+                            comp = pd.concat([comp, temp])
+                return comp
+            
             # Read as xlsx
             rap_table_origin = pd.read_excel(rap_lot_ms)
             rap_table = pd.read_excel(rap_lot_ms)
@@ -415,12 +484,9 @@ class UpdateLot(object):
             scale_field = 'Scale'
             renamed_city = 'Municipality'
 
-            count_name = 'counts'
-            counts_rap = count_name + '_RAP'
-            counts_gis = count_name + '_GIS'
-            sum_name = 'sum'
-            sum_rap = sum_name + '_RAP'
-            sum_gis = sum_name + '_GIS'
+            # Define numeric and string fields
+            numeric_fields_common = [total_area_field, affected_area_field, remaining_area_field, handedover_area_field, handedover_field, priority_field, statusla_field, moa_field, pte_field]
+            to_string_fields = [joinField, package_field]
 
             # Create backup files
             try:
@@ -432,13 +498,12 @@ class UpdateLot(object):
             duplicated_Ids = rap_table[rap_table.duplicated([joinField]) == True][joinField]
 
             if len(duplicated_Ids) == 0:
+                ## Extract city or municipality field for renaming
                 column_names = rap_table.columns
                 city_field = [field for field in column_names if re.search('City|Municipal', field)][0]
                 column_indices = {name: i for i, name in enumerate(column_names)}
-                numeric_fields_common = [total_area_field, affected_area_field, remaining_area_field, handedover_area_field, handedover_field, priority_field, statusla_field, moa_field, pte_field]
-                to_string_fields = [joinField, package_field]
 
-                # Rename Municipality
+                ## Rename Municipality
                 if proj == 'N2':
                     municipal_col_index = column_indices[city_field]
                     to_numeric_fields = numeric_fields_common + [endorsed_field]
@@ -447,9 +512,10 @@ class UpdateLot(object):
                     to_numeric_fields = numeric_fields_common
 
                 rap_table = rap_table.rename(columns={column_names[municipal_col_index]: renamed_city})
+                rap_table_origin = rap_table_origin.rename(columns={column_names[municipal_col_index]: renamed_city})
                 
-                cols = rap_table.columns
-                non_match_col = non_match_elements(to_numeric_fields, cols)
+        
+                non_match_col = non_match_elements(to_numeric_fields, column_names)
                 [to_numeric_fields.remove(non_match_col[0]) if non_match_col else arcpy.AddMessage('no need to remove field from the list for numeric conversion')]
 
                 for field in to_numeric_fields:
@@ -469,10 +535,8 @@ class UpdateLot(object):
                     rap_table[package_field] = rap_table[package_field].str.replace(r'N','N-',regex=True)
 
                 else:
-                    # rap_table[package_field] = rap_table[package_field].str.replace(r'S','S-',regex=True)
-                    rap_table[package_field] = rap_table[package_field].replace(r'3A|3A|3a', '3a',regex=True)
-                    rap_table[package_field] = rap_table[package_field].replace(r'3B|3B|3b', '3b',regex=True)
-                    rap_table[package_field] = rap_table[package_field].replace(r'3C|3C|3c', '3c',regex=True)
+                    rap_table = reformat_cp_label(rap_table, package_field)
+
                     
                     # Conver the following LotIDs to S-01
                     ## 10155, 10156, 10158-5
@@ -487,13 +551,6 @@ class UpdateLot(object):
                     idx = rap_table.index[rap_table[joinField].str.contains(r'^100003$|^100004$|^100005$|^100010$',regex=True,na=False)]
                     rap_table.loc[idx, package_field] = 'S-06'
 
-                rap_table[package_field] = rap_table[package_field].apply(lambda x: re.sub(r',.*','',x))
-
-                ## for stats
-                rap_table_origin[package_field] = rap_table_origin[package_field].replace(r'3A|3A|3a', '3a',regex=True)
-                rap_table_origin[package_field] = rap_table_origin[package_field].replace(r'3B|3B|3b', '3b',regex=True)
-                rap_table_origin[package_field] = rap_table_origin[package_field].replace(r'3C|3C|3c', '3c',regex=True)
-                rap_table_origin[package_field] = rap_table_origin[package_field].apply(lambda x: re.sub(r',.*','',x))
                     
                 # Conver to date   
                 to_date_fields = [handover_date_field, handedover_date_field]
@@ -557,59 +614,27 @@ class UpdateLot(object):
 
                 arcpy.AddMessage("The master list was successfully exported.")
 
-                ##############################################################################
-                # Create summary statistics between rap_table and updated GIS table to confirm matching.
-                # Count each status for each municipality
-                ### 1.0. StatusLA = 0 -> NA          
-                ## 1.0.1. rap_table (before updating)
-                colname_change = rap_table_origin.columns[rap_table_origin.columns.str.contains('|'.join([city_field, rap_muni_field]))]
-                rap_table_origin = rap_table_origin.rename(columns={str(colname_change[0]): renamed_city})
-                rap_table_origin = first_letter_capital(rap_table_origin, [renamed_city])
+                #*****************************************************************************************
+                # Create summary statistics between rap_table and updated GIS table to confirm matching #
+                #*****************************************************************************************
+                rap_table_origin = reformat_cp_label(rap_table_origin, package_field)
+
                 
-                id = rap_table_origin.index[rap_table_origin[statusla_field] == 0]
-                rap_table_origin.loc[id, statusla_field] = np.nan
+                ## Compare the number of status events for each municipality between original rap table and updated table
+                statusla_stats = calculate_differene_before_after(rap_table_origin, rap_table, 'count', statusla_field, renamed_city, 'Mabalacat')
+                handedover_stats = calculate_differene_before_after(rap_table_origin, rap_table, 'count', handedover_field, renamed_city, 'Mabalacat')
 
-                groupby_fields = [renamed_city, statusla_field]
-                rap_table0_stats = rap_table_origin.groupby(groupby_fields)[statusla_field].count().reset_index(name=count_name)
-                rap_table0_stats = rap_table0_stats.sort_values(by=groupby_fields)
-
-                ## 1.0.2. Updated rap_table (After updating)
-                ### Count each status for each Municipality
-                rap_table1_stats = rap_table.groupby(groupby_fields)[statusla_field].count().reset_index(name=count_name)
-                rap_table1_stats = rap_table1_stats.sort_values(by=groupby_fields)
-
-                ## 1.0.3. Merge
-                # table_stats = rap_table0_stats.join(rap_table1_stats, lsuffix=lsuffix_rap, rsuffix=rsuffix_gis)
-                table_stats = pd.merge(left=rap_table0_stats, right=rap_table1_stats, how='outer', left_on=[renamed_city, statusla_field], right_on=[renamed_city, statusla_field])
-                table_stats['count_diff'] = np.nan
-                table_stats['count_diff'] = table_stats['counts_y'] - table_stats['counts_x']
-                table_stats = table_stats.rename(columns={"counts_x": str(counts_rap), "counts_y": str(counts_gis)})
-            
-                ### 2.0. HandedOver = 1
-                ## 2.0.1. Original rap_table (before updating)
-                id = rap_table_origin.index[rap_table_origin[handedover_field] == 1]
-                groupby_fields = [renamed_city, handedover_field]
-                rap_table0_stats = rap_table_origin.groupby(groupby_fields)[handedover_field].count().reset_index(name=count_name)
-                rap_table0_stats = rap_table0_stats.sort_values(by=groupby_fields)
-
-                ## 2.0.2. Updated rap_table (After updating)
-                rap_table1_stats = rap_table.groupby(groupby_fields)[handedover_field].count().reset_index(name=count_name)
-                rap_table1_stats = rap_table1_stats.sort_values(by=groupby_fields)
-
-                ## 2.0.3. Merge
-                # table_stats_handedover = rap_table0_stats.join(rap_table1_stats, lsuffix=lsuffix_rap, rsuffix=rsuffix_gis)
-                table_stats_handedover = pd.merge(left=rap_table0_stats, right=rap_table1_stats, how='outer', left_on=[renamed_city, handedover_field], right_on=[renamed_city, handedover_field])
-                table_stats_handedover['count_diff'] = np.nan
-                table_stats_handedover["count_diff"] = table_stats_handedover['counts_y'] - table_stats_handedover['counts_x']
-                table_stats_handedover = table_stats_handedover.rename(columns={"counts_x": str(counts_rap), "counts_y": str(counts_gis)})
+                ## Compare total affected area for each municipality between original rap table and updated table
+                affectedarea_stats = calculate_differene_before_after(rap_table_origin, rap_table, 'sum', affected_area_field, renamed_city)
 
                 ### 3.0. Export summary statistics table
                 file_name_stats = 'CHECK-' + proj + '_LA_Summary_Statistics_Rap_and_GIS_ML.xlsx'
                 to_excel_file0 = os.path.join(gis_dir, file_name_stats)
 
                 with pd.ExcelWriter(to_excel_file0) as writer:
-                    table_stats.to_excel(writer, sheet_name=statusla_field, index=False)
-                    table_stats_handedover.to_excel(writer, sheet_name=handedover_field, index=False)
+                    statusla_stats.to_excel(writer, sheet_name=statusla_field, index=False)
+                    handedover_stats.to_excel(writer, sheet_name=handedover_field, index=False)
+                    affectedarea_stats.to_excel(writer, sheet_name=affected_area_field, index=False)
 
             else:
                 arcpy.AddMessage(duplicated_Ids)

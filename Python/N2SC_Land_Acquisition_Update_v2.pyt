@@ -2366,7 +2366,7 @@ class CheckLotUpdatedStatusGIS(object):
         statusla_stats = s_statusla.process_data_before_after()
 
         # HandedOver
-        s_handedover = summaryStatistics(gis_table, gis_portal, "count", handedover_field, [municipality_field, statusla_field], discarded_city='Mabalacat')
+        s_handedover = summaryStatistics(gis_table, gis_portal, "count", handedover_field, [municipality_field, handedover_field], discarded_city='Mabalacat')
         handedover_stats = s_handedover.process_data_before_after()
 
         # Export the updated GIS portal to excel sheet for checking lot IDs

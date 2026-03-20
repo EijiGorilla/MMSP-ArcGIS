@@ -10,12 +10,179 @@ import re
 import string
 import openpyxl
 
+#-----------------------------------#
+## Define user functions anc class ##
+#-----------------------------------#
+def unique(lists):
+    collect = []
+    unique_list = pd.Series(lists).drop_duplicates().tolist()
+    for x in unique_list:
+        collect.append(x)
+    return(collect)
+
+## 3. Return non-matched values between two lists
+def non_match_elements(list_a, list_b):
+    non_match = []
+    for i in list_a:
+        if i not in list_b:
+            non_match.append(i)
+    return non_match
+
+def first_letter_capital(table, column_names): # column_names are list
+    for name in column_names:
+        table[name] = table[name].str.title()
+    return table
+
+def reformat_cp_label(table, cp_field):
+    table[cp_field] = table[cp_field].replace(r'3A|3A|3a', '3a',regex=True)
+    table[cp_field] = table[cp_field].replace(r'3B|3B|3b', '3b',regex=True)
+    table[cp_field] = table[cp_field].replace(r'3C|3C|3c', '3c',regex=True)
+    table[cp_field] = table[cp_field].apply(lambda x: re.sub(r',.*','',x))
+    return table
+
+def toString(table, to_string_fields):
+    for field in to_string_fields:
+        table[field] = table[field].astype(str)
+        table[field] = table[field].replace(r'\s+', '', regex=True)
+    return table
+
+def find_duplicates_ordered(arr):
+    seen = set()
+    duplicates = set()
+    for item in arr:
+        if item in seen:
+            duplicates.add(item) # Use a set to avoid adding the same duplicate multiple times
+        else:
+            seen.add(item)
+    return list(duplicates)
+
+def remove_underline_hyphen_from_numeric_field(table, fields_list):
+    for field in fields_list:
+        table[field] = table[field].replace(r'^[_-]','',regex=True)
+        return table
+    
+def convert_lotids_to_correct_cp(table, search_field, lotids, cp_field, new_cp):
+    ids= table.index[table[search_field].str.contains(rf"{lotids}",regex=True,na=False)]
+    table.loc[ids, cp_field] = new_cp
+    return table
+
+def flatten_extend(matrix):
+    flat_list = []
+    for row in matrix:
+        row = [re.sub(r'\s+','',e) for e in row]
+        flat_list.extend(row)
+    return flat_list
+
+def remove_empty_strings(string_list):
+    return [string for string in string_list if string]
+
+def unlist_brackets(nested_list): ## Remove nested list in a list
+    return [item for sublist in nested_list for item in sublist]
+
+### Pier Workability
+def extract_ids_for_assign_obstruction(proj, table, field, field2=None):
+    if proj == 'N2':
+        table = table.dropna(subset=[field]).reset_index(drop=True)
+        table[field] = table[field].astype(str)
+        table[field] = table[field].str.lstrip(',')
+        ids_flat = flatten_extend(table[field].str.split(','))          
+        ids = unique(ids_flat)
+        ids = remove_empty_strings(ids)
+    else:
+        ids = table.index[table[field] == 1]
+        ids_flat = flatten_extend(table.loc[ids, field2].str.split(","))
+        ids = unique(ids_flat)
+        ids = remove_empty_strings(ids)
+    return ids
+
+def summary_statistics_count_ids(cp, rap_ids, gisml_ids, gisportal_ids):
+    noids_rap_vs_gisml = ",".join(non_match_elements(rap_ids, gisml_ids))
+    noids_rap_vs_gisportal = ",".join(non_match_elements(rap_ids, gisportal_ids))
+    rap_vs_gisml = len(rap_ids) - len(gisml_ids)
+    rap_vs_gisportal = len(rap_ids) - len(gisportal_ids)
+    table = pd.DataFrame({'CP': cp,
+                            'rap': len(rap_ids),
+                            'gis_ml': len(gisml_ids),
+                            'gis_portal': len(gisportal_ids),
+                            'rap_vs_gisml': rap_vs_gisml,
+                            'rap_vs_gisportal': rap_vs_gisportal,
+                            'noIDs_rap_vs_gisml': noids_rap_vs_gisml,
+                            'noIDs_rap_vs_gisportal': noids_rap_vs_gisportal,
+                            })
+    # Add remarks
+    if len(noids_rap_vs_gisml) > 0:
+        table['remark'] = f"**{noids_rap_vs_gisml} were manually assigned 'Yes' in the Obstruction field of GIS_N2_Land_ML.xlsx."
+    return [table, rap_vs_gisml]
+
+### Custom class for generating a summary statistics table
+def summary_by_field(table, stats_type, stats_field, groupby_fields, cities):
+    count_name = 'temp'
+    if stats_type == 'count':
+        table = table.groupby(groupby_fields)[stats_field].count().reset_index(name=count_name)
+        table = table.sort_values(by=groupby_fields)
+    else:
+        table = table.groupby(groupby_fields)[stats_field].sum().reset_index(name=count_name)
+    values_array = {}
+    status_array = {}
+    for city in cities:
+        idx = table.query(f"{groupby_fields[0]} == '{city}'").index
+        if stats_type == 'count':
+            status_n = table.loc[idx, stats_field].astype(int)
+            status_array[f"{city}"] = status_n
+        
+        value_n = table.loc[idx, count_name]
+        values_array[f"{city}"] = value_n 
+    return {'status': status_array, 'values': values_array}
+
+class summaryStatistics():
+    # Make sure to use a list for groupby_fields
+    def __init__(self, table_before, table_after, stats_type, stats_field, groupby_fields, discarded_city=None):
+        self.tb = table_before
+        self.ta = table_after
+        self.stat_tp = stats_type
+        self.stat_fd = stats_field
+        self.gpby_fds = groupby_fields
+        self.disc_city = discarded_city
+
+    def process_data_before_after(self):
+        cities = set(self.tb[self.gpby_fds[0]])
+        cities.discard(self.disc_city)
+
+        def calculate_summary():
+            summary_before = summary_by_field(self.tb, self.stat_tp, self.stat_fd, self.gpby_fds, cities)
+            summary_after = summary_by_field(self.ta, self.stat_tp, self.stat_fd, self.gpby_fds, cities)
+            return {"original": summary_before, "after": summary_after}
+
+        def calculate_differene_before_after():
+            stats = calculate_summary()
+            comp = pd.DataFrame(columns=['Municipality', 'status', 'rap','gis', 'diff'])
+            for city in cities:
+                valo = stats['original']['values'][city]
+                vala = stats['after']['values'][city]
+                diff = (np.array(valo) - np.array(vala))
+        
+                if self.stat_tp == 'count':
+                    sto = stats['original']['status'][city]
+                    temp = pd.DataFrame({'status': np.array(sto),'rap': np.array(valo), 'gis': np.array(vala), 'diff': np.array(diff)})
+                    temp['Municipality'] = city
+                    comp = pd.concat([comp, temp])
+            
+                else:
+                    temp = pd.DataFrame({'rap': np.array(valo), 'gis': np.array(vala), 'diff': np.array(diff)})
+                    temp['Municipality'] = city
+                    comp = pd.concat([comp, temp])
+            return comp
+    
+        s_table = calculate_differene_before_after()
+        return s_table
+
+
 class Toolbox(object):
     def __init__(self):
         self.label = "UpdateLandAcquisition"
         self.alias = "UpdateLandAcquisition"
-        self.tools = [RestoreScaleForLot, JustMessage1, CompileRAPtables, UpdateLot, UpdateISF, UpdateStructure, UpdateBarangay,
-                      JustMessage10, N2UpdateWorkablePierLandTable, N2UpdateWorkablePierStructureTable, SCUpdateWorkablePierLandTable, SCUpdateWorkablePierStructureTable,
+        self.tools = [RestoreScaleForLot, JustMessage1, CompileRAPtables, UpdateLot, UpdateISF, UpdateStructure,
+                      JustMessage10, AddObstructionToLotN2, AddObstructionToStructureN2, AddObstructionToLotSC, AddObstructionToStructureSC,
                       JustMessage2, UpdateLotGIS, UpdateStructureGIS, UpdateBarangayGIS,
                       JustMessage3, CheckLotUpdatedStatusGIS, CheckStructureUpdatedStatusGIS, CheckIsfUpdatedStatusGIS,
                       JustMessage4, CheckMissingLotIDs, CheckMissingStructureIDs, CheckMissingIsfIDs
@@ -70,12 +237,8 @@ class RestoreScaleForLot(object):
             target_table = pd.read_excel(target_lot_ms)
 
             joinField = 'LotID'
-
-            # Convert to numeric
             transfer_field = "Scale"
 
-            target_table.head()
-            # remove all spaces if any
             target_table[transfer_field] = target_table[transfer_field].replace(r'\s+|[^\w\s]', '', regex=True)
             target_table[transfer_field] = pd.to_numeric(target_table[transfer_field])
 
@@ -130,33 +293,13 @@ class CompileRAPtables(object):
         rap_ml_dir = params[1].valueAsText
 
         def N2SC_Compile_RAP_tables():
-            def toString(table, to_string_fields):
-                for field in to_string_fields:
-                    table[field] = table[field].astype(str)
-                    # table[field] = table[field].replace(r'\s+|^\w\s$','',regex=True)
-                    table[field] = table[field].replace(r'\s+', '', regex=True)
-                return table
-
-            def first_letter_capital(table, column_names): # column_names are list
-                for name in column_names:
-                    table[name] = table[name].str.title()
-                return table
-            
-            def find_duplicates_ordered(arr):
-                seen = set()
-                duplicates = set()
-                for item in arr:
-                    if item in seen:
-                        duplicates.add(item) # Use a set to avoid adding the same duplicate multiple times
-                    else:
-                        seen.add(item)
-                return list(duplicates)
-                
+              
             lotid_field = 'LotID'
             status_field = 'StatusLA'
             handedOverArea_field = 'HandedOverArea'
             handedOverDate_field = 'HandedOverDate'
             affectedArea_field = 'AffectedArea'
+            totalarea_field = 'TotalArea'
             note_field = 'note'
             
             # Read and compile a list of RAP ML files from each directory:
@@ -166,19 +309,20 @@ class CompileRAPtables(object):
         
             # Each ML is merged with the latest ML
             yyyymm_latest = os.path.basename(rap_files[-1])[:8]
-            arcpy.AddMessage(rap_files[-1])
             latest_ml = pd.read_excel(rap_files[-1])
+            latest_ml = remove_underline_hyphen_from_numeric_field(latest_ml, [affectedArea_field, totalarea_field])
+
             latest_ml = toString(latest_ml, [lotid_field])
             latest_ml['x' + yyyymm_latest] = latest_ml[status_field]
             latest_ml['x' + yyyymm_latest + '_HOA'] = latest_ml[handedOverArea_field] # HOA: Handed-Over Area
             latest_ml['x' + yyyymm_latest + '_TAA'] = latest_ml[affectedArea_field] # TAA: Total Affected Area
             latest_ml[note_field] = ""
-            latest_ml[lotid_field] = latest_ml[lotid_field].astype(str)
 
             # compiled_ml = pd.DataFrame()
             for file in rap_files[:-1]:
                 arcpy.AddMessage(f"Check input table: {file}")
                 table0 = pd.read_excel(file)
+                table0 = remove_underline_hyphen_from_numeric_field(table0, [affectedArea_field, totalarea_field])
                 table0 = toString(table0, [lotid_field])
                 yyyymm = os.path.basename(file)[:8]
 
@@ -352,118 +496,9 @@ class UpdateLot(object):
         #arcpy.env.addOutputsToMap = True
 
         def N2SC_Land_Update():
-            # Definitions
-            if proj == 'N2':
-                cp_suffix = 'N-'
-            else:
-                cp_suffix = 'S-'
-
-            ## 2. Return unique values
-            def unique(lists):
-                collect = []
-                unique_list = pd.Series(lists).drop_duplicates().tolist()
-                for x in unique_list:
-                    collect.append(x)
-                return(collect)
-            
-            ## 3. Return non-matched values between two lists
-            def non_match_elements(list_a, list_b):
-                non_match = []
-                for i in list_a:
-                    if i not in list_b:
-                        non_match.append(i)
-                return non_match
-            
-            def toString(table, to_string_fields):
-                for field in to_string_fields:
-                    table[field] = table[field].astype(str)
-                    table[field] = table[field].replace(r'\s+|^\w\s$','',regex=True)
-                return table
-
-            def first_letter_capital(table, column_names): # column_names are list
-                for name in column_names:
-                    table[name] = table[name].str.title()
-                return table
-            
-            def reformat_cp_label(table, cp_field):
-                table[cp_field] = table[cp_field].replace(r'3A|3A|3a', '3a',regex=True)
-                table[cp_field] = table[cp_field].replace(r'3B|3B|3b', '3b',regex=True)
-                table[cp_field] = table[cp_field].replace(r'3C|3C|3c', '3c',regex=True)
-                table[cp_field] = table[cp_field].apply(lambda x: re.sub(r',.*','',x))
-                return table
-            
-            ## Definition for calculating summary statistics
-            def summary_field_by_count(table, stats_type, stats_field, groupby_fields, cities):
-                count_name = 'temp'
-                if stats_type == 'count':
-                    table = table.groupby(groupby_fields)[stats_field].count().reset_index(name=count_name)
-                    table = table.sort_values(by=groupby_fields)
-                else:
-                    ## For sum, stats_field should not be included in groupby_fields
-                    groupby_fields = groupby_fields[0]
-                    table = table.groupby(groupby_fields)[stats_field].sum().reset_index(name=count_name)
-                values_array = {}
-                status_array = {}
-                for city in cities:
-                    idx = table.query(f"{renamed_city} == '{city}'").index
-                    if stats_type == 'count':
-                        status_n = table.loc[idx, stats_field].astype(int)
-                        status_array[f"{city}"] = status_n
-                    
-                    value_n = table.loc[idx, count_name]
-                    values_array[f"{city}"] = value_n 
-                return {'status': status_array, 'values': values_array}
-
-
-            def generate_counts_before_after(table_origin, table_after, stats_type, stats_field, groupby_fields, cities):                    
-                # Summary for original table:
-                summary_original = summary_field_by_count(table_origin, stats_type, stats_field, groupby_fields, cities)
-
-                # Summary for updated table:
-                summary_after = summary_field_by_count(table_after, stats_type, stats_field, groupby_fields, cities)
-                
-                return {"original": summary_original, "after": summary_after}
-
-
-            def calculate_differene_before_after(table_origin, table_after, stats_type, stats_field, groupby_fields, discarded_city=None):
-                groupby_fields = [groupby_fields, stats_field]
-                cities = set(table_origin[renamed_city])
-                cities.discard(discarded_city)
-            
-                stats = generate_counts_before_after(table_origin, table_after, stats_type, stats_field, groupby_fields, cities)
-                # Generate an array for difference in counts between original table and updated table
-
-                comp = pd.DataFrame(columns=['Municipality', 'status', 'rap','gis', 'diff'])
-                for city in cities:
-                    val_original = [stats['original']['values'][city]]
-                    val_after = [stats['after']['values'][city]]
-                    diff = (np.array(val_original) - np.array(val_after))[0]
-
-                    if stats_type == 'count':
-                        status_original = [stats['original']['status'][city]]
-                        status_after = [stats['after']['status'][city]]
-                    
-                        for vo, va, so, sa, diff in zip(val_original, val_after, status_original, status_after, diff):
-                            temp = pd.DataFrame({'status': np.array(so),'rap': np.array(vo), 'gis': np.array(va), 'diff': np.array(diff)})
-                            temp['Municipality'] = city
-                            comp = pd.concat([comp, temp])
-                    else:
-                        for vo, va, diff in zip(val_original, val_after, diff):
-                            temp = pd.DataFrame({'rap': np.array(vo), 'gis': np.array(va), 'diff': np.array(diff)})
-                            temp['Municipality'] = city
-                            comp = pd.concat([comp, temp])
-                return comp
-            
-            # Read as xlsx
-            rap_table_origin = pd.read_excel(rap_lot_ms)
-            rap_table = pd.read_excel(rap_lot_ms)
-            gis_table = pd.read_excel(gis_lot_ms)
 
             # Join Field & Define all fields
             joinField = 'LotID'
-            # rap_n2city_field = 'City/Municipality'
-            # rap_sccity_field = 'City'
-            rap_muni_field = 'Munici'
             package_field = 'CP'
             land_use_field = 'LandUse'
             endorsed_field = 'Endorsed'
@@ -473,8 +508,6 @@ class UpdateLot(object):
             handedover_area_field = 'HandedOverArea'
             handedover_field = 'HandedOver'
             handover_date_field = 'HandOverDate'
-            target_actual_field = 'TargetActual'
-            target_actual_date_field = 'TargetActualDate'
             handedover_date_field = 'HandedOverDate'
             percent_handedover_area_field = 'percentHandedOver'
             priority_field = 'Priority'
@@ -488,17 +521,22 @@ class UpdateLot(object):
             numeric_fields_common = [total_area_field, affected_area_field, remaining_area_field, handedover_area_field, handedover_field, priority_field, statusla_field, moa_field, pte_field]
             to_string_fields = [joinField, package_field]
 
+            # Import excel files
+            rap_table_origin = pd.read_excel(rap_lot_ms)
+            rap_table = pd.read_excel(rap_lot_ms)
+            gis_table = pd.read_excel(gis_lot_ms)
+
             # Create backup files
             try:
                 gis_table.to_excel(os.path.join(gis_bakcup_dir, lastupdate + "_" + proj + "_Land_Status.xlsx"), index=False)
             except Exception:
                 arcpy.AddMessage('You did not choose to create a backup file of {0} master list.'.format(proj + '_Land_Status'))
 
-            # If there are duplicated observations in RAP table, stop the process and exit
+            # Check duplicated LotID
             duplicated_Ids = rap_table[rap_table.duplicated([joinField]) == True][joinField]
 
             if len(duplicated_Ids) == 0:
-                ## Extract city or municipality field for renaming
+                ## Create column indices
                 column_names = rap_table.columns
                 city_field = [field for field in column_names if re.search('City|Municipal', field)][0]
                 column_indices = {name: i for i, name in enumerate(column_names)}
@@ -513,11 +551,10 @@ class UpdateLot(object):
 
                 rap_table = rap_table.rename(columns={column_names[municipal_col_index]: renamed_city})
                 rap_table_origin = rap_table_origin.rename(columns={column_names[municipal_col_index]: renamed_city})
-                
-        
                 non_match_col = non_match_elements(to_numeric_fields, column_names)
                 [to_numeric_fields.remove(non_match_col[0]) if non_match_col else arcpy.AddMessage('no need to remove field from the list for numeric conversion')]
 
+                ## Convert to numeric 
                 for field in to_numeric_fields:
                     # you need to keep [] a set of characters in regex; otherwise, error.
                     rap_table[field] = rap_table[field].replace(r'\s+|[^\w\s$]','',regex=True)
@@ -526,33 +563,22 @@ class UpdateLot(object):
                     rap_table_origin[field] = rap_table_origin[field].replace(r'\s+|[^\w\s$]','',regex=True)
                     rap_table_origin[field] = pd.to_numeric(rap_table_origin[field])
                     
-                # Conver to string
+                ## Conver to string
                 rap_table = toString(rap_table, to_string_fields)
                 rap_table_origin = toString(rap_table_origin, to_string_fields)
+                gis_table[joinField] = gis_table[joinField].astype(str)
 
-                # Reformat CP
+                ## Reformat CP
                 if proj == 'N2':
                     rap_table[package_field] = rap_table[package_field].str.replace(r'N','N-',regex=True)
-
                 else:
                     rap_table = reformat_cp_label(rap_table, package_field)
 
+                    rap_table = convert_lotids_to_correct_cp(rap_table, joinField, '10155|10156|10158-5', package_field, "S-01")
+                    rap_table = convert_lotids_to_correct_cp(rap_table, joinField, '60136-A', package_field, "S-04")
+                    rap_table = convert_lotids_to_correct_cp(rap_table, joinField, '^100003$|^100004$|^100005$|^100010$', package_field, "S-06")
                     
-                    # Conver the following LotIDs to S-01
-                    ## 10155, 10156, 10158-5
-                    ids = rap_table.index[rap_table[joinField].str.contains(r'10155|10156|10158-5',regex=True,na=False)]
-                    rap_table.loc[ids, package_field] = 'S-01'
-
-                    # Convert the following LotIDs to S-04
-                    idx = rap_table.index[rap_table[joinField] == '60136-A']
-                    rap_table.loc[idx, package_field] = 'S-04'
-
-                    # Convert the following LotIDs to S-06
-                    idx = rap_table.index[rap_table[joinField].str.contains(r'^100003$|^100004$|^100005$|^100010$',regex=True,na=False)]
-                    rap_table.loc[idx, package_field] = 'S-06'
-
-                    
-                # Conver to date   
+                # Convert to date   
                 to_date_fields = [handover_date_field, handedover_date_field]
                 for field in to_date_fields:
                     rap_table[field] = pd.to_datetime(rap_table[field],errors='coerce').dt.date
@@ -571,8 +597,8 @@ class UpdateLot(object):
                 lot_gis_scale = gis_table[[scale_field, joinField]]
                 rap_table = pd.merge(left=rap_table, right=lot_gis_scale, how='left', left_on=joinField, right_on=joinField, validate="one_to_one")
 
-                # Check and Fix StatusLA, HandedOverDate, HandOverDate, and HandedOverArea
-                ## 1. StatusLA =0 -> StatusLA = empty
+                # Fix StatusLA
+                ## StatusLA =0 -> StatusLA = empty
                 rap_table.loc[rap_table.query(f'{statusla_field} == 0').index, statusla_field] = None
 
                 ## 4. if the first row is empty, temporarily add the first row for 'HandedOverDate' and 'HandOverDate'
@@ -587,26 +613,6 @@ class UpdateLot(object):
                 # Calculate percent handed-over
                 rap_table[percent_handedover_area_field] = round((rap_table[handedover_area_field] / rap_table[affected_area_field])*100,0)
 
-                ## 6. Fill HandOverDateTarget (only N2 as of Jan.26, 2025)
-                ### For creating cumulative monthly bar chart for target (HandOverDate) and handed-over (HandedOver = 1)
-                ### HandOverDateTarget = 1 (HandedOver =  0 & HandOverDate is not null)
-                rap_table[target_actual_field] = 0
-                rap_table[target_actual_date_field] = ""
-                rap_table[target_actual_date_field] = pd.to_datetime(rap_table[target_actual_date_field],errors='coerce').dt.date
-
-                # 'TargetActual':  Target = 1, Actual = 2
-                ## Enter for actual
-                id = rap_table.query(f"{handedover_field} == 1").index
-                rap_table.loc[id, target_actual_field] = 2
-                rap_table.loc[id, target_actual_date_field] = rap_table[handedover_date_field]
-
-                # Enter for target
-                id = rap_table.query(f"{handedover_field} == 0 and {handover_date_field}.notna()").index
-                rap_table.loc[id, target_actual_field] = 1
-                rap_table.loc[id, target_actual_date_field] = rap_table[handover_date_field]
-
-                rap_table[target_actual_date_field] = pd.to_datetime(rap_table[target_actual_date_field],errors='coerce').dt.date
-
                 # Export
                 export_file_name = os.path.splitext(os.path.basename(gis_lot_ms))[0]
                 to_excel_file = os.path.join(gis_dir, export_file_name + ".xlsx")
@@ -618,20 +624,25 @@ class UpdateLot(object):
                 # Create summary statistics between rap_table and updated GIS table to confirm matching #
                 #*****************************************************************************************
                 rap_table_origin = reformat_cp_label(rap_table_origin, package_field)
-
                 
-                ## Compare the number of status events for each municipality between original rap table and updated table
-                statusla_stats = calculate_differene_before_after(rap_table_origin, rap_table, 'count', statusla_field, renamed_city, 'Mabalacat')
-                handedover_stats = calculate_differene_before_after(rap_table_origin, rap_table, 'count', handedover_field, renamed_city, 'Mabalacat')
+                ## Count of statusLA by municipality
+                s_statusla = summaryStatistics(rap_table_origin, rap_table, "count", statusla_field, [renamed_city, statusla_field], discarded_city='Mabalacat')
+                statusla_stats = s_statusla.process_data_before_after()
 
-                ## Compare total affected area for each municipality between original rap table and updated table
-                affectedarea_stats = calculate_differene_before_after(rap_table_origin, rap_table, 'sum', affected_area_field, renamed_city)
+                ## Count of handed-over lots
+                s_handedover = summaryStatistics(rap_table_origin, rap_table, "count", handedover_field, [renamed_city, statusla_field], discarded_city='Mabalacat')
+                handedover_stats = s_handedover.process_data_before_after()
+
+                ## Total affected area by Municipality
+                s_affectedarea = summaryStatistics(rap_table_origin, rap_table, "sum", affected_area_field, [renamed_city], discarded_city=None)
+                affectedarea_stats = s_affectedarea.process_data_before_after()
 
                 ### 3.0. Export summary statistics table
                 file_name_stats = 'CHECK-' + proj + '_LA_Summary_Statistics_Rap_and_GIS_ML.xlsx'
                 to_excel_file0 = os.path.join(gis_dir, file_name_stats)
 
                 with pd.ExcelWriter(to_excel_file0) as writer:
+                    statusla_stats.to_excel(writer, sheet_name=statusla_field, index=False)
                     statusla_stats.to_excel(writer, sheet_name=statusla_field, index=False)
                     handedover_stats.to_excel(writer, sheet_name=handedover_field, index=False)
                     affectedarea_stats.to_excel(writer, sheet_name=affected_area_field, index=False)
@@ -714,43 +725,8 @@ class UpdateISF(object):
         lastupdate = params[5].valueAsText
 
         arcpy.env.overwriteOutput = True
-        #arcpy.env.addOutputsToMap = True
-        def N2SC_ISF_Update():
-            ## 2. Return unique values
-            def unique(lists):
-                collect = []
-                unique_list = pd.Series(lists).drop_duplicates().tolist()
-                for x in unique_list:
-                    collect.append(x)
-                return(collect)
-            
-            ## 3. Return non-matched values between two lists
-            def non_match_elements(list_a, list_b):
-                non_match = []
-                for i in list_a:
-                    if i not in list_b:
-                        non_match.append(i)
-                return non_match
-            
-            def toString(table, to_string_fields):
-                for field in to_string_fields:
-                    table[field] = table[field].astype(str)
-                    table[field] = table[field].replace(r'\s+|^\w\s$','',regex=True)
-                return table
 
-            def first_letter_capital(table, column_names): # column_names are list
-                for name in column_names:
-                    table[name] = table[name].str.title()
-                return table
-            
-            ####################################################
-            # Update Excel Master List Tables
-            ####################################################
-            if proj == 'N2':
-                cp_suffix = 'N-'
-            else:
-                cp_suffix = 'S-'
-        
+        def N2SC_ISF_Update():
             rap_table_stats = pd.read_excel(rap_isf_ms)
             rap_table = pd.read_excel(rap_isf_ms)
             gis_table = pd.read_excel(gis_isf_ms)
@@ -760,10 +736,7 @@ class UpdateISF(object):
             barangay_field = 'Barangay'
             structure_id_field = 'StrucID'
             nlo_status_field = 'StatusRC'
-            cp_field = 'CP'
-            count_name = 'counts'
-            counts_rap = count_name + '_RAP'
-            counts_gis = count_name + '_GIS'
+            package_field = 'CP'
 
             # Create backup files
             try:
@@ -797,24 +770,19 @@ class UpdateISF(object):
                 pass
 
             # force dtypes as string
-            to_string_fields = [municipality_field, barangay_field, structure_id_field, cp_field]
+            to_string_fields = [municipality_field, barangay_field, structure_id_field, package_field]
             for field in to_string_fields:
                 rap_table[field] = rap_table[field].astype(str)
                 rap_table_stats[field] = rap_table_stats[field].astype(str)
 
             # Re-format CP
-            rap_table[cp_field] = rap_table[cp_field].replace(r'03A|3A|3a', '03a',regex=True)
-            rap_table[cp_field] = rap_table[cp_field].replace(r'03B|3B|3b', '03b',regex=True)
-            rap_table[cp_field] = rap_table[cp_field].replace(r'03C|3C|3c', '03c',regex=True)
-
-            rap_table_stats[cp_field] = rap_table_stats[cp_field].replace(r'03A|3A|3a', '03a',regex=True)
-            rap_table_stats[cp_field] = rap_table_stats[cp_field].replace(r'03B|3B|3b', '03b',regex=True)
-            rap_table_stats[cp_field] = rap_table_stats[cp_field].replace(r'03C|3C|3c', '03c',regex=True)
+            rap_table = reformat_cp_label(rap_table, package_field)
+            rap_table_stats = reformat_cp_label(rap_table_stats, package_field)
 
             ## If Projec is N2
             if proj == 'N2':
-                rap_table[cp_field] = rap_table[cp_field].replace(r'N', 'N-',regex=True)
-                rap_table_stats[cp_field] = rap_table_stats[cp_field].replace(r'N', 'N-',regex=True)
+                rap_table[package_field] = rap_table[package_field].replace(r'N', 'N-',regex=True)
+                rap_table_stats[package_field] = rap_table_stats[package_field].replace(r'N', 'N-',regex=True)
 
             # Conver join field (StrucID) to upper case
             rap_table[structure_id_field] = rap_table[structure_id_field].str.upper()
@@ -838,34 +806,21 @@ class UpdateISF(object):
             to_excel_file = os.path.join(gis_dir, export_file_name + ".xlsx")
             rap_table.to_excel(to_excel_file, index=False)
 
-            ##############################################################################
-            # Create summary statistics between original rap_table and updated rap_table
-            ### 1.0. StatusRC = 0 -> NA          
-            ## 1.0.1. Original rap_table (before updating)
-            # For summary stats
+            #*****************************************************************************************
+            # Create summary statistics between rap_table and updated GIS table to confirm matching #
+            #*****************************************************************************************
+            ## Conver StatusRC = 0 -> NA          
             id = rap_table_stats.index[rap_table_stats[nlo_status_field] == 0]
             rap_table_stats.loc[id, nlo_status_field] = np.nan
 
-            groupby_fields = [municipality_field, nlo_status_field]
-            rap_table0_stats = rap_table_stats.groupby(groupby_fields)[nlo_status_field].count().reset_index(name=count_name)
-            rap_table0_stats = rap_table0_stats.sort_values(by=groupby_fields)
+            s_statusla = summaryStatistics(rap_table_stats, rap_table, "count", nlo_status_field, [municipality_field, nlo_status_field])
+            statusla_stats = s_statusla.process_data_before_after()
 
-            ## 1.0.2. Updated rap_table (After updating)
-            rap_table1_stats = rap_table.groupby(groupby_fields)[nlo_status_field].count().reset_index(name=count_name)
-            rap_table1_stats = rap_table1_stats.sort_values(by=groupby_fields)
-
-            ## 1.0.3. Merge
-            # table_stats = rap_table0_stats.join(rap_table1_stats, lsuffix=lsuffix_rap, rsuffix=rsuffix_gis)
-            table_stats = pd.merge(left=rap_table0_stats, right=rap_table1_stats, how='outer', left_on=[municipality_field, nlo_status_field], right_on=[municipality_field, nlo_status_field])
-            table_stats['count_diff'] = np.nan
-            table_stats['count_diff'] = table_stats['counts_y'] - table_stats['counts_x']
-            table_stats = table_stats.rename(columns={"counts_x": str(counts_rap), "counts_y": str(counts_gis)})
-
-            ### 3.0. Export summary statistics table
+            ### Export summary statistics table
             file_name_stats = 'CHECK-' + proj + '_ISF_Summary_Statistics_Rap_and_GIS_ML.xlsx'
             to_excel_file0 = os.path.join(gis_dir, file_name_stats)
 
-            table_stats.to_excel(to_excel_file0, index=False)
+            statusla_stats.to_excel(to_excel_file0, index=False)
 
         N2SC_ISF_Update()
 
@@ -962,47 +917,7 @@ class UpdateStructure(object):
         #arcpy.env.addOutputsToMap = True
 
         def N2SC_Structure_Update():
-            # Definitions
-            if proj == 'N2':
-                cp_suffix = 'N-'
-            else:
-                cp_suffix = 'S-'
-
-            ## 2. Return unique values
-            def unique(lists):
-                collect = []
-                unique_list = pd.Series(lists).drop_duplicates().tolist()
-                for x in unique_list:
-                    collect.append(x)
-                return(collect)
-            
-            ## 3. Return non-matched values between two lists
-            def non_match_elements(list_a, list_b):
-                non_match = []
-                for i in list_a:
-                    if i not in list_b:
-                        non_match.append(i)
-                return non_match
-            
-            ## 4. Return matched elements
-            def match_elements(list_a, list_b):
-                matched = []
-                for i in list_a:
-                    if i in list_b:
-                        matched.append(i)
-                return matched
-            
-            def toString(table, to_string_fields):
-                for field in to_string_fields:
-                    table[field] = table[field].astype(str)
-                    table[field] = table[field].replace(r'\s+|^\w\s$','',regex=True)
-                return table
-
-            def first_letter_capital(table, column_names): # column_names are list
-                for name in column_names:
-                    table[name] = table[name].str.title()
-                return table
-            
+          
             ####################################################
             # Update Excel Master List Tables
             ####################################################
@@ -1018,22 +933,10 @@ class UpdateStructure(object):
             sc1_contsubm = 'ContSubm'
             sc1_subcon = 'Subcon'
             sc1_basic_plan = 'BasicPlan'
-
-            total_area_field = 'TotalArea'
-            affected_area_field = 'AffectedArea'
-            remaining_area_field = 'RemainingArea'
             handover_field = 'HandOver'
             structure_status_field = 'StatusStruc'
-            landowner_status_field = 'Status'
-            moa_field = 'MoA'
-            pte_field = 'PTE'
-            occupancy_field = 'Occupancy'
             structure_use_field = 'StructureUse'
             family_number_field = 'FamilyNumber'
-
-            count_name = 'counts'
-            counts_rap = count_name + '_RAP'
-            counts_gis = count_name + '_GIS'
 
             # Create backup files
             try:
@@ -1052,14 +955,8 @@ class UpdateStructure(object):
                 if proj == 'SC':
                     ## Update SC1_table
                     try:
-                        arcpy.AddMessage("ok0")
                         joinedFields = [joinField, sc1_contsubm, sc1_subcon, sc1_basic_plan]
-
-                        arcpy.AddMessage("ok00")
                         rap_table_sc1 = pd.read_excel(rap_struc_sc1_ms)
-                        
-                        arcpy.AddMessage("ok1")
-                        # Add contractors submission
                         rap_table_sc1[sc1_contsubm] = 1
 
                         # Conver to string with white space removal and uppercase
@@ -1068,21 +965,15 @@ class UpdateStructure(object):
 
                         rap_table[joinField] = rap_table[joinField].apply(lambda x: x.upper())
                         rap_table_sc1[joinField] = rap_table_sc1[joinField].apply(lambda x: x.upper())
-                        
-                        arcpy.AddMessage("ok4")
 
                         # Filter fields
                         rap_table_sc1 = rap_table_sc1[joinedFields]
                         rap_table = rap_table.drop(joinedFields[2:], axis=1)
-                        
-                        arcpy.AddMessage("ok5")
-
+        
                         # Left join
                         rap_table[joinField] = rap_table[joinField].astype(str)
                         rap_table_sc1[joinField] = rap_table_sc1[joinField].astype(str)
                         rap_table = pd.merge(left=rap_table, right=rap_table_sc1, how='left', left_on=joinField, right_on=joinField)
-                    
-                        arcpy.AddMessage("ok6")
 
                         # Check if any missing StrucID when joined
                         id = rap_table.index[rap_table[sc1_contsubm] == 1]
@@ -1101,23 +992,10 @@ class UpdateStructure(object):
                 # Rename column names
                 colname_change = rap_table.columns[rap_table.columns.str.contains('|'.join(search_names_city))]
                 rap_table = rap_table.rename(columns={str(colname_change[0]): municipality_field})
-                        
                 rap_table = first_letter_capital(rap_table, [municipality_field])
+                rap_table_stats = rap_table_stats.rename(columns={str(colname_change[0]): municipality_field})
+                rap_table_stats = first_letter_capital(rap_table_stats, [municipality_field])
 
-                # Convert to numeric DO WE NEED THIS?
-                # to_numeric_fields = [total_area_field, affected_area_field, remaining_area_field, handover_field, structure_status_field, landowner_status_field, moa_field, pte_field, occupancy_field]
-                # cols = rap_table.columns
-                # non_match_col = non_match_elements(to_numeric_fields, cols)
-                # [to_numeric_fields.remove(non_match_col[0]) if non_match_col else arcpy.AddMessage('no need to remove field from the list for numeric conversion')]
-
-                # for field in to_numeric_fields:
-                #     rap_table[field] = rap_table[field].replace(r'\s+|[^\w\s]', '', regex=True)
-                #     rap_table[field] = pd.to_numeric(rap_table[field])
-
-                #     # For Summary Stats later
-                #     rap_table_stats[field] = rap_table_stats[field].replace(r'\s+|[^\w\s]', '', regex=True)
-                #     rap_table_stats[field] = pd.to_numeric(rap_table_stats[field])
-                    
                 # Conver to string
                 common_fields = [joinField, cp_field]
                 if proj == 'N2':
@@ -1131,14 +1009,11 @@ class UpdateStructure(object):
                 if proj == 'N2':
                     rap_table[cp_field] = rap_table[cp_field].replace(r'N', 'N-',regex=True)
                 else: ## SC
-                    rap_table[cp_field] = rap_table[cp_field].replace(r'03A|3A|3a', '03a',regex=True)
-                    rap_table[cp_field] = rap_table[cp_field].replace(r'03B|3B|3b', '03b',regex=True)
-                    rap_table[cp_field] = rap_table[cp_field].replace(r'03C|3C|3c', '03c',regex=True)
+                    rap_table = reformat_cp_label(rap_table, cp_field)
+                    rap_table_stats = reformat_cp_label(rap_table_stats, cp_field)
 
                     # Conver the following LotIDs to S-01
-                    ## NSRP-01-08-ML046
-                    ids = rap_table.index[rap_table[joinField].str.contains(r'NSRP-01-08-ML046',regex=True,na=False)]
-                    rap_table.loc[ids, cp_field] = 'S-01'
+                    rap_table = convert_lotids_to_correct_cp(rap_table, joinField, 'NSRP-01-08-ML046', cp_field, "S-01")
 
                 rap_table[cp_field] = rap_table[cp_field].apply(lambda x: re.sub(r',.*','',x))
                 rap_table_stats[cp_field] = rap_table_stats[cp_field].apply(lambda x: re.sub(r',.*','',x))
@@ -1156,15 +1031,10 @@ class UpdateStructure(object):
                 rap_table.loc[id, structure_status_field] = None
                 
                 # Join the number of families to table
-                rap_relo_table.head()
                 toString(rap_relo_table, [joinField])
                 rap_relo_table[family_number_field] = 0
                 df = rap_relo_table.groupby(joinField).count()[[family_number_field]]
                 rap_table = pd.merge(left=rap_table, right=df, how='left', left_on=joinField, right_on=joinField)
-                
-                # MoA is 'No Need to Acquire' -> StatusStruc is null: What is THIS?
-                # id = rap_table.index[rap_table['MoA'] == 4 & (rap_table[status_field] >= 1)]
-                # rap_table.loc[id, status_field] = None
             
                 # Export
                 export_file_name = os.path.splitext(os.path.basename(gis_struc_ms))[0]
@@ -1175,55 +1045,25 @@ class UpdateStructure(object):
 
                 ##############################################################################
                 # Create summary statistics between original rap_table and updated rap_table
-                ### 1.0. StatusLA = 0 -> NA          
-                ## 1.0.1. Original rap_table (before updating)
-                colname_change = rap_table_stats.columns[rap_table_stats.columns.str.contains('|'.join(search_names_city))]
-                rap_table_stats = rap_table_stats.rename(columns={str(colname_change[0]): municipality_field})
-                rap_table_stats = first_letter_capital(rap_table_stats, [municipality_field])
-                
+                ### StatusLA = 0 -> NA          
                 id = rap_table_stats.index[rap_table_stats[structure_status_field] == 0]
                 rap_table_stats.loc[id, structure_status_field] = np.nan
 
-                groupby_fields = [municipality_field, structure_status_field]
-                rap_table0_stats = rap_table_stats.groupby(groupby_fields)[structure_status_field].count().reset_index(name=count_name)
-                rap_table0_stats = rap_table0_stats.sort_values(by=groupby_fields)
+                ## Count status for each municipality
+                s_statusla = summaryStatistics(rap_table_stats, rap_table, "count", structure_status_field, [municipality_field, structure_status_field])
+                status_stats = s_statusla.process_data_before_after()
 
-                ## 1.0.2. Updated rap_table (After updating)
-                rap_table1_stats = rap_table.groupby(groupby_fields)[structure_status_field].count().reset_index(name=count_name)
-                rap_table1_stats = rap_table1_stats.sort_values(by=groupby_fields)
-
-                ## 1.0.3. Merge
-                # table_stats = rap_table0_stats.join(rap_table1_stats, lsuffix=lsuffix_rap, rsuffix=rsuffix_gis)
-                table_stats = pd.merge(left=rap_table0_stats, right=rap_table1_stats, how='outer', left_on=[municipality_field, structure_status_field], right_on=[municipality_field, structure_status_field])
-                table_stats['count_diff'] = np.nan
-                table_stats['count_diff'] = table_stats['counts_y'] - table_stats['counts_x']
-                table_stats = table_stats.rename(columns={"counts_x": str(counts_rap), "counts_y": str(counts_gis)})
-                            
-                ### 2.0. HandedOver = 1
-                ## 2.0.1. Original rap_table (before updating)
-                id = rap_table_stats.index[rap_table_stats[handover_field] == 1]
-                groupby_fields = [municipality_field, handover_field]
-                rap_table0_stats = rap_table_stats.groupby(groupby_fields)[handover_field].count().reset_index(name=count_name)
-                rap_table0_stats = rap_table0_stats.sort_values(by=groupby_fields)
-
-                ## 2.0.2. Updated rap_table (After updating)
-                rap_table1_stats = rap_table.groupby(groupby_fields)[handover_field].count().reset_index(name=count_name)
-                rap_table1_stats = rap_table1_stats.sort_values(by=groupby_fields)
-
-                ## 2.0.3. Merge
-                # table_stats_handedover = rap_table0_stats.join(rap_table1_stats, lsuffix=lsuffix_rap, rsuffix=rsuffix_gis)
-                table_stats_handedover = pd.merge(left=rap_table0_stats, right=rap_table1_stats, how='outer', left_on=[municipality_field, handover_field], right_on=[municipality_field, handover_field])
-                table_stats_handedover['count_diff'] = np.nan
-                table_stats_handedover["count_diff"] = table_stats_handedover['counts_y'] - table_stats_handedover['counts_x']
-                table_stats_handedover = table_stats_handedover.rename(columns={"counts_x": str(counts_rap), "counts_y": str(counts_gis)})
-
-                ### 3.0. Export summary statistics table
+                ## Count handedover structures for each municipality
+                s_handedover = summaryStatistics(rap_table_stats, rap_table, "count", handover_field, [municipality_field, handover_field])
+                handedover_stats = s_handedover.process_data_before_after()
+ 
+                ## Export summary statistics table
                 file_name_stats = 'CHECK-' + proj + '_Structure_Summary_Statistics_Rap_and_GIS_ML.xlsx'
                 to_excel_file0 = os.path.join(gis_dir, file_name_stats)
 
                 with pd.ExcelWriter(to_excel_file0) as writer:
-                    table_stats.to_excel(writer, sheet_name=structure_status_field, index=False)
-                    table_stats_handedover.to_excel(writer, sheet_name=handover_field, index=False)
+                    status_stats.to_excel(writer, sheet_name=structure_status_field, index=False)
+                    handedover_stats.to_excel(writer, sheet_name=handover_field, index=False)
 
             else:
                 arcpy.AddMessage(duplicated_Ids)
@@ -1232,163 +1072,27 @@ class UpdateStructure(object):
 
         N2SC_Structure_Update()
 
-class UpdateBarangay(object):
-    def __init__(self):
-        self.label = "1.5. Update Excel Master List (SC1 Barangay )"
-        self.description = "Update Excel Master List (SC1 Barangay )"
-
-    def getParameterInfo(self):
-        gis_dir = arcpy.Parameter(
-            displayName = "GIS Masterlist Storage Directory",
-            name = "GIS master-list directory",
-            datatype = "DEWorkspace",
-            parameterType = "Required",
-            direction = "Input"
-        )
-
-        gis_barangay_ms = arcpy.Parameter(
-            displayName = "GIS SC1 Barangay Status ML (Excel)",
-            name = "GIS SC1 Barangay Status ML (Excel)",
-            datatype = "DEFile",
-            parameterType = "Required",
-            direction = "Input"
-        )
-
-        rap_barangay_ms = arcpy.Parameter(
-            displayName = "RAP SC1 Barangay Status ML (Excel)",
-            name = "RAP SC1 Barangay Status ML (Excel)",
-            datatype = "DEFile",
-            parameterType = "Required",
-            direction = "Input"
-        )
-
-        gis_bakcup_dir = arcpy.Parameter(
-            displayName = "GIS Masterlist Backup Directory",
-            name = "GIS Masterlist Backup Directory",
-            datatype = "DEWorkspace",
-            parameterType = "Optional",
-            direction = "Input"
-        )
-
-        lastupdate = arcpy.Parameter(
-            displayName = "Date for Backup: use 'yyyymmdd' format. eg. 20240101",
-            name = "Date for Backup: use 'yyyymmdd' format. eg. 20240101",
-            datatype = "GPString",
-            parameterType = "Optional",
-            direction = "Input"
-        )
-
-        params = [gis_dir, gis_barangay_ms, rap_barangay_ms, gis_bakcup_dir, lastupdate]
-        return params
-
-    def updateMessages(self, params):
-        return
-
-    def execute(self, params, messages):
-        gis_dir = params[0].valueAsText
-        gis_barangay_ms = params[1].valueAsText
-        rap_barangay_ms = params[2].valueAsText
-        gis_bakcup_dir = params[3].valueAsText
-        lastupdate = params[4].valueAsText
-
-        arcpy.env.overwriteOutput = True
-        #arcpy.env.addOutputsToMap = True
-
-        def SC1_Barangay_Update():
-            def whitespace_removal(dataframe): # remove leading and trailing white space
-                for i in dataframe.columns:
-                    try:
-                        dataframe[i] = dataframe[i].apply(lambda x: x.strip())
-                    except AttributeError:
-                        print("Not processed: " + '{}'.format(i))
-
-            ## 2. Return unique values
-            def unique(lists):
-                collect = []
-                unique_list = pd.Series(lists).drop_duplicates().tolist()
-                for x in unique_list:
-                    collect.append(x)
-                return(collect)
-            
-            ## 3. Return non-matched values between two lists
-            def non_match_elements(list_a, list_b):
-                non_match = []
-                for i in list_a:
-                    if i not in list_b:
-                        non_match.append(i)
-                return non_match
-            
-            def toString(table, to_string_fields):
-                for field in to_string_fields:
-                    table[field] = table[field].astype(str)
-                    table[field] = table[field].replace(r'\s+|^\w\s$','',regex=True)
-                return table
-
-            def first_letter_capital(table, column_names): # column_names are list
-                for name in column_names:
-                    table[name] = table[name].str.title()
-                return table
-            
-            ####################################################
-            # Update Excel Master List Tables
-            ####################################################
-            rap_table = pd.read_excel(rap_barangay_ms)
-            gis_table = pd.read_excel(gis_barangay_ms)
-
-            # Create backup files
-            try:
-                gis_table.to_excel(os.path.join(gis_bakcup_dir, lastupdate + "_" + "SC1_Barangay_Status.xlsx"), index=False)
-            except Exception:
-                arcpy.AddMessage('You did not choose to create a backup file of {0} master list.'.format('SC1_Barangay_Status'))
-            
-            # Rename 'City' to Municipality
-            renamed_city = 'Municipality'
-            renamed_col = rap_table.columns[rap_table.columns.str.contains('|'.join(['City','city']))]
-            rap_table = rap_table.rename(columns={str(renamed_col[0]): renamed_city})
-            rap_table = first_letter_capital(rap_table, [renamed_city])
-
-            # Rename Barangay
-            renamed_brgy = 'Barangay'
-            renamed_col = rap_table.columns[rap_table.columns.str.contains('|'.join(['Bgy','bgy']))]
-            rap_table = rap_table.rename(columns={str(renamed_col[0]): renamed_brgy})
-            rap_table = first_letter_capital(rap_table, [renamed_brgy])
-
-            # Remove 'Barangay'
-            # rap_table['Barangay'] = rap_table['Barangay'].apply(lambda x: x.replace(regex="^Barangay", value=""))
-            rap_table = rap_table.replace(regex="^Barangay", value="")
-            whitespace_removal(rap_table)
-
-            # Make sure no space
-            rap_table = toString(rap_table, ['Municipality', 'Barangay', 'Subcon'])
-
-            # Convert to numeric
-            to_numeric_fields = ["Coop"]
-            cols = rap_table.columns
-            non_match_col = non_match_elements(to_numeric_fields, cols)
-            [to_numeric_fields.remove(non_match_col[0]) if non_match_col else print('no need to remove field from the list for numeric conversion')]
-
-            for field in to_numeric_fields:
-                rap_table[field] = rap_table[field].replace(r'\s+|[^\w\s]', '', regex=True)
-                rap_table[field] = pd.to_numeric(rap_table[field])
-
-            # Export
-            export_file_name = os.path.splitext(os.path.basename(gis_barangay_ms))[0]
-            to_excel_file = os.path.join(gis_dir, export_file_name + ".xlsx")
-            rap_table.to_excel(to_excel_file, index=False)
-
-        SC1_Barangay_Update()
-
 class JustMessage10(object):
     def __init__(self):
         self.label = "4.0 ----- Update Land & Structure for Workable Pier -----"
         self.description = "Update Excel Master List"
 
-class N2UpdateWorkablePierLandTable(object):
+class AddObstructionToLotN2(object):
     def __init__(self):
         self.label = "4.1 (N2) Add Obstruction to Excel Master List (Lot)"
         self.description = "(N2) Add Obstruction to Excel Master List (Lot)"
 
     def getParameterInfo(self):
+        proj = arcpy.Parameter(
+            displayName = "Project Extension: N2 or SC",
+            name = "Project Extension: N2 or SC",
+            datatype = "GPString",
+            parameterType = "Required",
+            direction = "Input"
+        )
+        proj.filter.type = "ValueList"
+        proj.filter.list = ['N2', 'SC']
+    
         gis_rap_dir = arcpy.Parameter(
             displayName = "N2 GIS Directory for RAP",
             name = "N2 GIS Directory for RAP",
@@ -1429,60 +1133,37 @@ class N2UpdateWorkablePierLandTable(object):
             direction = "Input"
         )
 
-        params = [gis_rap_dir, gis_lot_ms, gis_lot_portal, gis_via_dir, pier_workable_tracker]
+        params = [proj, gis_rap_dir, gis_lot_ms, gis_lot_portal, gis_via_dir, pier_workable_tracker]
         return params
 
     def updateMessages(self, params):
         return
 
     def execute(self, params, messages):
-        gis_rap_dir = params[0].valueAsText
-        gis_lot_ms = params[1].valueAsText
-        gis_lot_portal = params[2].valueAsText
-        gis_via_dir = params[3].valueAsText
-        pier_workable_tracker = params[4].valueAsText
+        proj = params[0].valueAsText
+        gis_rap_dir = params[1].valueAsText
+        gis_lot_ms = params[2].valueAsText
+        gis_lot_portal = params[3].valueAsText
+        gis_via_dir = params[4].valueAsText
+        pier_workable_tracker = params[5].valueAsText
 
         arcpy.env.overwriteOutput = True
-        #arcpy.env.addOutputsToMap = True
 
-        def Obstruction_Land_ML_Update():           
-            def non_match_elements(list_a, list_b):
-                non_match = []
-                for i in list_a:
-                    if i not in list_b:
-                        non_match.append(i)
-                return non_match
-            
-            def flatten_extend(matrix):
-                flat_list = []
-                for row in matrix:
-                    row = [re.sub(r'\s+','',e) for e in row]
-                    flat_list.extend(row)
-                return flat_list
-            
-            def remove_empty_strings(string_list):
-                return [string for string in string_list if string]
-            
-            def unlist_brackets(nested_list): ## Remove nested list in a list
-                return [item for sublist in nested_list for item in sublist]
-            
-            def unique(lists):
-                collect = []
-                unique_list = pd.Series(lists).drop_duplicates().tolist()
-                for x in unique_list:
-                    collect.append(x)
-                return(collect)
-            
+        def Obstruction_Land_ML_Update():                      
             # Define field names
             cp_field = 'CP'
             land1_field = 'Land.1'
             obstruc_field = 'Obstruction'
             lot_id_field = 'LotID'
-            pier_num_field = 'PierNumber'
 
             # Read as xlsx
             gis_lot_table = pd.read_excel(gis_lot_ms)
             gis_lot_portal_t = pd.read_excel(gis_lot_portal)
+
+            # to string
+            gis_lot_table[lot_id_field] = gis_lot_table[lot_id_field].astype(str)
+            gis_lot_portal_t[lot_id_field] = gis_lot_portal_t[lot_id_field].astype(str)
+
 
             # 0. Reset 'Obstruction' to 'No' first
             gis_lot_table.loc[:, obstruc_field] = np.nan
@@ -1490,38 +1171,22 @@ class N2UpdateWorkablePierLandTable(object):
             # 1. Clean fields
             compile_land = pd.DataFrame()
             sum_lot_compile = pd.DataFrame()
-            tnon_matched_lot_ids = []
 
             cps = ['N-01','N-02','N-03']
-            for i, cp in enumerate(cps):
+            for cp in cps:
                 gis_lot_t = gis_lot_table.query(f"{cp_field} == '{cp}'").reset_index(drop=True)
-                
                 pier_wtracker_t = pd.read_excel(pier_workable_tracker, sheet_name=cp)
 
-                ################################################################
+                #--------------------------------------------------------------#
                 ## B. Identify Obstruction (Yes' or 'No') to GIS master list ###
-                ################################################################
-                #### Note that Civil table may have duplicated LotIDs or Structure IDs, as some pile caps
-                #### are obstructed by the same lots or structures.
+                #--------------------------------------------------------------#
+                ## Note that Civil table may have duplicated LotIDs or Structure IDs, as some pile caps are obstructed by the same lots or structures.
 
-                ### 1. Land
-                pier_wtracker_t = pier_wtracker_t.dropna(subset=[land1_field]).reset_index(drop=True)
-                pier_wtracker_t[land1_field] = pier_wtracker_t[land1_field].astype(str)
-                pier_wtracker_t[land1_field] = pier_wtracker_t[land1_field].str.lstrip(',')
-                lot_ids = flatten_extend(pier_wtracker_t[land1_field].str.split(','))          
-                x_lot_ids = unique(lot_ids)
-                x_lot_ids = remove_empty_strings(x_lot_ids)  
-                # arcpy.AddMessage(x_lot_ids)
-
-                ## Remove some
-                # id_drop = np.where(x_lot_ids == '')[0]
-                # x_lot_ids = np.delete(x_lot_ids, id_drop)
-                # id_drop = np.where(x_lot_ids == ' ')[0]
-                # x_lot_ids = np.delete(x_lot_ids, id_drop)
-                # arcpy.AddMessage(x_lot_ids)
+                ## Land
+                x_lot_ids = extract_ids_for_assign_obstruction(proj, pier_wtracker_t, land1_field)
 
                 ### Add these obstructing LotIDs to GIS Structure master list
-                #### First, reset 'obstruction' field
+                # First, reset 'obstruction' field
                 gis_lot_t[obstruc_field] = np.nan
                 gis_lot_t.loc[:, obstruc_field] = 'No'
 
@@ -1529,60 +1194,28 @@ class N2UpdateWorkablePierLandTable(object):
                 y_lot_ids = gis_lot_t.loc[ids, lot_id_field].values
                 gis_lot_t.loc[ids, obstruc_field] = 'Yes'
 
-                # #### Extract obstructing LotIDs from the GIS Attribute table (GIS_portal)
+                # Extract obstructing LotIDs from the GIS Attribute table (GIS_portal)
                 idcp = gis_lot_portal_t.query(f"{cp_field} == '{cp}'").index
-                # arcpy.AddMessage(x_lot_ids)
                 ids_portal = gis_lot_portal_t.loc[idcp, ].index[gis_lot_portal_t.loc[idcp, lot_id_field].isin(x_lot_ids)]
                 y_lot_portal_ids = gis_lot_portal_t.loc[ids_portal, lot_id_field].values
 
                 ## compile for cps
                 compile_land = pd.concat([compile_land, gis_lot_t])
 
-                ############################# Summary Statistics ################################
-                non_matched_lot_ids = []
-                sum_lot = pd.DataFrame()
-                sum_cols = ['CP',
-                            'RAP',
-                            'GIS_ML',
-                            'GIS_Portal',
-                            'Diff_RAP_GISML',
-                            'Diff_RAP_GISPortal',
-                            'Miss_IDs_RAP_GISML',
-                            'Miss_IDs_RAP_GISPortal']
-                sum_lot.loc[0,sum_cols[0]] = cp
-                sum_lot.loc[0,sum_cols[1]] = len(x_lot_ids)
-                sum_lot.loc[0,sum_cols[2]] = len(y_lot_ids)
-                sum_lot.loc[0,sum_cols[3]] = len(y_lot_portal_ids)
-                sum_lot.loc[0,sum_cols[4]] = sum_lot.loc[0,sum_cols[1]] - sum_lot.loc[0,sum_cols[2]]
-                sum_lot.loc[0,sum_cols[5]] = sum_lot.loc[0,sum_cols[1]] - sum_lot.loc[0,sum_cols[3]]
+                #--------------------------------------------------------------#
+                ##                    Summary Statistics                      ##
+                #--------------------------------------------------------------#
+                summary_table = summary_statistics_count_ids(cp, x_lot_ids, y_lot_ids, y_lot_portal_ids)[0]
+                sum_lot_compile = pd.concat([sum_lot_compile, summary_table], ignore_index=False)
 
-                # Identify unmatched obstructing LotIDs in reference to the civil table
-                ### Important to note that when a pier and lots obstruction ids cross between two cps,
-                ### it is not possible to properly assign obstruction ('yes' or 'no') to these LotIDs.
-                ### Simply assign the following non-matched LotIDs to 'Yes' in the obstruction field. 
-                non_matched_elms = non_match_elements(x_lot_ids,y_lot_ids)
-                sum_lot.loc[0,sum_cols[6]] = ",".join(non_matched_elms)
-                non_matched_lot_ids.append(non_matched_elms)               
-                tnon_matched_lot_ids.append(pd.Series(non_matched_lot_ids)[0]) # pd.Series removes nested list
-
-                sum_lot.loc[0,sum_cols[7]] = ",".join(non_match_elements(x_lot_ids,y_lot_portal_ids))
-
-                ### Add remarks for manually assigned LotIDs due to the problem mentioned above.
-                sum_lot['Remark'] = np.nan
-                if len(non_matched_elms) > 0:
-                    sum_lot['Remark'] = f"**{non_matched_elms} were manually assigned 'Yes' in the Obstruction field of GIS_N2_Land_ML.xlsx."
-                sum_lot_compile = pd.concat([sum_lot_compile, sum_lot], ignore_index=False)
-
-            #################################################################################
-            ### Overwrite existing GIS_Lot_ML and GIS_Structure_ML with the updated tables ##
-            #################################################################################
-            ##### Add missing CPs (N-04 & N-05) to the compiled table
-            # gis_lot_tn04 = gis_lot_table.query(f"{cp_field} in ('N-04', 'N-05')")
+            #--------------------------------------------------------------#
+            ##  Overwrite existing GIS_Lot_ML with summary statistics      ##
+            #--------------------------------------------------------------#
+            # Add missing CPs (N-04 & N-05) to the compiled table
             compile_cps = unique(compile_land[cp_field])
             gis_cps = unique(gis_lot_table[cp_field])
  
             miss_cp = tuple(non_match_elements(gis_cps, compile_cps))
-            # arcpy.AddMessage(miss_cp)
             gis_lot_misst = gis_lot_table.query(f"{cp_field} in {miss_cp}")
             gis_lot_misst[obstruc_field] = 'No'
             compile_land = pd.concat([compile_land, gis_lot_misst]).reset_index(drop=True)
@@ -1590,11 +1223,12 @@ class N2UpdateWorkablePierLandTable(object):
             # Manually Assign non-matched lot ids (overlapping CPs and piers) to 'Yes' in the Obstruction field
             # non_matched_lot_ids = flatten_extend(non_matched_lot_ids)
             arcpy.AddMessage(f"The following non-matched LotIDs were assigned to 'Yes' in the Obstruction field separately due to the associated overlapping piers and cps")
-            arcpy.AddMessage(unlist_brackets(tnon_matched_lot_ids))
-            ids = compile_land.index[compile_land[lot_id_field].isin(unlist_brackets(tnon_matched_lot_ids))]
+            arcpy.AddMessage(unlist_brackets(pd.Series(summary_table[1]))) # pd.Series removes nested list
+
+            ids = compile_land.index[compile_land[lot_id_field].isin(unlist_brackets(pd.Series(summary_table[1])))]
             compile_land.loc[ids, obstruc_field] = 'Yes'
 
-            # Finally export
+            # Export updated GIS Lot ML with obstruction field
             compile_land.to_excel(os.path.join(gis_rap_dir, os.path.basename(gis_lot_ms)), index=False)
 
             ## Export summary table
@@ -1602,12 +1236,22 @@ class N2UpdateWorkablePierLandTable(object):
 
         Obstruction_Land_ML_Update()
 
-class N2UpdateWorkablePierStructureTable(object):
+class AddObstructionToStructureN2(object):
     def __init__(self):
         self.label = "4.2. (N2) Add Obstruction to Excel Master List (Structure/NLO)"
         self.description = "(N2) Add Obstruction to Excel Master List (Structure/NLO)"
 
     def getParameterInfo(self):
+        proj = arcpy.Parameter(
+            displayName = "Project Extension: N2 or SC",
+            name = "Project Extension: N2 or SC",
+            datatype = "GPString",
+            parameterType = "Required",
+            direction = "Input"
+        )
+        proj.filter.type = "ValueList"
+        proj.filter.list = ['N2', 'SC']
+    
         gis_rap_dir = arcpy.Parameter(
             displayName = "N2 GIS Directory",
             name = "N2 GIS Directory",
@@ -1656,51 +1300,24 @@ class N2UpdateWorkablePierStructureTable(object):
             direction = "Input"
         )
 
-        params = [gis_rap_dir, gis_struc_ms, gis_struc_portal, gis_nlo_ms ,gis_via_dir, pier_workable_tracker]
+        params = [proj, gis_rap_dir, gis_struc_ms, gis_struc_portal, gis_nlo_ms ,gis_via_dir, pier_workable_tracker]
         return params
 
     def updateMessages(self, params):
         return
 
     def execute(self, params, messages):
-        gis_rap_dir = params[0].valueAsText
-        gis_struc_ms = params[1].valueAsText
-        gis_struc_portal = params[2].valueAsText
-        gis_nlo_ms = params[3].valueAsText
-        gis_via_dir = params[4].valueAsText
-        pier_workable_tracker = params[5].valueAsText
+        proj = params[0].valueAsText
+        gis_rap_dir = params[1].valueAsText
+        gis_struc_ms = params[2].valueAsText
+        gis_struc_portal = params[3].valueAsText
+        gis_nlo_ms = params[4].valueAsText
+        gis_via_dir = params[5].valueAsText
+        pier_workable_tracker = params[6].valueAsText
 
         arcpy.env.overwriteOutput = True
-        #arcpy.env.addOutputsToMap = True
 
-        def Obstruction_Structure_ML_Update():           
-            def non_match_elements(list_a, list_b):
-                non_match = []
-                for i in list_a:
-                    if i not in list_b:
-                        non_match.append(i)
-                return non_match
-            
-            def flatten_extend(matrix):
-                flat_list = []
-                for row in matrix:
-                    row = [re.sub(r'\s+','',e) for e in row]
-                    flat_list.extend(row)
-                return flat_list
-            
-            def remove_empty_strings(string_list):
-                return [string for string in string_list if string]
-            
-            def unlist_brackets(nested_list): ## Remove nested list in a list
-                return [item for sublist in nested_list for item in sublist]
-            
-            def unique(lists):
-                collect = []
-                unique_list = pd.Series(lists).drop_duplicates().tolist()
-                for x in unique_list:
-                    collect.append(x)
-                return(collect)
-            
+        def Obstruction_Structure_ML_Update():                       
             # Define field names
             cp_field = 'CP'
             struc1_field = 'Structure.1'
@@ -1716,35 +1333,24 @@ class N2UpdateWorkablePierStructureTable(object):
             gis_struc_table.loc[:, obstruc_field] = np.nan
             gis_nlo_table.loc[:, obstruc_field] = np.nan
 
-            # Define how obstructing lot and structure IDs are entered for each pier
-            ## '\n' or ','
-            split_mark = ","
-
             # 1. Clean fields
             compile_struc = pd.DataFrame()
             compile_nlo = pd.DataFrame()
             sum_struc_compile = pd.DataFrame()
-            tnon_matched_struc_ids = []
             cps = ['N-01','N-02','N-03']
 
-            for i, cp in enumerate(cps):
+            for cp in cps:
                 gis_struc_t = gis_struc_table.query(f"{cp_field} == '{cp}'").reset_index(drop=True)
                 gis_nlo_t = gis_nlo_table.query(f"{cp_field} == '{cp}'").reset_index(drop=True)
 
                 pier_wtracker_t = pd.read_excel(pier_workable_tracker, sheet_name=cp)
 
-                ################################################################
+                #--------------------------------------------------------------#
                 ## B. Identify Obstruction (Yes' or 'No') to GIS master list ###
-                ################################################################
-                #### Note that Civil table may have duplicated LotIDs or Structure IDs, as some pile caps
-                #### are obstructed by the same lots or structures.
+                #--------------------------------------------------------------#
+                ## Note that Civil table may have duplicated LotIDs or Structure IDs, as some pile caps are obstructed by the same lots or structures.
 
-                ### 1. Structure
-                pier_wtracker_t = pier_wtracker_t.dropna(subset=[struc1_field]).reset_index(drop=True)
-                pier_wtracker_t[struc1_field] = pier_wtracker_t[struc1_field].astype(str)
-                struc_ids = flatten_extend(pier_wtracker_t[struc1_field].str.split(","))
-                x_struc_ids = unique(struc_ids)
-                x_struc_ids = remove_empty_strings(x_struc_ids)  
+                x_struc_ids = extract_ids_for_assign_obstruction(proj, pier_wtracker_t, struc1_field)
 
                 ### Add these obstructing StrucIDs to GIS Structure master list
                 #### First, reset 'obstruction' field
@@ -1789,39 +1395,21 @@ class N2UpdateWorkablePierStructureTable(object):
                 compile_struc = pd.concat([compile_struc, gis_struc_t])
                 compile_nlo = pd.concat([compile_nlo, gis_nlo_t])
 
-                ######################################## Summary Stats ###################################
-                non_matched_struc_ids = []
-                sum_struc = pd.DataFrame()
-                sum_cols = ['CP',
-                            'Civil',
-                            'GIS_ML',
-                            'GIS_Portal',
-                            'Diff_Civil_GISML',
-                            'Diff_Civil_GISPortal',
-                            'Miss_IDs_Civil_GISML',
-                            'Miss_IDs_Civil_GISPortal']
-                sum_struc.loc[0,sum_cols[0]] = cp
-                sum_struc.loc[0,sum_cols[1]] = len(x_struc_ids)
-                sum_struc.loc[0,sum_cols[2]] = len(y_struc_ids)
-                sum_struc.loc[0,sum_cols[3]] = len(y_struc_portal_ids)
-                sum_struc.loc[0,sum_cols[4]] = sum_struc.loc[0,sum_cols[1]] - sum_struc.loc[0,sum_cols[2]]
-                sum_struc.loc[0,sum_cols[5]] = sum_struc.loc[0,sum_cols[1]] - sum_struc.loc[0,sum_cols[3]]
+                #--------------------------------------------------------------#
+                ##                    Summary Statistics                      ##
+                #--------------------------------------------------------------#
+                summary_table = summary_statistics_count_ids(cp, x_struc_ids, y_struc_ids, y_struc_portal_ids)[0]
+                sum_struc_compile = pd.concat([sum_struc_compile, summary_table], ignore_index=False)
 
-                # Identify unmatched obstructing LotIDs in reference to the civil table
-                sum_struc.loc[0,sum_cols[6]] = ",".join(non_match_elements(x_struc_ids, y_struc_ids))
-                non_matched_struc_ids.append(non_match_elements(x_struc_ids,y_struc_ids))
-                tnon_matched_struc_ids.append(pd.Series(non_matched_struc_ids)[0])
-                                            
-                sum_struc.loc[0,sum_cols[7]] = ",".join(non_match_elements(x_struc_ids, y_struc_portal_ids))
-                sum_struc_compile = pd.concat([sum_struc_compile, sum_struc], ignore_index=False)
+            noids_rap_vs_gisml = pd.Series(summary_table[1])    
 
-                
-            ###################################################################################
-            ### Overwrite existing GIS_Lot_ML and GIS_Structure_ML with the updated tables ####
-            ###################################################################################
-            #### Structure
+            #-----------------------------------------------------------------#
+            ##  Overwrite existing GIS_Structure_ML with summary statistics  ##
+            #-----------------------------------------------------------------#
+            # Structure
             arcpy.AddMessage('Structure')
-            ##### Add missing CPs to compiled table
+
+            ## Add missing CPs to compiled table
             compile_cps = unique(compile_struc[cp_field])
             gis_cps = unique(gis_struc_table[cp_field])
             miss_cp = tuple(non_match_elements(gis_cps, compile_cps))
@@ -1831,14 +1419,15 @@ class N2UpdateWorkablePierStructureTable(object):
 
             #####
             arcpy.AddMessage(f"The following non-matched StrucIDs were assigned to 'Yes' in the Obstruction field separately due to the associated overlapping piers and cps")
-            arcpy.AddMessage(unlist_brackets(tnon_matched_struc_ids))
-            ids = compile_struc.query(f"{struc_id_field}.isin({unlist_brackets(tnon_matched_struc_ids)})").index
+            arcpy.AddMessage(unlist_brackets(noids_rap_vs_gisml))
+            ids = compile_struc.query(f"{struc_id_field}.isin({unlist_brackets(noids_rap_vs_gisml)})").index
             compile_struc.loc[ids, obstruc_field] = 'Yes'
             compile_struc.to_excel(os.path.join(gis_rap_dir, os.path.basename(gis_struc_ms)), index=False) ## gis_struc
            
-            #### NLO
+            # NLO
             arcpy.AddMessage('NLO')
-            ##### Add missing CPs to compiled table
+
+            ## Add missing CPs to compiled table
             compile_cps = unique(compile_nlo[cp_field])
             gis_cps = unique(gis_nlo_table[cp_field])
             miss_cp = tuple(non_match_elements(gis_cps, compile_cps))
@@ -1848,22 +1437,33 @@ class N2UpdateWorkablePierStructureTable(object):
 
             #####
             arcpy.AddMessage(f"The following non-matched StrucIDs were assigned to 'Yes' in the Obstruction field separately due to the associated overlapping piers and cps")
-            arcpy.AddMessage(unlist_brackets(tnon_matched_struc_ids))
-            ids = compile_nlo.query(f"{struc_id_field}.isin({unlist_brackets(tnon_matched_struc_ids)})").index
+            arcpy.AddMessage(unlist_brackets(noids_rap_vs_gisml))
+            ids = compile_nlo.query(f"{struc_id_field}.isin({unlist_brackets(noids_rap_vs_gisml)})").index
             compile_nlo.loc[ids, obstruc_field] = 'Yes'
             compile_nlo.to_excel(os.path.join(gis_rap_dir, os.path.basename(gis_nlo_ms)), index=False) ## gis_isf
 
-            ## Compile SummaryStatus in one excel sheet
+            ## Export summary statistics in one excel sheet
             sum_struc_compile.to_excel(os.path.join(gis_via_dir, '99-N2_Non-Matched_Obstruction_for_Structure_RAP_vs_GIS.xlsx'), sheet_name='Structure', index=False)
 
         Obstruction_Structure_ML_Update()
 
-class SCUpdateWorkablePierLandTable(object):
+class AddObstructionToLotSC(object):
     def __init__(self):
         self.label = "4.3. (SC) Add Obstruction to Excel Master List (Lot)"
         self.description = "(SC) Add Obstruction to Excel Master List (Lot)"
 
     def getParameterInfo(self):
+
+        proj = arcpy.Parameter(
+            displayName = "Project Extension: N2 or SC",
+            name = "Project Extension: N2 or SC",
+            datatype = "GPString",
+            parameterType = "Required",
+            direction = "Input"
+        )
+        proj.filter.type = "ValueList"
+        proj.filter.list = ['N2', 'SC']
+    
         gis_rap_dir = arcpy.Parameter(
             displayName = "SC GIS Directory",
             name = "SC GIS Directory",
@@ -1904,62 +1504,33 @@ class SCUpdateWorkablePierLandTable(object):
             direction = "Input"
         )
 
-        params = [gis_rap_dir, gis_lot_ms, gis_lot_portal, gis_via_dir, pier_workable_tracker_ms]
+        params = [proj, gis_rap_dir, gis_lot_ms, gis_lot_portal, gis_via_dir, pier_workable_tracker_ms]
         return params
 
     def updateMessages(self, params):
         return
 
     def execute(self, params, messages):
-        gis_rap_dir = params[0].valueAsText
-        gis_lot_ms = params[1].valueAsText
-        gis_lot_portal = params[2].valueAsText
-        gis_via_dir = params[3].valueAsText
-        pier_tracker_ms = params[4].valueAsText
+        proj = params[0].valueAsText
+        gis_rap_dir = params[1].valueAsText
+        gis_lot_ms = params[2].valueAsText
+        gis_lot_portal = params[3].valueAsText
+        gis_via_dir = params[4].valueAsText
+        pier_tracker_ms = params[5].valueAsText
 
         arcpy.env.overwriteOutput = True
-        #arcpy.env.addOutputsToMap = True
 
         def Obstruction_Land_ML_Update():
-            def unique(lists):
-                collect = []
-                unique_list = pd.Series(lists).drop_duplicates().tolist()
-                for x in unique_list:
-                    collect.append(x)
-                return(collect)
-            
-            def non_match_elements(list_a, list_b):
-                non_match = []
-                for i in list_a:
-                    if i not in list_b:
-                        non_match.append(i)
-                return non_match
-            
-            def flatten_extend(matrix):
-                flat_list = []
-                for row in matrix:
-                    row = [re.sub(r'\s+','',e) for e in row]
-                    flat_list.extend(row)
-                return flat_list
-            
-            def remove_empty_strings(string_list):
-                return [string for string in string_list if string]
-            
-            def unlist_brackets(nested_list): ## Remove nested list in a list
-                return [item for sublist in nested_list for item in sublist]
-            
-            # Read as xlsx
-            gis_lot_table = pd.read_excel(gis_lot_ms)
-            gis_lot_portal_t = pd.read_excel(gis_lot_portal)
-            pier_tracker_t = pd.read_excel(pier_tracker_ms)
-
             # List of fields
             obstruc_field = 'Obstruction' ## ('Yes' or 'No')
             lot_id_field = 'LotID'
-            pier_number_field = 'PierNumber'
             cp_field = 'CP'
             land_obstruc_field = 'Land'
             land_obstrucid_field = 'Land.1'
+
+            # Read as xlsx
+            gis_lot_table = pd.read_excel(gis_lot_ms)
+            gis_lot_portal_t = pd.read_excel(gis_lot_portal)
 
             # 0. Reset 'Obstruction' to 'No' first
             gis_lot_table.loc[:, obstruc_field] = np.nan
@@ -1967,32 +1538,25 @@ class SCUpdateWorkablePierLandTable(object):
             # 1. Clean fields
             compile_land = pd.DataFrame()
             sum_lot_compile = pd.DataFrame()
-            tnon_matched_lot_ids = []
-            
-            # cps = ['S-01','S-02','S-03a','S-03c','S-04','S-05','S-06']
+
             cps = ['S-01','S-02','S-03a','S-03c','S-04','S-05','S-06']
-            for i, cp in enumerate(cps):
+            for cp in cps:
                 gis_lot_t = gis_lot_table.query(f"{cp_field} == '{cp}'").reset_index(drop=True)
 
                 pier_workable_t = pd.read_excel(pier_tracker_ms)
                 pier_t = pier_workable_t.query(f"{cp_field} == '{cp}'").reset_index(drop=True)
-                civil_piers = pier_t[pier_number_field].values
 
-                ################################################################
+                #--------------------------------------------------------------#
                 ## B. Identify Obstruction (Yes' or 'No') to GIS master list ###
-                ################################################################
-                #### Note that Civil table may have duplicated LotIDs or Structure IDs, as some pile caps
-                #### are obstructed by the same lots or structures.
+                #--------------------------------------------------------------#
+                # Note that Civil table may have duplicated LotIDs or Structure IDs, as some pile caps
+                # are obstructed by the same lots or structures.
 
-                ### 1. Land
-                ids = pier_t.index[pier_t[land_obstruc_field] == 1]
-                lot_ids = flatten_extend(pier_t.loc[ids, land_obstrucid_field].str.split(","))
-                x_lot_ids = unique(lot_ids)
-                x_lot_ids = remove_empty_strings(x_lot_ids)
-
+                # Land
+                x_lot_ids = extract_ids_for_assign_obstruction(proj, pier_t, land_obstruc_field, land_obstrucid_field)
                 arcpy.AddMessage(x_lot_ids)
 
-                ### Add these obstructing LotIDs to GIS Structure master list
+                ## Add these obstructing LotIDs to GIS Structure master list
                 gis_lot_t[obstruc_field] = np.nan
                 gis_lot_t.loc[:, obstruc_field] = 'No'
 
@@ -2008,38 +1572,21 @@ class SCUpdateWorkablePierLandTable(object):
                 ## compile for cps
                 compile_land = pd.concat([compile_land, gis_lot_t])
 
-               ############################# Summary Statistics ################################
-                sum_lot = pd.DataFrame()
-                sum_cols = ['CP',
-                    'Civil',
-                    'GIS_ML',
-                    'GIS_Portal',
-                    'Diff_Civil_GISML',
-                    'Diff_Civil_GISPortal',
-                    'Miss_IDs_Civil_GISML',
-                    'Miss_IDs_Civil_GISPortal']
-                sum_lot.loc[0,sum_cols[0]] = cp
-                sum_lot.loc[0,sum_cols[1]] = len(x_lot_ids)
-                sum_lot.loc[0,sum_cols[2]] = len(y_lot_ids)
-                sum_lot.loc[0,sum_cols[3]] = len(y_lot_portal_ids)
-                sum_lot.loc[0,sum_cols[4]] = sum_lot.loc[0,sum_cols[1]] - sum_lot.loc[0,sum_cols[2]]
-                sum_lot.loc[0,sum_cols[5]] = sum_lot.loc[0,sum_cols[1]] - sum_lot.loc[0,sum_cols[3]]
+                #--------------------------------------------------------------#
+                ##                    Summary Statistics                      ##
+                #--------------------------------------------------------------#
+                summary_table = summary_statistics_count_ids(cp, x_lot_ids, y_lot_ids, y_lot_portal_ids)[0]
+                sum_lot_compile = pd.concat([sum_lot_compile, summary_table], ignore_index=False)
 
-                # Identify unmatched obstructing LotIDs in reference to the civil table
-                sum_lot.loc[0,sum_cols[6]] = ",".join(non_match_elements(x_lot_ids,y_lot_ids))
-                sum_lot.loc[0,sum_cols[7]] = ",".join(non_match_elements(x_lot_ids,y_lot_portal_ids))
-                sum_lot_compile = pd.concat([sum_lot_compile, sum_lot], ignore_index=False)
-
-            #################################################################################
-            ### Overwrite existing GIS_Lot_ML with the updated tables ##
-            #################################################################################
+            #--------------------------------------------------------------#
+            ##  Overwrite existing GIS_Lot_ML with summary statistics      ##
+            #--------------------------------------------------------------#
             compile_cps = unique(compile_land[cp_field])
             gis_cps = unique(gis_lot_table[cp_field])
             miss_cp = tuple(non_match_elements(gis_cps, compile_cps))
             arcpy.AddMessage(miss_cp)
             if len(miss_cp) > 0:
                 gis_lot_misst = gis_lot_table.query(f"{cp_field} in {miss_cp}")
-                # gis_lot_misst[obstruc_field] = 'No'
                 compile_land = pd.concat([compile_land, gis_lot_misst])
             compile_land.to_excel(os.path.join(gis_rap_dir, os.path.basename(gis_lot_ms)), index=False) ## gis_land
  
@@ -2048,12 +1595,22 @@ class SCUpdateWorkablePierLandTable(object):
 
         Obstruction_Land_ML_Update()
 
-class SCUpdateWorkablePierStructureTable(object):
+class AddObstructionToStructureSC(object):
     def __init__(self):
         self.label = "4.4. (SC) Add Obstruction to Excel Master List (Structure & NLO)"
         self.description = "(SC) Add Obstruction to Excel Master List (Structure & NLO)"
 
     def getParameterInfo(self):
+        proj = arcpy.Parameter(
+            displayName = "Project Extension: N2 or SC",
+            name = "Project Extension: N2 or SC",
+            datatype = "GPString",
+            parameterType = "Required",
+            direction = "Input"
+        )
+        proj.filter.type = "ValueList"
+        proj.filter.list = ['N2', 'SC']
+
         gis_rap_dir = arcpy.Parameter(
             displayName = "SC GIS Directory",
             name = "SC GIS Directory",
@@ -2102,51 +1659,25 @@ class SCUpdateWorkablePierStructureTable(object):
             direction = "Input"
         )
 
-        params = [gis_rap_dir, gis_struc_ms, gis_struc_portal, gis_nlo_ms, gis_via_dir, pier_workable_tracker_ms]
+        params = [proj, gis_rap_dir, gis_struc_ms, gis_struc_portal, gis_nlo_ms, gis_via_dir, pier_workable_tracker_ms]
         return params
 
     def updateMessages(self, params):
         return
 
     def execute(self, params, messages):
-        gis_rap_dir = params[0].valueAsText
-        gis_struc_ms = params[1].valueAsText
-        gis_struc_portal = params[2].valueAsText
-        gis_nlo_ms = params[3].valueAsText
-        gis_via_dir = params[4].valueAsText
-        pier_tracker_ms = params[5].valueAsText
+        proj = params[0].valueAsText
+        gis_rap_dir = params[1].valueAsText
+        gis_struc_ms = params[2].valueAsText
+        gis_struc_portal = params[3].valueAsText
+        gis_nlo_ms = params[4].valueAsText
+        gis_via_dir = params[5].valueAsText
+        pier_tracker_ms = params[6].valueAsText
 
         arcpy.env.overwriteOutput = True
         #arcpy.env.addOutputsToMap = True
 
         def Obstruction_Structure_ML_Update():
-            def unique(lists):
-                collect = []
-                unique_list = pd.Series(lists).drop_duplicates().tolist()
-                for x in unique_list:
-                    collect.append(x)
-                return(collect)
-            
-            def non_match_elements(list_a, list_b):
-                non_match = []
-                for i in list_a:
-                    if i not in list_b:
-                        non_match.append(i)
-                return non_match
-            
-            def flatten_extend(matrix):
-                flat_list = []
-                for row in matrix:
-                    row = [re.sub(r'\s+','',e) for e in row]
-                    flat_list.extend(row)
-                return flat_list
-            
-            def remove_empty_strings(string_list):
-                return [string for string in string_list if string]
-            
-            def unlist_brackets(nested_list): ## Remove nested list in a list
-                return [item for sublist in nested_list for item in sublist]
-            
             # Read as xlsx
             gis_struc_table = pd.read_excel(gis_struc_ms)
             gis_struc_portal_t = pd.read_excel(gis_struc_portal)
@@ -2154,12 +1685,10 @@ class SCUpdateWorkablePierStructureTable(object):
 
             # List of fields
             obstruc_field = 'Obstruction' ## ('Yes' or 'No')
-            pier_number_field = 'PierNumber'
             cp_field = 'CP'
             struc_id_field = 'StrucID'
             struc_obstruc_field = 'Structure'
             struc_obstrucid_field = 'Structure.1'
-
 
             # 0. Reset 'Obstruction' to 'No' first
             gis_struc_table.loc[:, obstruc_field] = np.nan
@@ -2169,7 +1698,7 @@ class SCUpdateWorkablePierStructureTable(object):
             compile_struc = pd.DataFrame()
             compile_nlo = pd.DataFrame()
             sum_struc_compile = pd.DataFrame()
-            ## cps = ['S-01','S-02','S-03a','S-03b','S-03c','S-04','S-05','S-06','S-07']
+      
             cps = ['S-01','S-02','S-03a','S-03c','S-04','S-05','S-06']
             for i, cp in enumerate(cps):
                 gis_struc_t = gis_struc_table.query(f"{cp_field} == '{cp}'").reset_index(drop=True)
@@ -2177,19 +1706,15 @@ class SCUpdateWorkablePierStructureTable(object):
 
                 pier_workable_t = pd.read_excel(pier_tracker_ms)
                 pier_t = pier_workable_t.query(f"{cp_field} == '{cp}'").reset_index(drop=True)
-                civil_piers = pier_t[pier_number_field].values
 
-                ################################################################
-                ## B. Identify Obstruction (Yes' or 'No') to GIS master list ###
-                ################################################################
-                #### Note that Civil table may have duplicated LotIDs or Structure IDs, as some pile caps
-                #### are obstructed by the same lots or structures.
+                #--------------------------------------------------------------#
+                ##  Identify Obstruction (Yes' or 'No') to GIS master list    ##
+                #--------------------------------------------------------------#
+                # Note that Civil table may have duplicated LotIDs or Structure IDs, as some pile caps
+                # are obstructed by the same lots or structures.
 
-                ### 2. Structure and ISF
-                ids = pier_t.index[pier_t[struc_obstruc_field] == 1]
-                struc_ids = flatten_extend(pier_t.loc[ids, struc_obstrucid_field].str.split(","))
-                x_struc_ids = unique(struc_ids)
-                x_struc_ids = remove_empty_strings(x_struc_ids)
+                # Structure and ISF
+                x_struc_ids = extract_ids_for_assign_obstruction(proj, pier_t, struc_obstruc_field, struc_obstrucid_field)
 
                 ### Add these obstructing StrucIDs to GIS Structure master list
                 gis_struc_t[obstruc_field] = np.nan
@@ -2232,41 +1757,23 @@ class SCUpdateWorkablePierStructureTable(object):
                 compile_struc = pd.concat([compile_struc, gis_struc_t])
                 compile_nlo = pd.concat([compile_nlo, gis_nlo_t])
 
-                ######################################## Summary Stats ###################################
-                sum_struc_compile = pd.DataFrame()
-                sum_cols = ['CP',
-                            'Civil',
-                            'GIS_ML',
-                            'GIS_Portal',
-                            'Diff_Civil_GISML',
-                            'Diff_Civil_GISPortal',
-                            'Miss_IDs_Civil_GISML',
-                            'Miss_IDs_Civil_GISPortal']
+                #--------------------------------------------------------------#
+                ##                    Summary Statistics                      ##
+                #--------------------------------------------------------------#
+                summary_table = summary_statistics_count_ids(cp, x_struc_ids, y_struc_ids, y_struc_portal_ids)[0]
+                sum_struc_compile = pd.concat([sum_struc_compile, summary_table], ignore_index=False)
 
-                sum_struc = pd.DataFrame()
-                sum_struc.loc[0,sum_cols[0]] = cp
-                sum_struc.loc[0,sum_cols[1]] = len(x_struc_ids)
-                sum_struc.loc[0,sum_cols[2]] = len(y_struc_ids)
-                sum_struc.loc[0,sum_cols[3]] = len(y_struc_portal_ids)
-                sum_struc.loc[0,sum_cols[4]] = sum_struc.loc[0,sum_cols[1]] - sum_struc.loc[0,sum_cols[2]]
-                sum_struc.loc[0,sum_cols[5]] = sum_struc.loc[0,sum_cols[1]] - sum_struc.loc[0,sum_cols[3]]
-
-                # Identify unmatched obstructing LotIDs in reference to the civil table
-                sum_struc.loc[0,sum_cols[6]] = ",".join(non_match_elements(x_struc_ids,y_struc_ids))
-                sum_struc.loc[0,sum_cols[7]] = ",".join(non_match_elements(x_struc_ids,y_struc_portal_ids))
-                sum_struc_compile = pd.concat([sum_struc_compile, sum_struc], ignore_index=False)
-
-            ###################################################################################
-            ### Overwrite existing GIS_Structure_ML with the updated tables ####
-            ###################################################################################
-            ### need to missing cps from the original
-            #### Structure
+            #-----------------------------------------------------------------#
+            ##  Overwrite existing GIS_Structure_ML with summary statistics  ##
+            #-----------------------------------------------------------------#
+           
+            # Structure
+            ## Add missing CPs to compiled table
             compile_cps = unique(compile_struc[cp_field])
             gis_cps = unique(gis_struc_table[cp_field])
             miss_cp = tuple(non_match_elements(gis_cps, compile_cps))
             if len(miss_cp) > 0:
                 gis_struc_misst = gis_struc_table.query(f"{cp_field} in {miss_cp}")
-                # gis_struc_misst[obstruc_field] = 'No'
                 compile_struc = pd.concat([compile_struc, gis_struc_misst])
 
             compile_struc.to_excel(os.path.join(gis_rap_dir, os.path.basename(gis_struc_ms)), index=False) ## gis_struc

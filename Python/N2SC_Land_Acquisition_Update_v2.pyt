@@ -100,19 +100,16 @@ def summary_statistics_count_ids(cp, rap_ids, gisml_ids, gisportal_ids):
     noids_rap_vs_gisportal = ",".join(non_match_elements(rap_ids, gisportal_ids))
     rap_vs_gisml = len(rap_ids) - len(gisml_ids)
     rap_vs_gisportal = len(rap_ids) - len(gisportal_ids)
-    table = pd.DataFrame({'CP': cp,
-                            'rap': len(rap_ids),
-                            'gis_ml': len(gisml_ids),
-                            'gis_portal': len(gisportal_ids),
-                            'rap_vs_gisml': rap_vs_gisml,
-                            'rap_vs_gisportal': rap_vs_gisportal,
-                            'noIDs_rap_vs_gisml': noids_rap_vs_gisml,
-                            'noIDs_rap_vs_gisportal': noids_rap_vs_gisportal,
-                            })
+    params = [cp, len(rap_ids), len(gisml_ids), len(gisportal_ids), rap_vs_gisml, rap_vs_gisportal, noids_rap_vs_gisml, noids_rap_vs_gisportal]
+    columns = ['cp', 'rap', 'gis_ml', 'gis_portal', 'rap_vs_gisml', 'rap_vs_gisportal', 'noIDs_rap_vs_gisml', 'noIDs_rap_vs_gisportal']
+    table = pd.DataFrame(columns=columns)
+    for i in range(0, len(columns)):
+        table.loc[0, columns[i]] = params[i]
+    
     # Add remarks
     if len(noids_rap_vs_gisml) > 0:
         table['remark'] = f"**{noids_rap_vs_gisml} were manually assigned 'Yes' in the Obstruction field of GIS_N2_Land_ML.xlsx."
-    return [table, rap_vs_gisml]
+    return [table, noids_rap_vs_gisml]
 
 ### Custom class for generating a summary statistics table
 def summary_by_field(table, stats_type, stats_field, groupby_fields, cities):
@@ -630,7 +627,7 @@ class UpdateLot(object):
                 statusla_stats = s_statusla.process_data_before_after()
 
                 ## Count of handed-over lots
-                s_handedover = summaryStatistics(rap_table_origin, rap_table, "count", handedover_field, [renamed_city, statusla_field], discarded_city='Mabalacat')
+                s_handedover = summaryStatistics(rap_table_origin, rap_table, "count", handedover_field, [renamed_city, handedover_field], discarded_city='Mabalacat')
                 handedover_stats = s_handedover.process_data_before_after()
 
                 ## Total affected area by Municipality
@@ -1205,8 +1202,8 @@ class AddObstructionToLotN2(object):
                 #--------------------------------------------------------------#
                 ##                    Summary Statistics                      ##
                 #--------------------------------------------------------------#
-                summary_table = summary_statistics_count_ids(cp, x_lot_ids, y_lot_ids, y_lot_portal_ids)[0]
-                sum_lot_compile = pd.concat([sum_lot_compile, summary_table], ignore_index=False)
+                summary_table = summary_statistics_count_ids(cp, x_lot_ids, y_lot_ids, y_lot_portal_ids)
+                sum_lot_compile = pd.concat([sum_lot_compile, summary_table[0]], ignore_index=False)
 
             #--------------------------------------------------------------#
             ##  Overwrite existing GIS_Lot_ML with summary statistics      ##
@@ -1222,10 +1219,11 @@ class AddObstructionToLotN2(object):
 
             # Manually Assign non-matched lot ids (overlapping CPs and piers) to 'Yes' in the Obstruction field
             # non_matched_lot_ids = flatten_extend(non_matched_lot_ids)
-            arcpy.AddMessage(f"The following non-matched LotIDs were assigned to 'Yes' in the Obstruction field separately due to the associated overlapping piers and cps")
-            arcpy.AddMessage(unlist_brackets(pd.Series(summary_table[1]))) # pd.Series removes nested list
 
-            ids = compile_land.index[compile_land[lot_id_field].isin(unlist_brackets(pd.Series(summary_table[1])))]
+            arcpy.AddMessage(f"The following non-matched LotIDs were assigned to 'Yes' in the Obstruction field separately due to the associated overlapping piers and cps")
+            arcpy.AddMessage(str(summary_table[1])) # pd.Series removes nested list
+
+            ids = compile_land.index[compile_land[lot_id_field].isin(tuple(summary_table[1]))]
             compile_land.loc[ids, obstruc_field] = 'Yes'
 
             # Export updated GIS Lot ML with obstruction field
@@ -1398,8 +1396,8 @@ class AddObstructionToStructureN2(object):
                 #--------------------------------------------------------------#
                 ##                    Summary Statistics                      ##
                 #--------------------------------------------------------------#
-                summary_table = summary_statistics_count_ids(cp, x_struc_ids, y_struc_ids, y_struc_portal_ids)[0]
-                sum_struc_compile = pd.concat([sum_struc_compile, summary_table], ignore_index=False)
+                summary_table = summary_statistics_count_ids(cp, x_struc_ids, y_struc_ids, y_struc_portal_ids)
+                sum_struc_compile = pd.concat([sum_struc_compile, summary_table[0]], ignore_index=False)
 
             noids_rap_vs_gisml = pd.Series(summary_table[1])    
 
@@ -1419,8 +1417,8 @@ class AddObstructionToStructureN2(object):
 
             #####
             arcpy.AddMessage(f"The following non-matched StrucIDs were assigned to 'Yes' in the Obstruction field separately due to the associated overlapping piers and cps")
-            arcpy.AddMessage(unlist_brackets(noids_rap_vs_gisml))
-            ids = compile_struc.query(f"{struc_id_field}.isin({unlist_brackets(noids_rap_vs_gisml)})").index
+            arcpy.AddMessage(str(noids_rap_vs_gisml))
+            ids = compile_struc.query(f"{struc_id_field}.isin({tuple(noids_rap_vs_gisml)})").index
             compile_struc.loc[ids, obstruc_field] = 'Yes'
             compile_struc.to_excel(os.path.join(gis_rap_dir, os.path.basename(gis_struc_ms)), index=False) ## gis_struc
            
@@ -1437,8 +1435,8 @@ class AddObstructionToStructureN2(object):
 
             #####
             arcpy.AddMessage(f"The following non-matched StrucIDs were assigned to 'Yes' in the Obstruction field separately due to the associated overlapping piers and cps")
-            arcpy.AddMessage(unlist_brackets(noids_rap_vs_gisml))
-            ids = compile_nlo.query(f"{struc_id_field}.isin({unlist_brackets(noids_rap_vs_gisml)})").index
+            arcpy.AddMessage(str(noids_rap_vs_gisml))
+            ids = compile_nlo.query(f"{struc_id_field}.isin({tuple(summary_table[1])})").index
             compile_nlo.loc[ids, obstruc_field] = 'Yes'
             compile_nlo.to_excel(os.path.join(gis_rap_dir, os.path.basename(gis_nlo_ms)), index=False) ## gis_isf
 
@@ -1575,8 +1573,8 @@ class AddObstructionToLotSC(object):
                 #--------------------------------------------------------------#
                 ##                    Summary Statistics                      ##
                 #--------------------------------------------------------------#
-                summary_table = summary_statistics_count_ids(cp, x_lot_ids, y_lot_ids, y_lot_portal_ids)[0]
-                sum_lot_compile = pd.concat([sum_lot_compile, summary_table], ignore_index=False)
+                summary_table = summary_statistics_count_ids(cp, x_lot_ids, y_lot_ids, y_lot_portal_ids)
+                sum_lot_compile = pd.concat([sum_lot_compile, summary_table[0]], ignore_index=False)
 
             #--------------------------------------------------------------#
             ##  Overwrite existing GIS_Lot_ML with summary statistics      ##
@@ -1760,8 +1758,8 @@ class AddObstructionToStructureSC(object):
                 #--------------------------------------------------------------#
                 ##                    Summary Statistics                      ##
                 #--------------------------------------------------------------#
-                summary_table = summary_statistics_count_ids(cp, x_struc_ids, y_struc_ids, y_struc_portal_ids)[0]
-                sum_struc_compile = pd.concat([sum_struc_compile, summary_table], ignore_index=False)
+                summary_table = summary_statistics_count_ids(cp, x_struc_ids, y_struc_ids, y_struc_portal_ids)
+                sum_struc_compile = pd.concat([sum_struc_compile, summary_table[0]], ignore_index=False)
 
             #-----------------------------------------------------------------#
             ##  Overwrite existing GIS_Structure_ML with summary statistics  ##
@@ -2361,54 +2359,16 @@ class CheckLotUpdatedStatusGIS(object):
         # 0. Defin field names
         statusla_field = 'StatusLA'
         handedover_field = 'HandedOver'
-        package_field = 'CP'
         municipality_field = 'Municipality'
-        count_name = 'counts'
-        lsuffix_portal = '_Portal'
-        rsuffix_excel = '_Excel'
-        counts_portal = count_name + lsuffix_portal
-        counts_excel = count_name + rsuffix_excel
 
-        # 1.0 Status LA
-        keep_fields = [municipality_field, statusla_field]
+        # Status LA
+        s_statusla = summaryStatistics(gis_table, gis_portal, "count", statusla_field, [municipality_field, statusla_field], discarded_city='Mabalacat')
+        statusla_stats = s_statusla.process_data_before_after()
 
-        ## 1.0.1. GIS Portal
-        gis_portal_statusla = gis_portal.groupby(keep_fields)[statusla_field].count().reset_index(name=count_name)
-        gis_portal_statusla = gis_portal_statusla.sort_values(by=keep_fields)
+        # HandedOver
+        s_handedover = summaryStatistics(gis_table, gis_portal, "count", handedover_field, [municipality_field, statusla_field], discarded_city='Mabalacat')
+        handedover_stats = s_handedover.process_data_before_after()
 
-        ## 1.0.2. GIS ML
-        gis_ml_statusla = gis_table.groupby(keep_fields)[statusla_field].count().reset_index(name=count_name)
-        gis_ml_statusla = gis_ml_statusla.sort_values(by=keep_fields)
-
-        ## 1.0.3. Merge
-        table = pd.merge(left=gis_portal_statusla, right=gis_ml_statusla, how='outer', left_on=[municipality_field, statusla_field], right_on=[municipality_field, statusla_field])
-        table['count_diff'] = np.nan
-        table['count_diff'] = table['counts_y'] - table['counts_x']
-        table = table.rename(columns={"counts_x": str(counts_portal), "counts_y": str(counts_excel)})
-
-        arcpy.AddMessage('Merge completed..')
-        arcpy.AddMessage('The summary statistics table for StatusLA field is successfully produced.')
-
-        # 2.0. HandedOver
-        keep_fields = [municipality_field, handedover_field]
-
-        ## 2.0.1. GIS Portal
-        gis_portal_handedover = gis_portal.groupby(keep_fields)[handedover_field].count().reset_index(name=count_name)
-        gis_portal_handedover = gis_portal_handedover.sort_values(by=keep_fields)
-
-        ## 2.0.2. GIS ML
-        gis_ml_handedover = gis_table.groupby(keep_fields)[handedover_field].count().reset_index(name=count_name)
-        gis_ml_handedover = gis_ml_handedover.sort_values(by=keep_fields)
-
-        ## 2.0.3. Merge
-        table_handedover = pd.merge(left=gis_portal_handedover, right=gis_ml_handedover, how='outer', left_on=[municipality_field, handedover_field], right_on=[municipality_field, handedover_field])
-        table_handedover['count_diff'] = np.nan
-        table_handedover['count_diff'] = table_handedover['counts_y'] - table_handedover['counts_x']
-        table_handedover = table_handedover.rename(columns={"counts_x": str(counts_portal), "counts_y": str(counts_excel)})
-
-        arcpy.AddMessage('Merge completed..')
-        arcpy.AddMessage('The summary statistics table for HandedOver field is successfully produced.')
-        
         # Export the updated GIS portal to excel sheet for checking lot IDs
         try:
             file_name = "CHECK-" + project + "_" + "LA_Summary_Statistics_GIS_Portal_and_GIS_ML.xlsx"
@@ -2417,8 +2377,8 @@ class CheckLotUpdatedStatusGIS(object):
             
         to_excel_file = os.path.join(gis_dir, file_name)
         with pd.ExcelWriter(to_excel_file) as writer:
-            table.to_excel(writer, sheet_name=statusla_field, index=False)
-            table_handedover.to_excel(writer, sheet_name=handedover_field, index=False)
+            statusla_stats.to_excel(writer, sheet_name=statusla_field, index=False)
+            handedover_stats.to_excel(writer, sheet_name=handedover_field, index=False)
 
 class CheckStructureUpdatedStatusGIS(object):
     def __init__(self):
@@ -2478,38 +2438,13 @@ class CheckStructureUpdatedStatusGIS(object):
         gis_portal = pd.read_excel(gis_layer)
 
         # 0. Defin field names
-        statusla_field = 'StatusStruc'
-        package_field = 'CP'
+        statusstruc_field = 'StatusStruc'
         municipality_field = 'Municipality'
-        count_name = 'counts'
-        lsuffix_portal = '_Portal'
-        rsuffix_excel = '_Excel'
-        counts_portal = count_name + lsuffix_portal
-        counts_excel = count_name + rsuffix_excel
 
-        # 1.0 Status LA
-        keep_fields = [municipality_field, statusla_field]
-
-        ## 1.0.1. GIS Portal
-        gis_portal_statusla = gis_portal.groupby(keep_fields)[statusla_field].count().reset_index(name=count_name)
-        gis_portal_statusla = gis_portal_statusla.sort_values(by=keep_fields)
-
-        ## 1.0.2. GIS ML
-        gis_ml_statusla = gis_table.groupby(keep_fields)[statusla_field].count().reset_index(name=count_name)
-        gis_ml_statusla = gis_ml_statusla.sort_values(by=keep_fields)
-
-        ## 1.0.3. Merge
-        table = pd.merge(left=gis_portal_statusla, right=gis_ml_statusla, how='outer', left_on=[municipality_field, statusla_field], right_on=[municipality_field, statusla_field])
-        table['count_diff'] = np.nan
-        table['count_diff'] = table['counts_y'] - table['counts_x']
-        table = table.rename(columns={"counts_x": str(counts_portal), "counts_y": str(counts_excel)})
-        
-        # table = gis_portal_statusla.join(gis_ml_statusla,lsuffix=lsuffix_portal,rsuffix=rsuffix_excel)
-        # table['count_diff'] = np.nan
-        # table['count_diff'] = table[counts_portal] - table[counts_excel]
-
-        arcpy.AddMessage('Merge completed..')
-        arcpy.AddMessage('The summary statistics table for StatusLA field is successfully produced.')
+        # Status
+        ## Count status for each municipality
+        s_statusla = summaryStatistics(gis_table, gis_portal, "count", statusstruc_field, [municipality_field, statusstruc_field])
+        status_stats = s_statusla.process_data_before_after()
         
         # Export the updated GIS portal to excel sheet for checking lot IDs
         try:
@@ -2519,7 +2454,7 @@ class CheckStructureUpdatedStatusGIS(object):
             
         to_excel_file = os.path.join(gis_dir, file_name)
         with pd.ExcelWriter(to_excel_file) as writer:
-            table.to_excel(writer, sheet_name=statusla_field, index=False)
+            status_stats.to_excel(writer, sheet_name=statusstruc_field, index=False)
 
 class CheckIsfUpdatedStatusGIS(object):
     def __init__(self):
@@ -2579,38 +2514,12 @@ class CheckIsfUpdatedStatusGIS(object):
         gis_portal = pd.read_excel(gis_layer)
 
         # 0. Defin field names
-        statusla_field = 'StatusRC'
-        package_field = 'CP'
+        statusnlo_field = 'StatusRC'
         municipality_field = 'Municipality'
-        count_name = 'counts'
-        lsuffix_portal = '_Portal'
-        rsuffix_excel = '_Excel'
-        counts_portal = count_name + lsuffix_portal
-        counts_excel = count_name + rsuffix_excel
 
-        # 1.0 Status LA
-        keep_fields = [municipality_field, statusla_field]
-
-        ## 1.0.1. GIS Portal
-        gis_portal_statusla = gis_portal.groupby(keep_fields)[statusla_field].count().reset_index(name=count_name)
-        gis_portal_statusla = gis_portal_statusla.sort_values(by=keep_fields)
-
-        ## 1.0.2. GIS ML
-        gis_ml_statusla = gis_table.groupby(keep_fields)[statusla_field].count().reset_index(name=count_name)
-        gis_ml_statusla = gis_ml_statusla.sort_values(by=keep_fields)
-
-        ## 1.0.3. Merge
-        table = pd.merge(left=gis_portal_statusla, right=gis_ml_statusla, how='outer', left_on=[municipality_field, statusla_field], right_on=[municipality_field, statusla_field])
-        table['count_diff'] = np.nan
-        table['count_diff'] = table['counts_y'] - table['counts_x']
-        table = table.rename(columns={"counts_x": str(counts_portal), "counts_y": str(counts_excel)})
-        
-        # table = gis_portal_statusla.join(gis_ml_statusla,lsuffix=lsuffix_portal,rsuffix=rsuffix_excel)
-        # table['count_diff'] = np.nan
-        # table['count_diff'] = table[counts_portal] - table[counts_excel]
-
-        arcpy.AddMessage('Merge completed..')
-        arcpy.AddMessage('The summary statistics table for StatusLA field is successfully produced.')
+        # Status
+        s_statusla = summaryStatistics(gis_table, gis_portal, "count", statusnlo_field, [municipality_field, statusnlo_field])
+        status_stats = s_statusla.process_data_before_after()
         
         # Export the updated GIS portal to excel sheet for checking lot IDs
         try:
@@ -2620,7 +2529,7 @@ class CheckIsfUpdatedStatusGIS(object):
             
         to_excel_file = os.path.join(gis_dir, file_name)
         with pd.ExcelWriter(to_excel_file) as writer:
-            table.to_excel(writer, sheet_name=statusla_field, index=False)
+            status_stats.to_excel(writer, sheet_name=statusnlo_field, index=False)
 
 class JustMessage4(object):
     def __init__(self):
@@ -2689,12 +2598,6 @@ class CheckMissingLotIDs(object):
         gis_portal_ml = params[3].valueAsText
         rap_table_ml = params[4].valueAsText
 
-        def drop_empty_rows(table, field):
-            id = table.index[(table[field] == '') | (table[field].isna()) | (table[field].isnull())] # Do not use isna() as 'keep_default_na = False'
-            table = table.drop(id)
-            table = table.reset_index(drop=True)
-            return table
-
         def rename_columns_title(table, search_names, renamed_word): # one by one
             colname_change = table.columns[table.columns.str.contains(search_names,regex=True)]
             try:
@@ -2703,18 +2606,6 @@ class CheckMissingLotIDs(object):
                 pass
             return table
         
-        def unique(lists):
-            collect = []
-            unique_list = pd.Series(lists).drop_duplicates().tolist()
-            for x in unique_list:
-                collect.append(x)
-            return(collect)
-        
-        def toString(table, to_string_fields):
-            for field in to_string_fields:
-                table[field] = table[field].astype(str)
-                table[field] = table[field].replace(r'\s+|^\w\s$','',regex=True)
-            return table
         
         rap_table = pd.read_excel(rap_table_ml) # for checking NVS3, do not use default_na = false
         gis_table = pd.read_excel(gis_table_ml)

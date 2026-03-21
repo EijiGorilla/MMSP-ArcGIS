@@ -79,6 +79,15 @@ def remove_empty_strings(string_list):
 def unlist_brackets(nested_list): ## Remove nested list in a list
     return [item for sublist in nested_list for item in sublist]
 
+### Check missing field between tables
+def identify_missing_ids(table1, table2, field1, field2):    
+    ids1 = table1[field1].values
+    ids2 = table2[field2].values
+    noids_ids2 = [id for id in ids1 if id not in ids2]
+    noids_id1 = [id for id in ids2 if id not in ids1]
+    noids = noids_ids2 + noids_id1
+    return noids
+
 ### Pier Workability
 def extract_ids_for_assign_obstruction(proj, table, field, field2=None):
     if proj == 'N2':
@@ -2542,25 +2551,6 @@ class CheckMissingLotIDs(object):
         self.description = "Check Missing Lot IDs (Rap ML, GIS ML, and GIS Portal)"
 
     def getParameterInfo(self):
-        proj = arcpy.Parameter(
-            displayName = "Project Extension: N2 or SC",
-            name = "Project Extension: N2 or SC",
-            datatype = "GPString",
-            parameterType = "Required",
-            direction = "Input"
-        )
-        proj.filter.type = "ValueList"
-        proj.filter.list = ['N2', 'SC']
-    
-        gis_dir = arcpy.Parameter(
-            displayName = "GIS Masterlist Storage Directory",
-            name = "GIS master-list directory",
-            datatype = "DEWorkspace",
-            parameterType = "Required",
-            direction = "Input"
-        )
-
-        # Input Feature Layers
         gis_table_ml = arcpy.Parameter(
             displayName = "GIS ML (Excel)",
             name = "GIS ML (Excel)",
@@ -2585,192 +2575,37 @@ class CheckMissingLotIDs(object):
             direction = "Input"
         )
 
-        params = [proj, gis_dir, gis_table_ml, gis_portal_ml, rap_table_ml]
+        params = [gis_table_ml, gis_portal_ml, rap_table_ml]
         return params
 
     def updateMessages(self, params):
         return
 
     def execute(self, params, messages):
-        project = params[0].valueAsText
-        gis_dir = params[1].valueAsText
-        gis_table_ml = params[2].valueAsText
-        gis_portal_ml = params[3].valueAsText
-        rap_table_ml = params[4].valueAsText
-
-        def rename_columns_title(table, search_names, renamed_word): # one by one
-            colname_change = table.columns[table.columns.str.contains(search_names,regex=True)]
-            try:
-                table = table.rename(columns={str(colname_change[0]): renamed_word})
-            except:
-                pass
-            return table
-        
+        gis_table_ml = params[0].valueAsText
+        gis_portal_ml = params[1].valueAsText
+        rap_table_ml = params[2].valueAsText
         
         rap_table = pd.read_excel(rap_table_ml) # for checking NVS3, do not use default_na = false
         gis_table = pd.read_excel(gis_table_ml)
         gis_portal = pd.read_excel(gis_portal_ml)
 
-        # rename City/Municipality or City => 'Municipality'
-        colname_change = rap_table.columns[rap_table.columns.str.contains('^City|Municipality',regex=True)]
-        rap_table = rename_columns_title(rap_table, colname_change[0], 'Municipality')
-
         join_field = 'LotID'
-        rap_status_field = 'StatusLA'
-        rap_status_new_field = 'Rap_Status'
-        package_field = 'CP'
-        municipality_field = 'Municipality'
-        handedover_field = 'HandedOver'
-        handedover_new_field = 'Rap_HandedOver'
-        package_x_field = 'Package_x'
-        package_y_field = 'Package_y'
-        rap_field = 'Rap_ML'
-        gis_field = 'GIS_ML'
-        gis_portal_field = 'GIS_Portal'
-        need_to_check_field = 'Need_to_Check'
 
         # Convert to strings
-        to_string_fields = [join_field, municipality_field]
+        to_string_fields = [join_field]
         rap_table = toString(rap_table, to_string_fields)
         gis_table = toString(gis_table, to_string_fields)
         gis_portal = toString(gis_portal, to_string_fields)
 
-        ## 1. StatusLA =0 -> StatusLA = empty
-        id = rap_table.index[rap_table[rap_status_field] == 0]
-        rap_table.loc[id, rap_status_field] = None
+        gisml_vs_rap = identify_missing_ids(rap_table, gis_table, join_field, join_field)
+        gisportal_vs_rap = identify_missing_ids(rap_table, gis_portal ,join_field, join_field)
+        gisml_vs_gisportal = identify_missing_ids(gis_table, gis_portal, join_field, join_field)
 
-        ### 1.0. Keep only 'LotID', 'CP', and 'StatusLA' fields
-        #### 1.0.1. RAP ML
-        search_names = '|'.join([join_field, municipality_field, rap_status_field])
-        bool_list = [e for e in rap_table.columns.str.contains(search_names, regex=True)]
-        ind_id = [i for i, val in enumerate(bool_list) if val]
-        rap_table_statusla = rap_table.iloc[:, ind_id]
-
-        #### 1.0.2. GIS ML
-        search_names = '|'.join([join_field, municipality_field])
-        bool_list = [e for e in gis_table.columns.str.contains(search_names, regex=True)]
-        ind_id = [i for i, val in enumerate(bool_list) if val]
-        gis_table_statusla = gis_table.iloc[:, ind_id]
-
-        #### 1.0.3. GIS Portal
-        bool_list = [e for e in gis_portal.columns.str.contains(search_names, regex=True)]
-        ind_id = [i for i, val in enumerate(bool_list) if val]
-        gis_portal_statusla = gis_portal.iloc[:, ind_id]
-
-        ## 1.2. Filter
-        rap_lot_ids = unique(rap_table_statusla[join_field])
-        gis_lot_ids = unique(gis_table_statusla[join_field])
-        gis_portal_lot_ids = unique(gis_portal_statusla[join_field])
-
-        ### 1.3. Identify Lot IDs missing in GIS ML and GIS Portal Ids in reference to RAP ML
-        rap_gis_no_ids = [e for e in rap_lot_ids if e not in gis_lot_ids]
-        rap_gis_portal_no_ids = [e for e in rap_lot_ids if e not in gis_portal_lot_ids]
-
-        ## compare rap_gis_no_ids with rap_gis_portal_no_ids
-        ## Lot ids not commonly observed between these two GIS tables => 'GIS ML' = 'Yes'
-        gis_add_lot_ids = [e for e in rap_gis_portal_no_ids if e not in rap_gis_no_ids]
-
-        ## Lot ids from RAP ML missing in GIS ML
-        gis_no_ids = rap_table_statusla[rap_table_statusla[join_field].isin(rap_gis_no_ids)]
-        gis_no_ids[gis_field] = 'No'
-
-        ## Lot ids from RAP ML missing in GIS Portal
-        gis_portal_no_ids = rap_table_statusla[rap_table_statusla[join_field].isin(rap_gis_portal_no_ids)]
-        gis_portal_no_ids[gis_portal_field] = 'No'
-
-        ## 1.4. Concatenate two tables (rbind)
-        dataframes = [gis_no_ids,gis_portal_no_ids]
-        table = pd.concat(dataframes)
-        table = table.reset_index(drop=True)
-        duplicated_ids = table.index[table.duplicated([join_field]) == True]
-        table = table.drop(duplicated_ids)
-        table[gis_portal_field] = 'No'
-
-        ## 1.5. Update 'GIS_ML' and 'Env_ML'
-        id = table.index[table[join_field].isin(gis_add_lot_ids)]
-        table.loc[id, gis_field] = 'Yes'
-        table[rap_field] = 'Yes'
-
-        ## 1.6. Add check field
-        table = rename_columns_title(table, rap_status_field, rap_status_new_field)
-        table[rap_status_new_field] = pd.to_numeric(table[rap_status_new_field], errors='coerce')
-        table['Need_to_Check'] = 'No?'
-        id = table.index[table[rap_status_new_field].notna()]
-        table.loc[id,'Need_to_Check'] = 'Yes'
-
-        ## 1. HandedOver
-
-        ### 1.0. Keep only 'LotID', 'CP', and 'HandedOver' fields
-        #### 1.0.1. RAP ML
-        handedover_field_search = "^" + handedover_field + "$"
-        search_names = '|'.join([join_field, municipality_field, handedover_field_search])
-        bool_list = [e for e in rap_table.columns.str.contains(search_names, regex=True)]
-        ind_id = [i for i, val in enumerate(bool_list) if val]
-        rap_table_handedover = rap_table.iloc[:, ind_id]
-
-        #### 1.0.2. GIS ML
-        search_names = '|'.join([join_field, municipality_field])
-        bool_list = [e for e in gis_table.columns.str.contains(search_names, regex=True)]
-        ind_id = [i for i, val in enumerate(bool_list) if val]
-        gis_table_handedover = gis_table.iloc[:, ind_id]
-
-        #### 1.0.3. GIS Portal
-        bool_list = [e for e in gis_portal.columns.str.contains(search_names, regex=True)]
-        ind_id = [i for i, val in enumerate(bool_list) if val]
-        gis_portal_handedover = gis_portal.iloc[:, ind_id]
-
-        ## 1.2. Filter
-        rap_lot_ids = unique(rap_table_handedover[join_field])
-        gis_lot_ids = unique(gis_table_handedover[join_field])
-        gis_portal_lot_ids = unique(gis_portal_handedover[join_field])
-
-        ### 1.3. Identify Lot IDs missing in GIS ML and GIS Portal Ids in reference to RAP ML
-        rap_gis_no_ids = [e for e in rap_lot_ids if e not in gis_lot_ids]
-        rap_gis_portal_no_ids = [e for e in rap_lot_ids if e not in gis_portal_lot_ids]
-
-        ## compare rap_gis_no_ids with rap_gis_portal_no_ids
-        ## Lot ids not commonly observed between these two GIS tables => 'GIS ML' = 'Yes'
-        gis_add_lot_ids = [e for e in rap_gis_portal_no_ids if e not in rap_gis_no_ids]
-
-        ## Lot ids from RAP ML missing in GIS ML
-        gis_no_ids = rap_table_handedover[rap_table_handedover[join_field].isin(rap_gis_no_ids)]
-        gis_no_ids[gis_field] = 'No'
-
-        ## Lot ids from RAP ML missing in GIS Portal
-        gis_portal_no_ids = rap_table_handedover[rap_table_handedover[join_field].isin(rap_gis_portal_no_ids)]
-        gis_portal_no_ids[gis_portal_field] = 'No'
-
-        ## 1.4. Concatenate two tables (rbind)
-        dataframes = [gis_no_ids,gis_portal_no_ids]
-        table_handedover = pd.concat(dataframes)
-        table_handedover = table_handedover.reset_index(drop=True)
-        duplicated_ids = table_handedover.index[table_handedover.duplicated([join_field]) == True]
-        table_handedover = table_handedover.drop(duplicated_ids)
-        table_handedover[gis_portal_field] = 'No'
-
-        ## 1.5. Update 'GIS_ML' and 'Env_ML'
-        id = table_handedover.index[table_handedover[join_field].isin(gis_add_lot_ids)]
-        table_handedover.loc[id, gis_field] = 'Yes'
-        table_handedover[rap_field] = 'Yes'
-
-        ## 1.6. Add check field
-        table_handedover = rename_columns_title(table_handedover, handedover_field, handedover_new_field)
-        table_handedover[handedover_new_field] = pd.to_numeric(table_handedover[handedover_new_field], errors='coerce')
-        table_handedover['Need_to_Check'] = 'No?'
-        id = table_handedover.index[table_handedover[handedover_new_field].notna()]
-        table_handedover.loc[id,'Need_to_Check'] = 'Yes'
-
-        ## This table shows lot ids which are missing in either GIS ML or GIS Portal or both.
-        ## Check the following lots with Envi Team: lots with status in Envi Table but not reflected in GIS ML or GIS Portal or both.
-        try:
-            file_name = "CHECK-" + project + "_" + "LA_Missing_Lot_IDs.xlsx"
-        except:
-            file_name = "_" + "LA_Missing_Lot_IDs.xlsx"
-        
-        to_excel_file = os.path.join(gis_dir, file_name)
-        with pd.ExcelWriter(to_excel_file) as writer:
-            table.to_excel(writer, sheet_name=rap_status_field, index=False)
-            table_handedover.to_excel(writer, sheet_name=handedover_field, index=False)
+        arcpy.AddMessage("Missing lotids:")
+        arcpy.AddMessage(f"GIS_ML vs RAP ML: {gisml_vs_rap}")
+        arcpy.AddMessage(f"GIS_Portal vs RAP ML: {gisportal_vs_rap}")
+        arcpy.AddMessage(f"GIS_ML vs GIS_Portal: {gisml_vs_gisportal}")
 
 class CheckMissingStructureIDs(object):
     def __init__(self):
@@ -2778,25 +2613,6 @@ class CheckMissingStructureIDs(object):
         self.description = "Check Missing Structure IDs (Rap ML, GIS ML, and GIS Portal)"
 
     def getParameterInfo(self):
-        proj = arcpy.Parameter(
-            displayName = "Project Extension: N2 or SC",
-            name = "Project Extension: N2 or SC",
-            datatype = "GPString",
-            parameterType = "Required",
-            direction = "Input"
-        )
-        proj.filter.type = "ValueList"
-        proj.filter.list = ['N2', 'SC']
-    
-        gis_dir = arcpy.Parameter(
-            displayName = "GIS Masterlist Storage Directory",
-            name = "GIS master-list directory",
-            datatype = "DEWorkspace",
-            parameterType = "Required",
-            direction = "Input"
-        )
-
-        # Input Feature Layers
         gis_table_ml = arcpy.Parameter(
             displayName = "GIS Structure ML (Excel)",
             name = "GIS Structure ML (Excel)",
@@ -2821,143 +2637,37 @@ class CheckMissingStructureIDs(object):
             direction = "Input"
         )
 
-        params = [proj, gis_dir, gis_table_ml, gis_portal_ml, rap_table_ml]
+        params = [gis_table_ml, gis_portal_ml, rap_table_ml]
         return params
 
     def updateMessages(self, params):
         return
 
     def execute(self, params, messages):
-        project = params[0].valueAsText
-        gis_dir = params[1].valueAsText
-        gis_table_ml = params[2].valueAsText
-        gis_portal_ml = params[3].valueAsText
-        rap_table_ml = params[4].valueAsText
-
-        def drop_empty_rows(table, field):
-            id = table.index[(table[field] == '') | (table[field].isna()) | (table[field].isnull())] # Do not use isna() as 'keep_default_na = False'
-            table = table.drop(id)
-            table = table.reset_index(drop=True)
-            return table
-
-        def rename_columns_title(table, search_names, renamed_word): # one by one
-            colname_change = table.columns[table.columns.str.contains(search_names,regex=True)]
-            try:
-                table = table.rename(columns={str(colname_change[0]): renamed_word})
-            except:
-                pass
-            return table
-        
-        def unique(lists):
-            collect = []
-            unique_list = pd.Series(lists).drop_duplicates().tolist()
-            for x in unique_list:
-                collect.append(x)
-            return(collect)
-        
-        def toString(table, to_string_fields):
-            for field in to_string_fields:
-                table[field] = table[field].astype(str)
-                table[field] = table[field].replace(r'\s+|^\w\s$','',regex=True)
-            return table
+        gis_table_ml = params[0].valueAsText
+        gis_portal_ml = params[1].valueAsText
+        rap_table_ml = params[2].valueAsText
         
         rap_table = pd.read_excel(rap_table_ml) # for checking NVS3, do not use default_na = false
         gis_table = pd.read_excel(gis_table_ml)
         gis_portal = pd.read_excel(gis_portal_ml)
 
-        # rename City/Municipality or City => 'Municipality'
-        colname_change = rap_table.columns[rap_table.columns.str.contains('^City|Municipality',regex=True)]
-        rap_table = rename_columns_title(rap_table, colname_change[0], 'Municipality')
-
         join_field = 'StrucID'
-        rap_status_field = 'StatusStruc'
-        rap_status_new_field = 'Rap_Status'
-        package_field = 'CP'
-        municipality_field = 'Municipality'
-        rap_field = 'Rap_ML'
-        gis_field = 'GIS_ML'
-        gis_portal_field = 'GIS_Portal'
-        need_to_check_field = 'Need_to_Check'
 
         # Convert to strings
-        to_string_fields = [join_field, municipality_field]
+        to_string_fields = [join_field]
         rap_table = toString(rap_table, to_string_fields)
         gis_table = toString(gis_table, to_string_fields)
         gis_portal = toString(gis_portal, to_string_fields)
 
-        ## 1. StatusLA =0 -> StatusLA = empty
-        id = rap_table.index[rap_table[rap_status_field] == 0]
-        rap_table.loc[id, rap_status_field] = None
+        gisml_vs_rap = identify_missing_ids(rap_table, gis_table, join_field, join_field)
+        gisportal_vs_rap = identify_missing_ids(rap_table, gis_portal ,join_field, join_field)
+        gisml_vs_gisportal = identify_missing_ids(gis_table, gis_portal, join_field, join_field)
 
-        ### 1.0. Keep only 'LotID', 'CP', and 'StatusLA' fields
-        #### 1.0.1. RAP ML
-        search_names = '|'.join([join_field, municipality_field, rap_status_field])
-        bool_list = [e for e in rap_table.columns.str.contains(search_names, regex=True)]
-        ind_id = [i for i, val in enumerate(bool_list) if val]
-        rap_table_statusla = rap_table.iloc[:, ind_id]
-
-        #### 1.0.2. GIS ML
-        search_names = '|'.join([join_field, municipality_field])
-        bool_list = [e for e in gis_table.columns.str.contains(search_names, regex=True)]
-        ind_id = [i for i, val in enumerate(bool_list) if val]
-        gis_table_statusla = gis_table.iloc[:, ind_id]
-
-        #### 1.0.3. GIS Portal
-        bool_list = [e for e in gis_portal.columns.str.contains(search_names, regex=True)]
-        ind_id = [i for i, val in enumerate(bool_list) if val]
-        gis_portal_statusla = gis_portal.iloc[:, ind_id]
-
-        ## 1.2. Filter
-        rap_lot_ids = unique(rap_table_statusla[join_field])
-        gis_lot_ids = unique(gis_table_statusla[join_field])
-        gis_portal_lot_ids = unique(gis_portal_statusla[join_field])
-
-        ### 1.3. Identify Lot IDs missing in GIS ML and GIS Portal Ids in reference to RAP ML
-        rap_gis_no_ids = [e for e in rap_lot_ids if e not in gis_lot_ids]
-        rap_gis_portal_no_ids = [e for e in rap_lot_ids if e not in gis_portal_lot_ids]
-
-        ## compare rap_gis_no_ids with rap_gis_portal_no_ids
-        ## Lot ids not commonly observed between these two GIS tables => 'GIS ML' = 'Yes'
-        gis_add_lot_ids = [e for e in rap_gis_portal_no_ids if e not in rap_gis_no_ids]
-
-        ## Lot ids from RAP ML missing in GIS ML
-        gis_no_ids = rap_table_statusla[rap_table_statusla[join_field].isin(rap_gis_no_ids)]
-        gis_no_ids[gis_field] = 'No'
-
-        ## Lot ids from RAP ML missing in GIS Portal
-        gis_portal_no_ids = rap_table_statusla[rap_table_statusla[join_field].isin(rap_gis_portal_no_ids)]
-        gis_portal_no_ids[gis_portal_field] = 'No'
-
-        ## 1.4. Concatenate two tables (rbind)
-        dataframes = [gis_no_ids,gis_portal_no_ids]
-        table = pd.concat(dataframes)
-        table = table.reset_index(drop=True)
-        duplicated_ids = table.index[table.duplicated([join_field]) == True]
-        table = table.drop(duplicated_ids)
-        table[gis_portal_field] = 'No'
-
-        ## 1.5. Update 'GIS_ML' and 'Env_ML'
-        id = table.index[table[join_field].isin(gis_add_lot_ids)]
-        table.loc[id, gis_field] = 'Yes'
-        table[rap_field] = 'Yes'
-
-        ## 1.6. Add check field
-        table = rename_columns_title(table, rap_status_field, rap_status_new_field)
-        table[rap_status_new_field] = pd.to_numeric(table[rap_status_new_field], errors='coerce')
-        table['Need_to_Check'] = 'No?'
-        id = table.index[table[rap_status_new_field].notna()]
-        table.loc[id,'Need_to_Check'] = 'Yes'
-
-        ## This table shows lot ids which are missing in either GIS ML or GIS Portal or both.
-        ## Check the following lots with Envi Team: lots with status in Envi Table but not reflected in GIS ML or GIS Portal or both.
-        try:
-            file_name = "CHECK-" + project + "_" + "Structure_Missing_IDs.xlsx"
-        except:
-            file_name = "_" + "Structure_Missing_IDs.xlsx"
-        
-        to_excel_file = os.path.join(gis_dir, file_name)
-        with pd.ExcelWriter(to_excel_file) as writer:
-            table.to_excel(writer, sheet_name=rap_status_field, index=False)
+        arcpy.AddMessage("Missing lotids:")
+        arcpy.AddMessage(f"GIS_ML vs RAP ML: {gisml_vs_rap}")
+        arcpy.AddMessage(f"GIS_Portal vs RAP ML: {gisportal_vs_rap}")
+        arcpy.AddMessage(f"GIS_ML vs GIS_Portal: {gisml_vs_gisportal}")
 
 class CheckMissingIsfIDs(object):
     def __init__(self):
@@ -2965,25 +2675,6 @@ class CheckMissingIsfIDs(object):
         self.description = "Check Missing ISF (NLO) IDs (Rap ML, GIS ML, and GIS Portal)"
 
     def getParameterInfo(self):
-        proj = arcpy.Parameter(
-            displayName = "Project Extension: N2 or SC",
-            name = "Project Extension: N2 or SC",
-            datatype = "GPString",
-            parameterType = "Required",
-            direction = "Input"
-        )
-        proj.filter.type = "ValueList"
-        proj.filter.list = ['N2', 'SC']
-    
-        gis_dir = arcpy.Parameter(
-            displayName = "GIS Masterlist Storage Directory",
-            name = "GIS master-list directory",
-            datatype = "DEWorkspace",
-            parameterType = "Required",
-            direction = "Input"
-        )
-
-        # Input Feature Layers
         gis_table_ml = arcpy.Parameter(
             displayName = "GIS ISF ML (Excel)",
             name = "GIS ISF ML (Excel)",
@@ -3008,140 +2699,34 @@ class CheckMissingIsfIDs(object):
             direction = "Input"
         )
 
-        params = [proj, gis_dir, gis_table_ml, gis_portal_ml, rap_table_ml]
+        params = [gis_table_ml, gis_portal_ml, rap_table_ml]
         return params
 
     def updateMessages(self, params):
         return
 
     def execute(self, params, messages):
-        project = params[0].valueAsText
-        gis_dir = params[1].valueAsText
-        gis_table_ml = params[2].valueAsText
-        gis_portal_ml = params[3].valueAsText
-        rap_table_ml = params[4].valueAsText
+        gis_table_ml = params[0].valueAsText
+        gis_portal_ml = params[1].valueAsText
+        rap_table_ml = params[2].valueAsText
 
-        def drop_empty_rows(table, field):
-            id = table.index[(table[field] == '') | (table[field].isna()) | (table[field].isnull())] # Do not use isna() as 'keep_default_na = False'
-            table = table.drop(id)
-            table = table.reset_index(drop=True)
-            return table
-
-        def rename_columns_title(table, search_names, renamed_word): # one by one
-            colname_change = table.columns[table.columns.str.contains(search_names,regex=True)]
-            try:
-                table = table.rename(columns={str(colname_change[0]): renamed_word})
-            except:
-                pass
-            return table
-        
-        def unique(lists):
-            collect = []
-            unique_list = pd.Series(lists).drop_duplicates().tolist()
-            for x in unique_list:
-                collect.append(x)
-            return(collect)
-        
-        def toString(table, to_string_fields):
-            for field in to_string_fields:
-                table[field] = table[field].astype(str)
-                table[field] = table[field].replace(r'\s+|^\w\s$','',regex=True)
-            return table
-        
         rap_table = pd.read_excel(rap_table_ml) # for checking NVS3, do not use default_na = false
         gis_table = pd.read_excel(gis_table_ml)
         gis_portal = pd.read_excel(gis_portal_ml)
 
-        # rename City/Municipality or City => 'Municipality'
-        colname_change = rap_table.columns[rap_table.columns.str.contains('^City|Municipality',regex=True)]
-        rap_table = rename_columns_title(rap_table, colname_change[0], 'Municipality')
-
         join_field = 'StrucID'
-        rap_status_field = 'StatusRC'
-        rap_status_new_field = 'Rap_Status'
-        package_field = 'CP'
-        municipality_field = 'Municipality'
-        rap_field = 'Rap_ML'
-        gis_field = 'GIS_ML'
-        gis_portal_field = 'GIS_Portal'
-        need_to_check_field = 'Need_to_Check'
 
         # Convert to strings
-        to_string_fields = [join_field, municipality_field]
+        to_string_fields = [join_field]
         rap_table = toString(rap_table, to_string_fields)
         gis_table = toString(gis_table, to_string_fields)
         gis_portal = toString(gis_portal, to_string_fields)
 
-        ## 1. StatusLA =0 -> StatusLA = empty
-        id = rap_table.index[rap_table[rap_status_field] == 0]
-        rap_table.loc[id, rap_status_field] = None
+        gisml_vs_rap = identify_missing_ids(rap_table, gis_table, join_field, join_field)
+        gisportal_vs_rap = identify_missing_ids(rap_table, gis_portal ,join_field, join_field)
+        gisml_vs_gisportal = identify_missing_ids(gis_table, gis_portal, join_field, join_field)
 
-        ### 1.0. Keep only 'LotID', 'CP', and 'StatusLA' fields
-        #### 1.0.1. RAP ML
-        search_names = '|'.join([join_field, municipality_field, rap_status_field])
-        bool_list = [e for e in rap_table.columns.str.contains(search_names, regex=True)]
-        ind_id = [i for i, val in enumerate(bool_list) if val]
-        rap_table_statusla = rap_table.iloc[:, ind_id]
-
-        #### 1.0.2. GIS ML
-        search_names = '|'.join([join_field, municipality_field])
-        bool_list = [e for e in gis_table.columns.str.contains(search_names, regex=True)]
-        ind_id = [i for i, val in enumerate(bool_list) if val]
-        gis_table_statusla = gis_table.iloc[:, ind_id]
-
-        #### 1.0.3. GIS Portal
-        bool_list = [e for e in gis_portal.columns.str.contains(search_names, regex=True)]
-        ind_id = [i for i, val in enumerate(bool_list) if val]
-        gis_portal_statusla = gis_portal.iloc[:, ind_id]
-
-        ## 1.2. Filter
-        rap_lot_ids = unique(rap_table_statusla[join_field])
-        gis_lot_ids = unique(gis_table_statusla[join_field])
-        gis_portal_lot_ids = unique(gis_portal_statusla[join_field])
-
-        ### 1.3. Identify Lot IDs missing in GIS ML and GIS Portal Ids in reference to RAP ML
-        rap_gis_no_ids = [e for e in rap_lot_ids if e not in gis_lot_ids]
-        rap_gis_portal_no_ids = [e for e in rap_lot_ids if e not in gis_portal_lot_ids]
-
-        ## compare rap_gis_no_ids with rap_gis_portal_no_ids
-        ## Lot ids not commonly observed between these two GIS tables => 'GIS ML' = 'Yes'
-        gis_add_lot_ids = [e for e in rap_gis_portal_no_ids if e not in rap_gis_no_ids]
-
-        ## Lot ids from RAP ML missing in GIS ML
-        gis_no_ids = rap_table_statusla[rap_table_statusla[join_field].isin(rap_gis_no_ids)]
-        gis_no_ids[gis_field] = 'No'
-
-        ## Lot ids from RAP ML missing in GIS Portal
-        gis_portal_no_ids = rap_table_statusla[rap_table_statusla[join_field].isin(rap_gis_portal_no_ids)]
-        gis_portal_no_ids[gis_portal_field] = 'No'
-
-        ## 1.4. Concatenate two tables (rbind)
-        dataframes = [gis_no_ids,gis_portal_no_ids]
-        table = pd.concat(dataframes)
-        table = table.reset_index(drop=True)
-        duplicated_ids = table.index[table.duplicated([join_field]) == True]
-        table = table.drop(duplicated_ids)
-        table[gis_portal_field] = 'No'
-
-        ## 1.5. Update 'GIS_ML' and 'Env_ML'
-        id = table.index[table[join_field].isin(gis_add_lot_ids)]
-        table.loc[id, gis_field] = 'Yes'
-        table[rap_field] = 'Yes'
-
-        ## 1.6. Add check field
-        table = rename_columns_title(table, rap_status_field, rap_status_new_field)
-        table[rap_status_new_field] = pd.to_numeric(table[rap_status_new_field], errors='coerce')
-        table['Need_to_Check'] = 'No?'
-        id = table.index[table[rap_status_new_field].notna()]
-        table.loc[id,'Need_to_Check'] = 'Yes'
-
-        ## This table shows lot ids which are missing in either GIS ML or GIS Portal or both.
-        ## Check the following lots with Envi Team: lots with status in Envi Table but not reflected in GIS ML or GIS Portal or both.
-        try:
-            file_name = "CHECK-" + project + "_" + "ISF_Missing_Structure_IDs.xlsx"
-        except:
-            file_name = "_" + "ISF_Missing_Structure_IDs.xlsx"
-        
-        to_excel_file = os.path.join(gis_dir, file_name)
-        with pd.ExcelWriter(to_excel_file) as writer:
-            table.to_excel(writer, sheet_name=rap_status_field, index=False)
+        arcpy.AddMessage("Missing lotids:")
+        arcpy.AddMessage(f"GIS_ML vs RAP ML: {gisml_vs_rap}")
+        arcpy.AddMessage(f"GIS_Portal vs RAP ML: {gisportal_vs_rap}")
+        arcpy.AddMessage(f"GIS_ML vs GIS_Portal: {gisml_vs_gisportal}")

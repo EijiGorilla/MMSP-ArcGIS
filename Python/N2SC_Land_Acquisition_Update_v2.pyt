@@ -110,7 +110,7 @@ def extract_ids_for_assign_obstruction(proj, table, field, field2=None):
         ids = remove_empty_strings(ids)
     return ids
 
-def summary_statistics_count_ids(cp, rap_ids, gisml_ids, gisportal_ids):
+def summary_statistics_count_ids(proj, cp, rap_ids, gisml_ids, gisportal_ids):
     noids_rap_vs_gisml = ",".join(non_match_elements(rap_ids, gisml_ids))
     noids_rap_vs_gisportal = ",".join(non_match_elements(rap_ids, gisportal_ids))
     rap_vs_gisml = len(rap_ids) - len(gisml_ids)
@@ -123,7 +123,7 @@ def summary_statistics_count_ids(cp, rap_ids, gisml_ids, gisportal_ids):
     
     # Add remarks
     if len(noids_rap_vs_gisml) > 0:
-        table['remark'] = f"**{noids_rap_vs_gisml} were manually assigned 'Yes' in the Obstruction field of GIS_N2_Land_ML.xlsx."
+        table['remark'] = f"**{noids_rap_vs_gisml} were manually assigned 'Yes' in the Obstruction field of GIS_{proj}_ML.xlsx."
     return [table, noids_rap_vs_gisml]
 
 ### Custom class for generating a summary statistics table
@@ -1217,7 +1217,7 @@ class AddObstructionToLotN2(object):
                 #--------------------------------------------------------------#
                 ##                    Summary Statistics                      ##
                 #--------------------------------------------------------------#
-                summary_table = summary_statistics_count_ids(cp, x_lot_ids, y_lot_ids, y_lot_portal_ids)
+                summary_table = summary_statistics_count_ids(proj, cp, x_lot_ids, y_lot_ids, y_lot_portal_ids)
                 sum_lot_compile = pd.concat([sum_lot_compile, summary_table[0]], ignore_index=False)
 
             #--------------------------------------------------------------#
@@ -1411,7 +1411,7 @@ class AddObstructionToStructureN2(object):
                 #--------------------------------------------------------------#
                 ##                    Summary Statistics                      ##
                 #--------------------------------------------------------------#
-                summary_table = summary_statistics_count_ids(cp, x_struc_ids, y_struc_ids, y_struc_portal_ids)
+                summary_table = summary_statistics_count_ids(proj, cp, x_struc_ids, y_struc_ids, y_struc_portal_ids)
                 sum_struc_compile = pd.concat([sum_struc_compile, summary_table[0]], ignore_index=False)
 
             noids_rap_vs_gisml = pd.Series(summary_table[1])    
@@ -1588,7 +1588,7 @@ class AddObstructionToLotSC(object):
                 #--------------------------------------------------------------#
                 ##                    Summary Statistics                      ##
                 #--------------------------------------------------------------#
-                summary_table = summary_statistics_count_ids(cp, x_lot_ids, y_lot_ids, y_lot_portal_ids)
+                summary_table = summary_statistics_count_ids(proj, cp, x_lot_ids, y_lot_ids, y_lot_portal_ids)
                 sum_lot_compile = pd.concat([sum_lot_compile, summary_table[0]], ignore_index=False)
 
             #--------------------------------------------------------------#
@@ -1773,7 +1773,7 @@ class AddObstructionToStructureSC(object):
                 #--------------------------------------------------------------#
                 ##                    Summary Statistics                      ##
                 #--------------------------------------------------------------#
-                summary_table = summary_statistics_count_ids(cp, x_struc_ids, y_struc_ids, y_struc_portal_ids)
+                summary_table = summary_statistics_count_ids(proj, cp, x_struc_ids, y_struc_ids, y_struc_portal_ids)
                 sum_struc_compile = pd.concat([sum_struc_compile, summary_table[0]], ignore_index=False)
 
             #-----------------------------------------------------------------#

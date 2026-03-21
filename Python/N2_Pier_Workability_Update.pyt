@@ -7,6 +7,56 @@ import re
 import string
 import numpy as np
 
+def non_match_elements(list_a, list_b):
+    non_match = []
+    for i in list_a:
+        if i not in list_b:
+            non_match.append(i)
+    return non_match
+
+def rename_columns_title(table, search_names, renamed_word): # one by one
+    colname_change = table.columns[table.columns.str.contains(search_names,regex=True)]
+    try:
+        table = table.rename(columns={str(colname_change[0]): renamed_word})
+    except:
+        pass
+    return table
+
+def extract_pier_numbers(cp, cp_field, pier_num_field, type_field=None, viat=None, civilt=None, piertrackt=None):
+    if viat:
+        x = pd.read_excel(viat)
+        ids = x.query(f"{cp_field} == '{cp}' and {type_field} == 2").index
+        piers = x.loc[ids, pier_num_field].values
+    elif civilt:
+        new_cols = ['PierNumber', 'CP', 'util1', 'util2', 'Others', 'Workability']
+        x = pd.read_excel(civilt, skiprows=2)
+        ids = x.columns[x.columns.str.contains(r'^Pier No.*|Contract P.*|^Name of Utilities|^Others|^Pile Cap Workable.*',regex=True,na=False)]
+        x = x.loc[:, ids]
+        for i, col in enumerate(ids):
+            x = x.rename(columns={col: new_cols[i]})
+        x[cp_field] = x[cp_field].str.replace(r'/.*','',regex=True)
+        x[cp_field] = x[cp_field].str.replace(r'CPN','N-',regex=True)
+        ids = x.query(f"{cp_field} == '{cp}'").index
+        piers = x.loc[ids, pier_num_field].values
+    elif piertrackt:
+        x = pd.read_excel(piertrackt, sheet_name=cp)
+        
+        # Find nth row wheren field name 'PierNumber' begins and drop emty row.
+        ids = x.iloc[:, 0].index[x.iloc[:, 0].str.contains(r'PierNumber', regex=True, na=False)]
+        x = x.drop(ids).reset_index(drop=True)
+        piers = x[pier_num_field].values
+    return piers
+
+def summary_statistics_count_piers(cp, ids1, ids2, ids3, columns):
+    # Primary ids = ids1
+    noids_ids1_vs_ids2 = ",".join(non_match_elements(ids1, ids2))
+    noids_ids1_vs_ids3 = ",".join(non_match_elements(ids1, ids3))
+    params = [cp, len(ids1), len(ids2), len(ids3), noids_ids1_vs_ids2, noids_ids1_vs_ids3]
+    table = pd.DataFrame(columns=columns)
+    for i in range(0, len(columns)):
+        table.loc[0, columns[i]] = params[i]
+    return table
+
 class Toolbox(object):
     def __init__(self):
         self.label = "UpdateN2Viaduct"
@@ -233,63 +283,7 @@ class UpdateGISExcelML(object):
         #arcpy.env.addOutputsToMap = True
 
         def N2_Viaduct_Update():
-            def whitespace_removal(dataframe, field):
-                try:
-                    dataframe[field] = dataframe[field].apply(lambda x: x.strip())
-                except:
-                    pass
 
-            def unique(lists):
-                collect = []
-                unique_list = pd.Series(lists).drop_duplicates().tolist()
-                for x in unique_list:
-                    collect.append(x)
-                return(collect)
-            
-            def match_elements(list_a, list_b):
-                matched = []
-                for i in list_a:
-                    if i in list_b:
-                        matched.append(i)
-                return matched
-            
-            def toString(table, to_string_fields): # list of fields to be converted to string
-                for field in to_string_fields:
-                    ## Need to convert string first, then apply space removal, and then convert to string again
-                    ## If you do not apply string conversion twice, it will fail to join with the GIS attribute table
-                    table[field] = table[field].astype(str)
-                    table[field] = table[field].apply(lambda x: x.replace(r'/s+', ''))
-                    table[field] = table[field].astype(str)
-                    
-            def rename_columns_title(table, search_names, renamed_word): # one by one
-                colname_change = table.columns[table.columns.str.contains(search_names,regex=True)]
-                try:
-                    table = table.rename(columns={str(colname_change[0]): renamed_word})
-                except:
-                    pass
-                return table
-            
-            def check_matches_list_and_merge(target_table, input_table, join_field):
-                id1 =  unique(target_table[join_field])
-                id2 = unique(input_table[join_field])
-                    
-                table = pd.merge(left=target_table, right=input_table, how='left', left_on=join_field, right_on=join_field)
-                return table
-            
-            def convert_status_to_numeric(table, dic, input_field, new_field):
-                for i in range(len(dic)):
-                    id = table.index[table[input_field] == list(dic.keys())[i]]
-                    table.loc[id, new_field] = list(dic.values())[i]
-                    
-            def toNumeric(table, fields):
-                for i in range(len(fields)):
-                    table[fields[i]] = pd.to_numeric(table[fields[i]])
-                    
-            def toString(table, to_string_fields): # list of fields to be converted to string
-                for field in to_string_fields:
-                    ## Need to convert string first, then apply space removal, and then convert to string again
-                    ## If you do not apply string conversion twice, it will fail to join with the GIS attribute table
-                    table[field] = table[field].astype(str)
                     
             def toDate(table, field):
                 table[field] = pd.to_datetime(table[field],errors='coerce').dt.date
@@ -501,6 +495,8 @@ class CreateWorkablePierLayer(object):
         pier_pt_layer = params[3].valueAsText
 
         arcpy.env.overwriteOutput = True
+        
+        # Define fields
         status_field = 'Status'
         cp_field = 'CP'
         pier_number_field = 'PierNumber'
@@ -529,7 +525,7 @@ class CreateWorkablePierLayer(object):
             else:
                 arcpy.management.AddField(new_layer, field, "SHORT", field_alias=field, field_is_nullable="NULLABLE")
 
-        # When the construction of 'pile cap' is completed, al the 'Workable' fields must be 2 (completed). 
+        # When the construction of 'pile cap' is completed, 'Workable' fields must be 2 (completed). 
         with arcpy.da.UpdateCursor(new_layer, [type_field, status_field, 'AllWorkable','LandWorkable','StrucWorkable','NLOWorkable', 'UtilWorkable', 'OthersWorkable']) as cursor:
             # 0: Non-workable, 1: Workable, 2: Completed
             for row in cursor:
@@ -559,9 +555,9 @@ class CreateWorkablePierLayer(object):
         # Export the latest N2 Viaduct layer to excel
         arcpy.conversion.TableToExcel(via_layer, os.path.join(workable_dir, "N2_Viaduct_MasterList.xlsx"))
         
-        ########################################
-        ##### Update N2 Pier Point Layer #######
-        ########################################
+        #--------------------------------------#
+        ##       Update N2 Pier Point Layer   ##
+        #--------------------------------------#
         try:
             temp_layer = 'temp_layer'
             arcpy.management.MakeFeatureLayer(via_layer, temp_layer, '"Type" = 2')
@@ -650,117 +646,37 @@ class CheckPierNumbers(object):
         #arcpy.env.addOutputsToMap = True
 
         def Workable_Pier_Table_Update():
-            def unique(lists):
-                collect = []
-                unique_list = pd.Series(lists).drop_duplicates().tolist()
-                for x in unique_list:
-                    collect.append(x)
-                return(collect)
-            
-            def non_match_elements(list_a, list_b):
-                non_match = []
-                for i in list_a:
-                    if i not in list_b:
-                        non_match.append(i)
-                return non_match
 
             # List of fields
             cp_field = 'CP'
             type_field = 'Type'
             pier_num_field = 'PierNumber'
-            unique_id_field = 'uniqueID'
-            pier_num_field_c = 'Pier No. (P)'
-
             cps = ['N-01','N-02','N-03']
 
-            compile_all = pd.DataFrame()
+            compile_table = pd.DataFrame()
             for cp in cps:
                 arcpy.AddMessage("Contract Package: " + cp)
-                compile_t = pd.DataFrame()
-
-                cols = ['CP',
-                        'PierNumber_civil',
-                        'PierNumber_gisportal',
-                        'PierNumber_pierTracker',
-                        'Diff_Civil_vs_GISportal',
-                        'Non-matched_piers_Civil_vs_GISportal',
-                        'Diff_Civil_vs_PierTracker',
-                        'Non-matched_piers_Civil_vs_PierTracker',
-                        'Diff_GISportal_vs_PierTracker',
-                        'Non-matched_piers_GISportal_vs_PierTracker'
-                        ]
-
-                #1. Read table
-                ## N2 Viaduct portal
-                portal_t = pd.read_excel(gis_viaduct_ms)
-                ids = portal_t.index[(portal_t[cp_field] == cp) & (portal_t[type_field] == 2)]
-                portal_t = portal_t.loc[ids, [pier_num_field, unique_id_field]].reset_index(drop=True)
-                gis_piers = portal_t[pier_num_field].values
+  
+                # Get pier numbers  
+                gis_piers = extract_pier_numbers(cp, cp_field, pier_num_field, type_field, gis_viaduct_ms, None, None)
+                civil_piers = extract_pier_numbers(cp, cp_field, pier_num_field, None, civil_workable_ms, None)
+                tracker_piers = extract_pier_numbers(cp, cp_field, pier_num_field, None, None, gis_pier_tracker_ms)
                 
-                ## N2 Civil ML
-                new_cols = ['PierNumber', 'CP', 'util1', 'util2', 'Others', 'Workability']
-                civil_t = pd.read_excel(civil_workable_ms, skiprows=2)
-                ids = civil_t.columns[civil_t.columns.str.contains(r'^Pier No.*|Contract P.*|^Name of Utilities|^Others|^Pile Cap Workable.*',regex=True,na=False)]
-                civil_t = civil_t.loc[:, ids]
-                for i, col in enumerate(ids):
-                    civil_t = civil_t.rename(columns={col: new_cols[i]})
-
-                civil_t[cp_field] = civil_t[cp_field].str.replace(r'/.*','',regex=True)
-                civil_t[cp_field] = civil_t[cp_field].str.replace(r'CPN','N-',regex=True)
-                civil_t = civil_t.query(f"{cp_field} == '{cp}'").reset_index(drop=True)
-                civil_piers = civil_t[pier_num_field].values
+                columns = ['cp',
+                           'civil',
+                            'gis',
+                            'tracker',
+                            'non-matched piers (civil-gis)',
+                            'non-matched piers (civil-tracker)'
+                            ]
                 
-                ## Pier Workable Tracker (GIS Team prepared)
-                pier_track_t = pd.read_excel(gis_pier_tracker_ms, sheet_name=cp)
-                idx = pier_track_t.iloc[:, 0].index[pier_track_t.iloc[:, 0].str.contains(r'PierNumber',regex=True,na=False)]
-                pier_track_t = pier_track_t.drop(idx).reset_index(drop=True)
-                pier_track_t = pier_track_t.rename(columns={pier_track_t.columns[0]: pier_num_field}) 
-                tracker_piers = pier_track_t[pier_num_field].values
-
-                # 2. Comparing
-                compile_t.loc[0, cols[0]] = cp
-
-                ## 2.1. Civil vs GIS Portal
-                compile_t.loc[0, cols[1]] = len(civil_piers)
-                compile_t.loc[0, cols[2]] = len(gis_piers)
-                compile_t.loc[0, cols[4]] = compile_t.loc[0, cols[1]] - compile_t.loc[0, cols[2]]
-                nonmatch_piers1 = [e for e in civil_piers if e not in gis_piers]
-                nonmatch_piers2 = [e for e in gis_piers if e not in civil_piers]
-                nonmatch_piers_all = nonmatch_piers1 + nonmatch_piers2
-                if len(nonmatch_piers_all) > 0:
-                    compile_t.loc[0, cols[5]] = (",").join(nonmatch_piers_all)
-                else:
-                    compile_t.loc[0, cols[5]] = np.nan
-
-                ## 2.2. Civil vs Pier Tracker
-                compile_t.loc[0, cols[3]] = len(tracker_piers)
-                compile_t.loc[0, cols[6]] = compile_t.loc[0, cols[1]] - compile_t.loc[0, cols[3]]
-                nonmatch_piers1 = [e for e in civil_piers if e not in tracker_piers]
-                nonmatch_piers2 = [e for e in tracker_piers if e not in civil_piers]
-                nonmatch_piers_all = nonmatch_piers1 + nonmatch_piers2
-                if len(nonmatch_piers_all) > 0:
-                    compile_t.loc[0, cols[7]] = (",").join(nonmatch_piers_all)
-                else:
-                    compile_t.loc[0, cols[7]] = np.nan
-
-                ## 2.3. GIS Portal vs Pier Tracker
-                compile_t.loc[0, cols[8]] = compile_t.loc[0, cols[2]] - compile_t.loc[0, cols[3]]
-                nonmatch_piers1 = [e for e in gis_piers if e not in tracker_piers]
-                nonmatch_piers2 = [e for e in tracker_piers if e not in gis_piers]
-                nonmatch_piers_all = nonmatch_piers1 + nonmatch_piers2
-                if len(nonmatch_piers_all) > 0:
-                    compile_t.loc[0, cols[9]] = (",").join(nonmatch_piers_all)
-                else:
-                    compile_t.loc[0, cols[9]] = np.nan
-
+                table = summary_statistics_count_piers(cp, civil_piers, gis_piers, tracker_piers, columns)
+ 
                 # Compile cps
-                compile_all = pd.concat([compile_all, compile_t])
-                compile_all = compile_all.loc[:, cols]
-                arcpy.AddMessage("Table of Non-Matched Piers:")
-                arcpy.AddMessage(compile_all)
+                compile_table = pd.concat([compile_table, table])
             
             # Export
-            compile_all.to_excel(os.path.join(pier_tracker_dir, '99-CHECK_Summary_N2_PierNumbers_Civil_vs_GISportal_vs_pierTracker.xlsx'),
+            compile_table.to_excel(os.path.join(pier_tracker_dir, '99-CHECK_Summary_N2_PierNumbers_Civil_vs_GISportal_vs_pierTracker.xlsx'),
                                               index=False)
 
         Workable_Pier_Table_Update()

@@ -2311,7 +2311,7 @@ class UpdateBarangayGIS(object):
 
 class JustMessage3(object):
     def __init__(self):
-        self.label = "7.0. ----- Summary Statistics GIS ML and GIS Portal -----"
+        self.label = "7.0. ----- Summary Statistics GIS ML and GIS Portal (Optional)  -----"
         self.description = "Update Excel Master List"
 
 class CheckLotUpdatedStatusGIS(object):
@@ -2548,7 +2548,7 @@ class CheckIsfUpdatedStatusGIS(object):
 
 class JustMessage4(object):
     def __init__(self):
-        self.label = "6.0. ----- Identify Unmatched Unique Values -----"
+        self.label = "6.0. ----- Identify Unmatched Unique Values (Optional) -----"
         self.description = "Identify Unmatched Unique Values"
 
 class CompareStringFieldExcelTables(object):

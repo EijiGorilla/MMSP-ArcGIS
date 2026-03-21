@@ -80,9 +80,15 @@ def unlist_brackets(nested_list): ## Remove nested list in a list
     return [item for sublist in nested_list for item in sublist]
 
 ### Check missing field between tables
-def identify_missing_ids(table1, table2, field1, field2):    
+def identify_missing_ids_excel(table1, table2, field1, field2):    
     ids1 = table1[field1].values
     ids2 = table2[field2].values
+    noids_ids2 = [id for id in ids1 if id not in ids2]
+    noids_id1 = [id for id in ids2 if id not in ids1]
+    noids = noids_ids2 + noids_id1
+    return noids
+
+def identify_missing_ids_fc(ids1, ids2):
     noids_ids2 = [id for id in ids1 if id not in ids2]
     noids_id1 = [id for id in ids2 if id not in ids1]
     noids = noids_ids2 + noids_id1
@@ -191,7 +197,7 @@ class Toolbox(object):
                       JustMessage10, AddObstructionToLotN2, AddObstructionToStructureN2, AddObstructionToLotSC, AddObstructionToStructureSC,
                       JustMessage2, UpdateLotGIS, UpdateStructureGIS, UpdateBarangayGIS,
                       JustMessage3, CheckLotUpdatedStatusGIS, CheckStructureUpdatedStatusGIS, CheckIsfUpdatedStatusGIS,
-                      JustMessage4, CheckMissingLotIDs, CheckMissingStructureIDs, CheckMissingIsfIDs
+                      JustMessage4, CompareStringFieldExcelTables, CompareStringFieldFeatureClasses,
                       ]
 
 class RestoreScaleForLot(object):
@@ -2542,191 +2548,223 @@ class CheckIsfUpdatedStatusGIS(object):
 
 class JustMessage4(object):
     def __init__(self):
-        self.label = "6.0. ----- Identify Missing IDs -----"
-        self.description = "Update Excel Master List"
+        self.label = "6.0. ----- Identify Unmatched Unique Values -----"
+        self.description = "Identify Unmatched Unique Values"
 
-class CheckMissingLotIDs(object):
+class CompareStringFieldExcelTables(object):
     def __init__(self):
-        self.label = "6.1. Check Missing Lot IDs (Rap ML, GIS ML, and GIS Portal)"
-        self.description = "Check Missing Lot IDs (Rap ML, GIS ML, and GIS Portal)"
+        self.label = "6.1. Compare Unique Values In String Field (Excel Tables)"
+        self.description = "Compare Unique Values In String Field (Excel Tables)"
 
     def getParameterInfo(self):
-        gis_table_ml = arcpy.Parameter(
-            displayName = "GIS ML (Excel)",
-            name = "GIS ML (Excel)",
+        table1 = arcpy.Parameter(
+            displayName = "Table 1 (Excel)",
+            name = "Table 1 (Excel)",
+            datatype = "DEFile",
+            parameterType = "Required",
+            direction = "Input"
+        )
+      
+        field1 = arcpy.Parameter(
+            displayName = "String Field for Table 1",
+            name = "String Field for Table 1",
+            datatype = "GPString",
+            parameterType = "Required",
+            direction = "Input"
+        )
+
+        table2 = arcpy.Parameter(
+            displayName = "Table 2 (Excel)",
+            name = "Table 2 (Excel)",
             datatype = "DEFile",
             parameterType = "Required",
             direction = "Input"
         )
 
-        gis_portal_ml = arcpy.Parameter(
-            displayName = "GIS Portal (Excel)",
-            name = "GIS Portal (Excel)",
-            datatype = "DEFile",
+        field2 = arcpy.Parameter(
+            displayName = "String Field for Table 2",
+            name = "String Field for Table 2",
+            datatype = "GPString",
             parameterType = "Required",
             direction = "Input"
         )
 
-        rap_table_ml = arcpy.Parameter(
-            displayName = "Rap ML (Excel)",
-            name = "Rap ML (Excel)",
+        table3 = arcpy.Parameter(
+            displayName = "Table 3 (Excel)",
+            name = "Table 3 (Excel)",
             datatype = "DEFile",
-            parameterType = "Required",
+            parameterType = "Optional",
             direction = "Input"
         )
 
-        params = [gis_table_ml, gis_portal_ml, rap_table_ml]
+        field3 = arcpy.Parameter(
+            displayName = "String Field for Table 3",
+            name = "String Field for Table 3",
+            datatype = "GPString",
+            parameterType = "Optional",
+            direction = "Input"
+        )
+
+        params = [table1, field1, table2, field2, table3, field3]
         return params
+    
+    def updateParameters(self, params):
+        if params[0].value and not params[1].altered:
+            excel_path = params[0].valueAsText
+            tab = pd.read_excel(excel_path)
+            tab = tab.select_dtypes(include=['object'])
+            params[1].filter.list = list(tab.columns)
 
-    def updateMessages(self, params):
-        return
+        if params[2].value and not params[3].altered:
+            excel_path = params[2].valueAsText
+            tab = pd.read_excel(excel_path)
+            tab = tab.select_dtypes(include=['object'])
+            params[3].filter.list = list(tab.columns)
 
-    def execute(self, params, messages):
-        gis_table_ml = params[0].valueAsText
-        gis_portal_ml = params[1].valueAsText
-        rap_table_ml = params[2].valueAsText
+        if params[4].value and not params[5].altered:
+            excel_path = params[4].valueAsText
+            tab = pd.read_excel(excel_path)
+            tab = tab.select_dtypes(include=['object'])
+            params[5].filter.list = list(tab.columns)           
         
-        rap_table = pd.read_excel(rap_table_ml) # for checking NVS3, do not use default_na = false
-        gis_table = pd.read_excel(gis_table_ml)
-        gis_portal = pd.read_excel(gis_portal_ml)
 
-        join_field = 'LotID'
+    def updateMessages(self, params):
+        return
 
-        # Convert to strings
-        to_string_fields = [join_field]
-        rap_table = toString(rap_table, to_string_fields)
-        gis_table = toString(gis_table, to_string_fields)
-        gis_portal = toString(gis_portal, to_string_fields)
+    def execute(self, params, messages):
+        table1 = params[0].valueAsText
+        field1 = params[1].valueAsText
+        table2 = params[2].valueAsText
+        field2 = params[3].valueAsText
+        table3 = params[4].valueAsText
+        field3 = params[5].valueAsText
 
-        gisml_vs_rap = identify_missing_ids(rap_table, gis_table, join_field, join_field)
-        gisportal_vs_rap = identify_missing_ids(rap_table, gis_portal ,join_field, join_field)
-        gisml_vs_gisportal = identify_missing_ids(gis_table, gis_portal, join_field, join_field)
+        if table3 and field3:
+            table1 = pd.read_excel(table1) # for checking NVS3, do not use default_na = false
+            table2 = pd.read_excel(table2)
+            table3 = pd.read_excel(table3)
 
-        arcpy.AddMessage("Missing lotids:")
-        arcpy.AddMessage(f"GIS_ML vs RAP ML: {gisml_vs_rap}")
-        arcpy.AddMessage(f"GIS_Portal vs RAP ML: {gisportal_vs_rap}")
-        arcpy.AddMessage(f"GIS_ML vs GIS_Portal: {gisml_vs_gisportal}")
+            table1[field1] = table1[field1].astype(str)
+            table2[field2] = table2[field2].astype(str)
+            table3[field3] = table3[field3].astype(str)
 
-class CheckMissingStructureIDs(object):
+            table1_vs_table2 = identify_missing_ids_excel(table1, table2, field1, field2)
+            table3_vs_table1 = identify_missing_ids_excel(table1, table3 ,field1, field3)
+            table2_vs_table3 = identify_missing_ids_excel(table2, table3, field2, field3)
+
+            arcpy.AddMessage("----------- Output -----------")
+            arcpy.AddMessage(f"Table1 vs Table2: {table1_vs_table2}")
+
+            arcpy.AddMessage("----------- Output -----------")
+            arcpy.AddMessage(f"Table3 vs Table1: {table3_vs_table1}")
+
+            arcpy.AddMessage("----------- Output -----------")
+            arcpy.AddMessage(f"Table2 vs Table3: {table2_vs_table3}")
+
+        else:
+            table1 = pd.read_excel(table1) # for checking NVS3, do not use default_na = false
+            table2 = pd.read_excel(table2)
+            table1[field1] = table1[field1].astype(str)
+            table2[field2] = table2[field2].astype(str)
+    
+            table1_vs_table2 = identify_missing_ids_excel(table1, table2, field1, field2)
+
+            arcpy.AddMessage("----------- Output -----------")
+            arcpy.AddMessage(f"Table1 vs Table2: {table1_vs_table2}")
+
+class CompareStringFieldFeatureClasses(object):
     def __init__(self):
-        self.label = "6.2. Check Missing Structure IDs (Rap ML, GIS ML, and GIS Portal)"
-        self.description = "Check Missing Structure IDs (Rap ML, GIS ML, and GIS Portal)"
+        self.label = "6.2. Compare Unique Values In String Field (Feature Class)"
+        self.description = "Compare Unique Values In String Field (Feature Class)"
 
     def getParameterInfo(self):
-        gis_table_ml = arcpy.Parameter(
-            displayName = "GIS Structure ML (Excel)",
-            name = "GIS Structure ML (Excel)",
-            datatype = "DEFile",
+        table1 = arcpy.Parameter(
+            displayName = "Feature Class 1",
+            name = "Feature Class 1",
+            datatype = "GPFeatureLayer",
             parameterType = "Required",
             direction = "Input"
         )
 
-        gis_portal_ml = arcpy.Parameter(
-            displayName = "GIS Structure Portal (Excel)",
-            name = "GIS Structure Portal (Excel)",
-            datatype = "DEFile",
+        field1 = arcpy.Parameter(
+            displayName = "String Field for Feature Class 1",
+            name = "String Field for Feature Class 1",
+            datatype = "Field",
+            parameterType = "Required",
+            direction = "Input"
+        )
+        field1.parameterDependencies = [table1.name]
+
+        table2 = arcpy.Parameter(
+            displayName = "Feature Class 2",
+            name = "Feature Class 2",
+            datatype = "GPFeatureLayer",
             parameterType = "Required",
             direction = "Input"
         )
 
-        rap_table_ml = arcpy.Parameter(
-            displayName = "Rap Structure ML (Excel)",
-            name = "Rap Structure ML (Excel)",
-            datatype = "DEFile",
+        field2 = arcpy.Parameter(
+            displayName = "String Field for Feature Class 2",
+            name = "String Field for Feature Class 2",
+            datatype = "Field",
             parameterType = "Required",
             direction = "Input"
         )
+        field2.parameterDependencies = [table2.name]
 
-        params = [gis_table_ml, gis_portal_ml, rap_table_ml]
+        table3 = arcpy.Parameter(
+            displayName = "Feature Class 3",
+            name = "Feature Class 3",
+            datatype = "GPFeatureLayer",
+            parameterType = "Optional",
+            direction = "Input"
+        )
+
+        field3 = arcpy.Parameter(
+            displayName = "String Field for Feature Class 3",
+            name = "String Field for Feature Class 3",
+            datatype = "Field",
+            parameterType = "Optional",
+            direction = "Input"
+        )
+        field3.parameterDependencies = [table3.name]
+
+        params = [table1, field1, table2, field2, table3, field3]
         return params
 
     def updateMessages(self, params):
         return
 
     def execute(self, params, messages):
-        gis_table_ml = params[0].valueAsText
-        gis_portal_ml = params[1].valueAsText
-        rap_table_ml = params[2].valueAsText
-        
-        rap_table = pd.read_excel(rap_table_ml) # for checking NVS3, do not use default_na = false
-        gis_table = pd.read_excel(gis_table_ml)
-        gis_portal = pd.read_excel(gis_portal_ml)
+        table1 = params[0].valueAsText
+        field1 = params[1].valueAsText
+        table2 = params[2].valueAsText
+        field2 = params[3].valueAsText
+        table3 = params[4].valueAsText
+        field3 = params[5].valueAsText
 
-        join_field = 'StrucID'
+        if table3 and field3:
+            values1 = [f for f in arcpy.da.SearchCursor(table1, [field1]) if f]
+            values2 = [f for f in arcpy.da.SearchCursor(table2, [field2]) if f]
+            values3 = [f for f in arcpy.da.SearchCursor(table3, [field3]) if f]
 
-        # Convert to strings
-        to_string_fields = [join_field]
-        rap_table = toString(rap_table, to_string_fields)
-        gis_table = toString(gis_table, to_string_fields)
-        gis_portal = toString(gis_portal, to_string_fields)
+            table1_vs_table2 = identify_missing_ids_fc(values1, values2)
+            table3_vs_table1 = identify_missing_ids_fc(values1, values3)
+            table2_vs_table3 = identify_missing_ids_fc(values2, values3)
 
-        gisml_vs_rap = identify_missing_ids(rap_table, gis_table, join_field, join_field)
-        gisportal_vs_rap = identify_missing_ids(rap_table, gis_portal ,join_field, join_field)
-        gisml_vs_gisportal = identify_missing_ids(gis_table, gis_portal, join_field, join_field)
+            arcpy.AddMessage("----------- Output -----------")
+            arcpy.AddMessage(f"Table1 vs Table2: {table1_vs_table2}")
 
-        arcpy.AddMessage("Missing lotids:")
-        arcpy.AddMessage(f"GIS_ML vs RAP ML: {gisml_vs_rap}")
-        arcpy.AddMessage(f"GIS_Portal vs RAP ML: {gisportal_vs_rap}")
-        arcpy.AddMessage(f"GIS_ML vs GIS_Portal: {gisml_vs_gisportal}")
+            arcpy.AddMessage("----------- Output -----------")
+            arcpy.AddMessage(f"Table3 vs Table1: {table3_vs_table1}")
 
-class CheckMissingIsfIDs(object):
-    def __init__(self):
-        self.label = "6.3. Check Missing ISF (NLO) IDs (Rap ML, GIS ML, and GIS Portal)"
-        self.description = "Check Missing ISF (NLO) IDs (Rap ML, GIS ML, and GIS Portal)"
+            arcpy.AddMessage("----------- Output -----------")
+            arcpy.AddMessage(f"Table2 vs Table3: {table2_vs_table3}")
 
-    def getParameterInfo(self):
-        gis_table_ml = arcpy.Parameter(
-            displayName = "GIS ISF ML (Excel)",
-            name = "GIS ISF ML (Excel)",
-            datatype = "DEFile",
-            parameterType = "Required",
-            direction = "Input"
-        )
+        else:
+            values1 = [f for f in arcpy.da.SearchCursor(table1, [field1]) if f]
+            values2 = [f for f in arcpy.da.SearchCursor(table2, [field2]) if f]
+    
+            table1_vs_table2 = identify_missing_ids_fc(values1, values2)
+            arcpy.AddMessage(f"Table1 vs Table2: {table1_vs_table2}")
 
-        gis_portal_ml = arcpy.Parameter(
-            displayName = "GIS ISF Portal (Excel)",
-            name = "GIS ISF Portal (Excel)",
-            datatype = "DEFile",
-            parameterType = "Required",
-            direction = "Input"
-        )
-
-        rap_table_ml = arcpy.Parameter(
-            displayName = "Rap ISF ML (Excel)",
-            name = "Rap ISF ML (Excel)",
-            datatype = "DEFile",
-            parameterType = "Required",
-            direction = "Input"
-        )
-
-        params = [gis_table_ml, gis_portal_ml, rap_table_ml]
-        return params
-
-    def updateMessages(self, params):
-        return
-
-    def execute(self, params, messages):
-        gis_table_ml = params[0].valueAsText
-        gis_portal_ml = params[1].valueAsText
-        rap_table_ml = params[2].valueAsText
-
-        rap_table = pd.read_excel(rap_table_ml) # for checking NVS3, do not use default_na = false
-        gis_table = pd.read_excel(gis_table_ml)
-        gis_portal = pd.read_excel(gis_portal_ml)
-
-        join_field = 'StrucID'
-
-        # Convert to strings
-        to_string_fields = [join_field]
-        rap_table = toString(rap_table, to_string_fields)
-        gis_table = toString(gis_table, to_string_fields)
-        gis_portal = toString(gis_portal, to_string_fields)
-
-        gisml_vs_rap = identify_missing_ids(rap_table, gis_table, join_field, join_field)
-        gisportal_vs_rap = identify_missing_ids(rap_table, gis_portal ,join_field, join_field)
-        gisml_vs_gisportal = identify_missing_ids(gis_table, gis_portal, join_field, join_field)
-
-        arcpy.AddMessage("Missing lotids:")
-        arcpy.AddMessage(f"GIS_ML vs RAP ML: {gisml_vs_rap}")
-        arcpy.AddMessage(f"GIS_Portal vs RAP ML: {gisportal_vs_rap}")
-        arcpy.AddMessage(f"GIS_ML vs GIS_Portal: {gisml_vs_gisportal}")

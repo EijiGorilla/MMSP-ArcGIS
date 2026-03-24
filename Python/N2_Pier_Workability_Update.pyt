@@ -15,6 +15,10 @@ def unique(lists):
         collect.append(x)
     return(collect)
 
+def unique_values(table, field):  ##uses list comprehension
+    with arcpy.da.SearchCursor(table, [field]) as cursor:
+        return sorted({row[0] for row in cursor if row[0] is not None})
+
 def non_match_elements(list_a, list_b):
     non_match = []
     for i in list_a:
@@ -22,12 +26,40 @@ def non_match_elements(list_a, list_b):
             non_match.append(i)
     return non_match
 
+def to_Date_no_hms(table, field):
+    table[field] = pd.to_datetime(table[field],errors='coerce').dt.date
+    return table
+    #table[field] = table[field].astype('datetime64[ns]')
+
 def rename_columns_title(table, search_names, renamed_word): # one by one
     colname_change = table.columns[table.columns.str.contains(search_names,regex=True)]
     try:
         table = table.rename(columns={str(colname_change[0]): renamed_word})
     except:
         pass
+    return table
+
+def find_duplicates_ordered(arr):
+    seen = set()
+    duplicates = set()
+    for item in arr:
+        if item in seen:
+            duplicates.add(item) # Use a set to avoid adding the same duplicate multiple times
+        else:
+            seen.add(item)
+    non_na = [x for x in list(duplicates) if x == x] # this removes nan
+    return non_na
+
+def add_status(table, start_field, finish_field, status_field):
+    table[status_field] = 1
+
+    ## if finishdate, completed (Status = 4)
+    idx = table.query(f"{finish_field}.notna()").index
+    table.loc[idx, status_field] = 4
+
+    ## if startdate & !finishdate, ongoing (Status = 2)
+    idx = table.query(f"{start_field}.notna() and {finish_field}.isna()").index
+    table.loc[idx, status_field] = 2
     return table
 
 def extract_pier_numbers(cp, cp_field, pier_num_field, type_field=None, viat=None, civilt=None, piertrackt=None):
@@ -157,124 +189,62 @@ class CompileViaductMasterList(object):
         civil_ml = params[2].valueAsText
 
         def N2_Compile_viaduct_tables():
-
-            ## 2. Return unique values
-            def unique(lists):
-                collect = []
-                unique_list = pd.Series(lists).drop_duplicates().tolist()
-                for x in unique_list:
-                    collect.append(x)
-                return(collect)
-            
-            ## 3. Return non-matched values between two lists
-            def non_match_elements(list_a, list_b):
-                non_match = []
-                for i in list_a:
-                    if i not in list_b:
-                        non_match.append(i)
-                return non_match
-            
-            def toString(table, to_string_fields):
-                for field in to_string_fields:
-                    table[field] = table[field].astype(str)
-                    # table[field] = table[field].replace(r'\s+|^\w\s$','',regex=True)
-                    table[field] = table[field].replace(r'\s+', '', regex=True)
-                return table
-
-            def first_letter_capital(table, column_names): # column_names are list
-                for name in column_names:
-                    table[name] = table[name].str.title()
-                return table
-            
-            def find_duplicates_ordered(arr):
-                seen = set()
-                duplicates = set()
-                for item in arr:
-                    if item in seen:
-                        duplicates.add(item) # Use a set to avoid adding the same duplicate multiple times
-                    else:
-                        seen.add(item)
-                return list(duplicates)
-            
-            def add_status(table, start_field, finish_field, status_field):
-                ## if finishdate, completed (Status = 4)
-                idx = table.query(f"{finish_field}.notna()").index
-                table.loc[idx, status_field] = 4
-
-                ## if startdate & !finishdate, ongoing (Status = 2)
-                idx = table.query(f"{start_field}.notna() and {finish_field}.isna()").index
-                table.loc[idx, status_field] = 2
-                return table
-                
             cp_field = "CP"
-            npierno_field = 'nPierNumber'
+            pierno_id = 'PierId'
             pierno_field = 'PierNo'
             pileno_field = 'PileNo'
             status_field = 'Status'
             type_field = 'Type'
-            temp_id = 'piern_pilen_type'
             startdate_field = 'Start'
             finishdate_field = 'Finish'
             viaduct_types = ['BoredPile', 'PileCap', 'PierColumn', 'PierHead', 'Precast']
 
-            compile_table = pd.DataFrame(columns=[cp_field, type_field, npierno_field, status_field, startdate_field, finishdate_field])
+            compile_table = pd.DataFrame(columns=[cp_field, type_field, pierno_field, pileno_field, status_field, startdate_field, finishdate_field])
             
             for i, type in enumerate(viaduct_types):
                 x = pd.read_excel(civil_ml, sheet_name = type)
 
-                # Bored Pile:
-                # x = toString(x, [pierno_field, pileno_field])
-                if type == viaduct_types[0]:
-                    x[npierno_field] = x[pierno_field] + x[pileno_field]
-                    x[cp_field] = x[cp_field].replace(r'^CPN', 'N-', regex=True)
-                    x[status_field] = 1
+                #--- Bored Pile ---#
+                if i == 0:
+                    x[type_field] = str(i + 1)
+
+                    # Multiple piles
+                    ids = x.query(f"{pileno_field}.notna()").index
+                    x.loc[ids, pierno_id] = x.loc[ids, pierno_field] + "-" + x.loc[ids, pileno_field] + "-" + x.loc[ids, type_field]
+
+                    # Mono Pile (P-159, P-160)
+                    ids = x.query(f"{pileno_field}.isna()").index 
+                    x.loc[ids, pierno_id] = x.loc[ids, pierno_field] + "-" + x.loc[ids, type_field]
 
                     # Add 'Status'
                     x = add_status(x, startdate_field, finishdate_field, status_field)
-
-                    arcpy.AddMessage(x.head())
-
-                    # Add Type
-                    x[type_field] = i + 1
-
-                    # Create unique ID to join (PierNumber + "-" + PileNo + "-" + Type)
-                    x[type_field] = x[type_field].astype(str)
-                    x[temp_id] = x[pierno_field] + "-" + x[pileno_field] + "-" + x[type_field]
-
-                    # Remove pileno field
-                    x = x.drop(pileno_field, axis=1)
+                    compile_table = pd.concat([compile_table, x])
 
                 else:
-                    x[npierno_field] = x[pierno_field]
-                    x[cp_field] = x[cp_field].replace(r'^CPN', 'N-', regex=True)
-                    x[status_field] = 1
-
-                    # Add 'Status'
+                    x[type_field] = str(i + 1)
+                    x[pierno_id] = x[pierno_field] + "-" + x[type_field]
                     x = add_status(x, startdate_field, finishdate_field, status_field)
+                    compile_table = pd.concat([compile_table, x])
 
-                    # Add Type
-                    x[type_field] = i + 1
-
-                    # Create unique ID to join (PierNumber + "-" + PileNo + "-" + Type)
-                    x[type_field] = x[type_field].astype(str)
-                    x[temp_id] = x[pierno_field] + "-" + x[type_field]
-                
-                # Compile table
-                compile_table = pd.concat([compile_table, x])
-            
-            # Conver type_field to integer
+            #--- Conver type_field to integer ---#
             compile_table[type_field] = compile_table[type_field].astype('int64')
-            arcpy.AddMessage(f"Dupcliated: {compile_table[temp_id].duplicated()}")
 
-            # Export to excel
-            excel_file = proj + "_Viaduct_ML_Civil_compiled.xlsx"
-            compile_table.to_excel(os.path.join(via_dir, excel_file), index=False)
+            #--- Check duplication
+            duplicated_ids = find_duplicates_ordered(compile_table[pierno_id].values)
+
+            if len(duplicated_ids) > 0:
+                arcpy.AddMessage(f"Duplicated Pier IDs: {duplicated_ids}")
+                arcpy.AddError("There are duplicated IDs. Please check.")
+            else:
+                # Export to excel
+                excel_file = proj + "_Viaduct_ML_Civil_compiled.xlsx"
+                compile_table.to_excel(os.path.join(via_dir, excel_file), index=False)
 
         N2_Compile_viaduct_tables()
 
 class UpdateGISExcelML(object):
     def __init__(self):
-        self.label = "2.2. Update GIS Excel ML (N2 Viaduct) incomplete.."
+        self.label = "2.2. Update GIS Excel ML (N2 Viaduct)"
         self.description = "1. Update GIS Excel ML (N2 Viaduct)"
 
     def getParameterInfo(self):
@@ -315,22 +285,87 @@ class UpdateGISExcelML(object):
         civil_ml = params[2].valueAsText
 
         arcpy.env.overwriteOutput = True
-        #arcpy.env.addOutputsToMap = True
 
         def N2_Viaduct_Update():
+            pierno_id = 'PierId'
+            pierno_field = 'PierNumber'
+            pileno_field = 'PileNo'
+            status_field = 'Status'
+            type_field = 'Type'
+            startdate_field = 'Start'
+            finishdate_field = 'Finish'
+            update_fields = [status_field, startdate_field, finishdate_field]
+            dummy_date = '1990-01-01'
 
-                    
-            def toDate(table, field):
-                table[field] = pd.to_datetime(table[field],errors='coerce').dt.date
-                #table[field] = table[field].astype('datetime64[ns]')
+            x = pd.read_excel(gis_ml)
+            y = pd.read_excel(civil_ml)
 
-            # Main workflow
-            # 1. Compile civil tables for viaduct types
-            # 2. Split GIS ML tables with only respective rows from the Civil.
-            # 3. Join the compiled civil table to the split GIS table using ID field (we ned ID field to join)
-            # 4. Append the split GIS tables into one table (final table)
-            # 5. Export the final table as a new GIS ML table.
+            x[type_field] = x[type_field].astype(int)
+            x[type_field] = x[type_field].astype(str)
+            x[pierno_id] = np.nan
 
+            for i in range(0, 5):
+                if i == 0:
+                    # Multiple piles
+                    idx = x.query(f"{type_field} == '{i+1}' and {pileno_field}.notna() ").index
+                    x.loc[idx, pierno_id] = x.loc[idx, pierno_field] + "-" + x.loc[idx, pileno_field] + "-" + x.loc[idx, type_field]
+
+                    # Mono pile
+                    idx = x.query(f"{type_field} == '{i+1}' and {pileno_field}.isna()").index
+                    x.loc[idx, pierno_id] = x.loc[idx, pierno_field] + "-" + x.loc[idx, type_field]
+
+                else:
+                    idx = x.query(f"{type_field} == '{i+1}'").index
+                    x.loc[idx, pierno_id] = x.loc[idx, pierno_field] + "-" + x.loc[idx, type_field]
+
+            # x.to_excel(os.path.join(gis_dir, "N2_Viaduct_MasterList_with_pierID.xlsx"), index=False)
+           
+            #--- Check duplicated pier ids
+            idx = x.query(f"{pierno_id}.notna()").index
+            gis_piers = x.loc[idx, pierno_id].values
+            duplicated_ids = find_duplicates_ordered(x[pierno_id].values)
+
+            if len(duplicated_ids) > 0:
+                arcpy.AddMessage(f"Duplicated Pier IDs: {duplicated_ids}")
+                arcpy.AddError("There are duplicated IDs. Please check.")
+            else:
+                #--- Check unmatched pier ids between gis and civil
+                civil_piers = y[pierno_id].values
+                no_gis_piers = [f for f in civil_piers if f not in gis_piers and f == f]
+                no_civil_piers = [f for f in gis_piers if f not in civil_piers and f == f]
+                if len(no_gis_piers) > 0 or len(no_civil_piers) > 0:
+                    arcpy.AddMessage(f"There are unmatched Pier IDs: {no_gis_piers + no_civil_piers}")
+                    arcpy.AddError(f"Please check..")
+
+                else:
+                    arcpy.AddMessage(no_civil_piers)
+                    arcpy.AddMessage(no_gis_piers)
+
+                    #--- Filter out: type = 0 or 6
+                    x = x.query(f"{pierno_id}.notna()").reset_index(drop=True)
+                    x[type_field] = x[type_field].astype(int)
+                    x = x.drop(columns=update_fields)
+
+                    #--- Keep update fields ---#
+                    y = y[[pierno_id] + update_fields]
+
+                    arcpy.AddMessage(f"total rows for x: {len(x)}")
+                    arcpy.AddMessage(f"total rows for y: {len(y)}")
+                     
+                    #--- Join civil ML to GIS ML ---#
+                    xy = pd.merge(left=x, right=y, how='left', left_on=pierno_id, right_on=pierno_id, validate="one_to_one")
+
+                    #--- start and finish date ---#
+                    xy = xy.reset_index(drop=True)
+                    for field in [startdate_field, finishdate_field]:
+                        date_item = xy[field].iloc[:1].item()
+                        if date_item is None or pd.isnull(date_item):
+                            xy.loc[0, field] = pd.to_datetime(dummy_date)
+                        xy = to_Date_no_hms(xy, field)
+
+                    #--- Export ---#
+                    xy.to_excel(os.path.join(gis_dir, "N2_Viaduct_GIS_ML_new.xlsx"), index=False)
+                               
         N2_Viaduct_Update()
 
 class UpdateGISTable(object):
@@ -373,17 +408,13 @@ class UpdateGISTable(object):
         gis_layer = params[1].valueAsText
         excel_table = params[2].valueAsText
 
-        def unique_values(table, field):  ##uses list comprehension
-            with arcpy.da.SearchCursor(table, [field]) as cursor:
-                return sorted({row[0] for row in cursor if row[0] is not None})
 
         arcpy.AddMessage('Updating SC Viaduct layer has started..')
 
         # For Removing dummy dates if any specified in the first tool
-        start_actual_field = 'start_actual'
-        finish_plan_field = 'finish_plan'
-        finish_actual_field = 'finish_actual'
-        date_fields = [start_actual_field, finish_plan_field, finish_actual_field]
+        startdate_field = 'Start'
+        finishdate_field = 'Finish'
+        date_fields = [startdate_field, finishdate_field]
 
         uniqueID = 'uniqueID'
 
@@ -429,16 +460,16 @@ class UpdateGISTable(object):
 
         if uniqueid_miss_ml or uniqueid_miss_gis:
             arcpy.AddMessage('The following IDs do not match between ML and GIS.')
-            arcpy.AddMessage('Missing LotIDs in GIS table: {}'.format(uniqueid_miss_gis))
-            arcpy.AddMessage('Missing LotIDs in ML Excel table: {}'.format(uniqueid_miss_ml))
+            arcpy.AddMessage('Missing uniqueID in GIS table: {}'.format(uniqueid_miss_gis))
+            arcpy.AddMessage('Missing uniqueID in ML Excel table: {}'.format(uniqueid_miss_ml))
             
         ## 3.2. Get Join Field from MasterList gdb table: Gain all fields except 'Id'
         viaduct_ml_fields = [f.name for f in arcpy.ListFields(viaduct_ml)]
-        viaduct_ml_transfer_fields = [e for e in viaduct_ml_fields if e not in ('LotId', uniqueID,'OBJECTID')]
+        viaduct_ml_transfer_fields = [e for e in viaduct_ml_fields if e not in (uniqueID,'OBJECTID')]
             
         ## 3.3. Extract a Field from MasterList and Feature Layer to be used to join two tables
-        gis_join_field = ' '.join(map(str, [f for f in gis_fields if f in ('LotId', uniqueID)]))                      
-        viaduct_ml_join_field =' '.join(map(str, [f for f in viaduct_ml_fields if f in ('LotId', uniqueID)]))
+        gis_join_field = ' '.join(map(str, [f for f in gis_fields if f in ('uniqueId', uniqueID)]))                      
+        viaduct_ml_join_field =' '.join(map(str, [f for f in viaduct_ml_fields if f in ('uniqueId', uniqueID)]))
             
         ## 3.4 Join
         arcpy.JoinField_management(in_data=gis_copied, in_field=gis_join_field, join_table=viaduct_ml, join_field=viaduct_ml_join_field, fields=viaduct_ml_transfer_fields)
@@ -467,7 +498,7 @@ class UpdateGISTable(object):
         # 6. Table to Excel
         # (This ensures that SC_Viaduct_ML.xlsx is always consistent with SC Viaduct GIS attribute table)
         # Reason: uniqueID is sometimes updated in the GIS attribute table
-        arcpy.conversion.TableToExcel(gis_layer, os.path.join(gis_dir, 'SC_Viaduct_ML.xlsx'))
+        arcpy.conversion.TableToExcel(gis_layer, os.path.join(gis_dir, 'N2_Viaduct_GIS_Portal.xlsx'))
         
         # Delete the copied feature layer
         deleteTempLayers = [gis_copied, viaduct_ml]

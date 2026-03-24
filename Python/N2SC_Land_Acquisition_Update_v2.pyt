@@ -20,6 +20,10 @@ def unique(lists):
         collect.append(x)
     return(collect)
 
+def unique_values(table, field):  ##uses list comprehension
+    with arcpy.da.SearchCursor(table, [field]) as cursor:
+        return sorted({row[0] for row in cursor if row[0] is not None})
+
 ## 3. Return non-matched values between two lists
 def non_match_elements(list_a, list_b):
     non_match = []
@@ -144,10 +148,12 @@ def summary_by_field(table, stats_type, stats_field, groupby_fields, cities):
         
         value_n = table.loc[idx, count_name]
         values_array[f"{city}"] = value_n 
-    return {'status': status_array, 'values': values_array}
+    return {stats_field: status_array, 'values': values_array}
 
 class summaryStatistics():
-    # Make sure to use a list for groupby_fields
+    # Make sure to use a list for groupby_field
+    # The first field in groupby_fields will be a primary field for generating statistics.
+    # Provide output table columns
     def __init__(self, table_before, table_after, stats_type, stats_field, groupby_fields, discarded_city=None):
         self.tb = table_before
         self.ta = table_after
@@ -167,21 +173,34 @@ class summaryStatistics():
 
         def calculate_differene_before_after():
             stats = calculate_summary()
-            comp = pd.DataFrame(columns=['Municipality', 'status', 'rap','gis', 'diff'])
+
+            #-- Create an empty dataframe
+            columns = [field for field in self.gpby_fds]
+            comp = pd.DataFrame(columns=columns)
+            final_list = columns + ['table1', 'table2', 'diff']
+            
+            #--- Update final list (this list should only include statistics field onward)
+            idx = final_list.index(self.stat_fd)
+            final_list = final_list[idx: ] 
+            
             for city in cities:
                 valo = stats['original']['values'][city]
                 vala = stats['after']['values'][city]
                 diff = (np.array(valo) - np.array(vala))
         
                 if self.stat_tp == 'count':
-                    sto = stats['original']['status'][city]
-                    temp = pd.DataFrame({'status': np.array(sto),'rap': np.array(valo), 'gis': np.array(vala), 'diff': np.array(diff)})
-                    temp['Municipality'] = city
+                    sto = stats['original'][self.stat_fd][city]
+                    temp_arr = [sto, valo, vala, diff]            
+                    data_array = {name: np.array(temp_arr[i]) for i, name in enumerate(final_list)}
+                    temp = pd.DataFrame(data_array)
+                    temp[self.gpby_fds[0]] = city
                     comp = pd.concat([comp, temp])
             
                 else:
-                    temp = pd.DataFrame({'rap': np.array(valo), 'gis': np.array(vala), 'diff': np.array(diff)})
-                    temp['Municipality'] = city
+                    temp_arr = [valo, vala, diff]
+                    data_array = {name: np.array(temp_arr[i]) for i, name in enumerate(final_list[1:])}
+                    temp = pd.DataFrame(data_array)
+                    temp[self.gpby_fds[0]] = city
                     comp = pd.concat([comp, temp])
             return comp
     
@@ -196,7 +215,7 @@ class Toolbox(object):
         self.tools = [RestoreScaleForLot, JustMessage1, CompileRAPtables, UpdateLot, UpdateISF, UpdateStructure,
                       JustMessage10, AddObstructionToLotN2, AddObstructionToStructureN2, AddObstructionToLotSC, AddObstructionToStructureSC,
                       JustMessage2, UpdateLotGIS, UpdateStructureGIS, UpdateBarangayGIS,
-                      JustMessage3, CheckLotUpdatedStatusGIS, CheckStructureUpdatedStatusGIS, CheckIsfUpdatedStatusGIS,
+                      JustMessage3, GenerateStatisticsBetweenTwoTables,
                       JustMessage4, CompareStringFieldExcelTables, CompareStringFieldFeatureClasses,
                       ]
 
@@ -825,7 +844,7 @@ class UpdateISF(object):
             id = rap_table_stats.index[rap_table_stats[nlo_status_field] == 0]
             rap_table_stats.loc[id, nlo_status_field] = np.nan
 
-            s_statusla = summaryStatistics(rap_table_stats, rap_table, "count", nlo_status_field, [municipality_field, nlo_status_field])
+            s_statusla = summaryStatistics(rap_table_stats, rap_table, "count", nlo_status_field, [municipality_field, nlo_status_field], None)
             statusla_stats = s_statusla.process_data_before_after()
 
             ### Export summary statistics table
@@ -1062,11 +1081,11 @@ class UpdateStructure(object):
                 rap_table_stats.loc[id, structure_status_field] = np.nan
 
                 ## Count status for each municipality
-                s_statusla = summaryStatistics(rap_table_stats, rap_table, "count", structure_status_field, [municipality_field, structure_status_field])
+                s_statusla = summaryStatistics(rap_table_stats, rap_table, "count", structure_status_field, [municipality_field, structure_status_field], None)
                 status_stats = s_statusla.process_data_before_after()
 
                 ## Count handedover structures for each municipality
-                s_handedover = summaryStatistics(rap_table_stats, rap_table, "count", handover_field, [municipality_field, handover_field])
+                s_handedover = summaryStatistics(rap_table_stats, rap_table, "count", handover_field, [municipality_field, handover_field], None)
                 handedover_stats = s_handedover.process_data_before_after()
  
                 ## Export summary statistics table
@@ -1867,10 +1886,6 @@ class UpdateLotGIS(object):
         target_feature = params[2].valueAsText
         mlLot = params[3].valueAsText
 
-        def unique_values(table, field):  ##uses list comprehension
-            with arcpy.da.SearchCursor(table, [field]) as cursor:
-                return sorted({row[0] for row in cursor if row[0] is not None})
-
         arcpy.env.overwriteOutput = True
         ### Remove temporary date added
         try:
@@ -2311,13 +2326,13 @@ class UpdateBarangayGIS(object):
 
 class JustMessage3(object):
     def __init__(self):
-        self.label = "7.0. ----- Summary Statistics GIS ML and GIS Portal (Optional)  -----"
-        self.description = "Update Excel Master List"
+        self.label = "7.0. ----- Compare Statistics in Status Field between Two Tables (Optional)  -----"
+        self.description = "Compare Statistics in Status Field between Two Tables (Optional)"
 
-class CheckLotUpdatedStatusGIS(object):
+class GenerateStatisticsBetweenTwoTables(object):
     def __init__(self):
-        self.label = "7.1. Summary Stats for Lot Status (GIS Portal and GIS ML)"
-        self.description = "Summary Stats for Lot Status (GIS Portal and GIS ML)"
+        self.label = "7.1. Summary Stats for Lot Status between GIS ML and GIS Portal"
+        self.description = "Summary Stats for Lot Status"
 
     def getParameterInfo(self):
         proj = arcpy.Parameter(
@@ -2338,24 +2353,25 @@ class CheckLotUpdatedStatusGIS(object):
             direction = "Input"
         )
 
-        # Input Feature Layers
-        gis_layer = arcpy.Parameter(
-            displayName = "GIS Portal ML File (Excel)",
-            name = "GIS Portal File (Excel)",
+        table1 = arcpy.Parameter(
+            displayName = "Table 1 (Excel)",
+            name = "Table 1 (Excel)",
             datatype = "DEFile",
             parameterType = "Required",
             direction = "Input"
         )
 
-        gis_ml = arcpy.Parameter(
-            displayName = "GIS Lot ML File (Excel)",
-            name = "GIS Lot ML File (Excel)",
+        table2 = arcpy.Parameter(
+            displayName = "Table 2 (Excel)",
+            name = "Table 2 (Excel)",
             datatype = "DEFile",
             parameterType = "Required",
             direction = "Input"
         )
 
-        params = [proj, gis_dir, gis_layer, gis_ml]
+
+
+        params = [proj, gis_dir, table1, table2]
         return params
 
     def updateMessages(self, params):
@@ -2364,12 +2380,12 @@ class CheckLotUpdatedStatusGIS(object):
     def execute(self, params, messages):
         project = params[0].valueAsText
         gis_dir = params[1].valueAsText
-        gis_layer = params[2].valueAsText
-        gis_ml = params[3].valueAsText
+        table1 = params[2].valueAsText
+        table2 = params[3].valueAsText
 
         # Read table
-        gis_table = pd.read_excel(gis_ml)
-        gis_portal = pd.read_excel(gis_layer)
+        tab1 = pd.read_excel(table1)
+        tab2 = pd.read_excel(table2)
 
         # 0. Defin field names
         statusla_field = 'StatusLA'
@@ -2377,174 +2393,23 @@ class CheckLotUpdatedStatusGIS(object):
         municipality_field = 'Municipality'
 
         # Status LA
-        s_statusla = summaryStatistics(gis_table, gis_portal, "count", statusla_field, [municipality_field, statusla_field], discarded_city='Mabalacat')
+        s_statusla = summaryStatistics(tab1, tab2, "count", statusla_field, [municipality_field, statusla_field], discarded_city='Mabalacat')
         statusla_stats = s_statusla.process_data_before_after()
 
         # HandedOver
-        s_handedover = summaryStatistics(gis_table, gis_portal, "count", handedover_field, [municipality_field, handedover_field], discarded_city='Mabalacat')
+        s_handedover = summaryStatistics(tab1, tab2, "count", handedover_field, [municipality_field, handedover_field], discarded_city='Mabalacat')
         handedover_stats = s_handedover.process_data_before_after()
 
         # Export the updated GIS portal to excel sheet for checking lot IDs
-        try:
-            file_name = "CHECK-" + project + "_" + "LA_Summary_Statistics_GIS_Portal_and_GIS_ML.xlsx"
-        except:
-            file_name = "CHECK-LA_Summary_Statistics_GIS_Portal_and_GIS_ML.xlsx"
+        tab1_name = re.sub(r'.xlsx|.xls', "", os.path.basename(table1))
+        tab2_name = re.sub(r'.xlsx|.xls', "", os.path.basename(table2))
+
+        file_name = f"CHECK-{project}_Comparing_Status_&_HandedOver_{tab1_name}_and_{tab2_name}.xlsx"
             
         to_excel_file = os.path.join(gis_dir, file_name)
         with pd.ExcelWriter(to_excel_file) as writer:
             statusla_stats.to_excel(writer, sheet_name=statusla_field, index=False)
             handedover_stats.to_excel(writer, sheet_name=handedover_field, index=False)
-
-class CheckStructureUpdatedStatusGIS(object):
-    def __init__(self):
-        self.label = "7.2. Summary Stats for Structure Status (GIS Portal and GIS ML)"
-        self.description = "Summary Stats for Structure Status (GIS Portal and GIS ML)"
-
-    def getParameterInfo(self):
-        proj = arcpy.Parameter(
-            displayName = "Project Extension: N2 or SC",
-            name = "Project Extension: N2 or SC",
-            datatype = "GPString",
-            parameterType = "Required",
-            direction = "Input"
-        )
-        proj.filter.type = "ValueList"
-        proj.filter.list = ['N2', 'SC']
-    
-        gis_dir = arcpy.Parameter(
-            displayName = "GIS Masterlist Storage Directory",
-            name = "GIS master-list directory",
-            datatype = "DEWorkspace",
-            parameterType = "Required",
-            direction = "Input"
-        )
-
-        # Input Feature Layers
-        gis_layer = arcpy.Parameter(
-            displayName = "GIS Structure Portal File (Excel)",
-            name = "GIS Structure Portal File (Excel)",
-            datatype = "DEFile",
-            parameterType = "Required",
-            direction = "Input"
-        )
-
-        gis_ml = arcpy.Parameter(
-            displayName = "GIS Structure ML File (Excel)",
-            name = "GIS Structure ML File (Excel)",
-            datatype = "DEFile",
-            parameterType = "Required",
-            direction = "Input"
-        )
-
-        params = [proj, gis_dir, gis_layer, gis_ml]
-        return params
-
-    def updateMessages(self, params):
-        return
-
-    def execute(self, params, messages):
-        project = params[0].valueAsText
-        gis_dir = params[1].valueAsText
-        gis_layer = params[2].valueAsText
-        gis_ml = params[3].valueAsText
-
-        # Read table
-        gis_table = pd.read_excel(gis_ml)
-        gis_portal = pd.read_excel(gis_layer)
-
-        # 0. Defin field names
-        statusstruc_field = 'StatusStruc'
-        municipality_field = 'Municipality'
-
-        # Status
-        ## Count status for each municipality
-        s_statusla = summaryStatistics(gis_table, gis_portal, "count", statusstruc_field, [municipality_field, statusstruc_field])
-        status_stats = s_statusla.process_data_before_after()
-        
-        # Export the updated GIS portal to excel sheet for checking lot IDs
-        try:
-            file_name = "CHECK-" + project + "_" + "Structure_Summary_Statistics_GIS_Portal_and_GIS_ML.xlsx"
-        except:
-            file_name = "CHECK-Structure_Summary_Statistics_GIS_Portal_and_GIS_ML.xlsx"
-            
-        to_excel_file = os.path.join(gis_dir, file_name)
-        with pd.ExcelWriter(to_excel_file) as writer:
-            status_stats.to_excel(writer, sheet_name=statusstruc_field, index=False)
-
-class CheckIsfUpdatedStatusGIS(object):
-    def __init__(self):
-        self.label = "7.3. Summary Stats for ISF Status (GIS Portal and GIS ML)"
-        self.description = "Summary Stats for ISF Status (GIS Portal and GIS ML)"
-
-    def getParameterInfo(self):
-        proj = arcpy.Parameter(
-            displayName = "Project Extension: N2 or SC",
-            name = "Project Extension: N2 or SC",
-            datatype = "GPString",
-            parameterType = "Required",
-            direction = "Input"
-        )
-        proj.filter.type = "ValueList"
-        proj.filter.list = ['N2', 'SC']
-    
-        gis_dir = arcpy.Parameter(
-            displayName = "GIS Masterlist Storage Directory",
-            name = "GIS master-list directory",
-            datatype = "DEWorkspace",
-            parameterType = "Required",
-            direction = "Input"
-        )
-
-        # Input Feature Layers
-        gis_layer = arcpy.Parameter(
-            displayName = "GIS ISF Portal File (Excel)",
-            name = "GIS ISF Portal File (Excel)",
-            datatype = "DEFile",
-            parameterType = "Required",
-            direction = "Input"
-        )
-
-        gis_ml = arcpy.Parameter(
-            displayName = "GIS ISF ML File (Excel)",
-            name = "GIS ISF ML File (Excel)",
-            datatype = "DEFile",
-            parameterType = "Required",
-            direction = "Input"
-        )
-
-        params = [proj, gis_dir, gis_layer, gis_ml]
-        return params
-
-    def updateMessages(self, params):
-        return
-
-    def execute(self, params, messages):
-        project = params[0].valueAsText
-        gis_dir = params[1].valueAsText
-        gis_layer = params[2].valueAsText
-        gis_ml = params[3].valueAsText
-
-        # Read table
-        gis_table = pd.read_excel(gis_ml)
-        gis_portal = pd.read_excel(gis_layer)
-
-        # 0. Defin field names
-        statusnlo_field = 'StatusRC'
-        municipality_field = 'Municipality'
-
-        # Status
-        s_statusla = summaryStatistics(gis_table, gis_portal, "count", statusnlo_field, [municipality_field, statusnlo_field])
-        status_stats = s_statusla.process_data_before_after()
-        
-        # Export the updated GIS portal to excel sheet for checking lot IDs
-        try:
-            file_name = "CHECK-" + project + "_" + "ISF_Summary_Statistics_GIS_Portal_and_GIS_ML.xlsx"
-        except:
-            file_name = "CHECK-ISF_Summary_Statistics_GIS_Portal_and_GIS_ML.xlsx"
-            
-        to_excel_file = os.path.join(gis_dir, file_name)
-        with pd.ExcelWriter(to_excel_file) as writer:
-            status_stats.to_excel(writer, sheet_name=statusnlo_field, index=False)
 
 class JustMessage4(object):
     def __init__(self):

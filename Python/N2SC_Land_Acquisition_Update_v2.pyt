@@ -131,78 +131,48 @@ def summary_statistics_count_ids(proj, cp, rap_ids, gisml_ids, gisportal_ids):
     return [table, noids_rap_vs_gisml]
 
 ### Custom class for generating a summary statistics table
-def summary_by_field(table, stats_type, stats_field, groupby_fields, cities):
+def summary_by_field(table, stats_type, stats_field, groupby_fields):
     count_name = 'temp'
     if stats_type == 'count':
-        table = table.groupby(groupby_fields)[stats_field].count().reset_index(name=count_name)
-        table = table.sort_values(by=groupby_fields)
+        table = table.groupby(groupby_fields)[stats_field].count().reset_index(name=count_name).sort_values(by=groupby_fields).to_numpy()
     else:
-        table = table.groupby(groupby_fields)[stats_field].sum().reset_index(name=count_name)
-    values_array = {}
-    status_array = {}
-    for city in cities:
-        idx = table.query(f"{groupby_fields[0]} == '{city}'").index
-        if stats_type == 'count':
-            status_n = table.loc[idx, stats_field].astype(int)
-            status_array[f"{city}"] = status_n
-        
-        value_n = table.loc[idx, count_name]
-        values_array[f"{city}"] = value_n 
-    return {stats_field: status_array, 'values': values_array}
+        table = table.groupby(groupby_fields)[stats_field].sum().reset_index(name=count_name).sort_values(by=groupby_fields).to_numpy()
+
+    arrays = {}
+    for i, field in enumerate(groupby_fields + ['values1']):
+        values = [f[i] for f in table]
+        arrays[f"{field}"] = values
+    return arrays
 
 class summaryStatistics():
     # Make sure to use a list for groupby_field
     # The first field in groupby_fields will be a primary field for generating statistics.
     # Provide output table columns
-    def __init__(self, table_before, table_after, stats_type, stats_field, groupby_fields, discarded_city=None):
-        self.tb = table_before
-        self.ta = table_after
+    def __init__(self, table1, table2, stats_type, stats_field, groupby_fields):
+        self.tab1 = table1
+        self.tab2 = table2
         self.stat_tp = stats_type
         self.stat_fd = stats_field
         self.gpby_fds = groupby_fields
-        self.disc_city = discarded_city
 
     def process_data_before_after(self):
-        cities = set(self.tb[self.gpby_fds[0]])
-        cities.discard(self.disc_city)
-
         def calculate_summary():
-            summary_before = summary_by_field(self.tb, self.stat_tp, self.stat_fd, self.gpby_fds, cities)
-            summary_after = summary_by_field(self.ta, self.stat_tp, self.stat_fd, self.gpby_fds, cities)
-            return {"original": summary_before, "after": summary_after}
+            summary_tab1 = summary_by_field(self.tab1, self.stat_tp, self.stat_fd, self.gpby_fds)
+            summary_tab2 = summary_by_field(self.tab2, self.stat_tp, self.stat_fd, self.gpby_fds)
+            return {"table1": summary_tab1, "table2": summary_tab2}
 
         def calculate_differene_before_after():
             stats = calculate_summary()
 
             #-- Create an empty dataframe
-            columns = [field for field in self.gpby_fds]
-            comp = pd.DataFrame(columns=columns)
-            final_list = columns + ['table1', 'table2', 'diff']
-            
-            #--- Update final list (this list should only include statistics field onward)
-            idx = final_list.index(self.stat_fd)
-            final_list = final_list[idx: ] 
-            
-            for city in cities:
-                valo = stats['original']['values'][city]
-                vala = stats['after']['values'][city]
-                diff = (np.array(valo) - np.array(vala))
-        
-                if self.stat_tp == 'count':
-                    sto = stats['original'][self.stat_fd][city]
-                    temp_arr = [sto, valo, vala, diff]            
-                    data_array = {name: np.array(temp_arr[i]) for i, name in enumerate(final_list)}
-                    temp = pd.DataFrame(data_array)
-                    temp[self.gpby_fds[0]] = city
-                    comp = pd.concat([comp, temp])
-            
-                else:
-                    temp_arr = [valo, vala, diff]
-                    data_array = {name: np.array(temp_arr[i]) for i, name in enumerate(final_list[1:])}
-                    temp = pd.DataFrame(data_array)
-                    temp[self.gpby_fds[0]] = city
-                    comp = pd.concat([comp, temp])
-            return comp
+            stats0 = stats['table1']
+            stats0['values2'] = stats['table2']['values1']
+            stats0['dff'] = np.array(stats0['values1']) - np.array(stats0['values2'])
+            final = pd.DataFrame(stats0)
+
+            #-- Rename columns
+            final = final.rename(columns={'values1': 'Table1', 'values2': 'Table2'})
+            return final
     
         s_table = calculate_differene_before_after()
         return s_table
@@ -657,15 +627,15 @@ class UpdateLot(object):
                 rap_table_origin = reformat_cp_label(rap_table_origin, package_field)
                 
                 ## Count of statusLA by municipality
-                s_statusla = summaryStatistics(rap_table_origin, rap_table, "count", statusla_field, [renamed_city, statusla_field], discarded_city='Mabalacat')
+                s_statusla = summaryStatistics(rap_table_origin, rap_table, "count", statusla_field, [renamed_city, statusla_field])
                 statusla_stats = s_statusla.process_data_before_after()
 
                 ## Count of handed-over lots
-                s_handedover = summaryStatistics(rap_table_origin, rap_table, "count", handedover_field, [renamed_city, handedover_field], discarded_city='Mabalacat')
+                s_handedover = summaryStatistics(rap_table_origin, rap_table, "count", handedover_field, [renamed_city, handedover_field])
                 handedover_stats = s_handedover.process_data_before_after()
 
                 ## Total affected area by Municipality
-                s_affectedarea = summaryStatistics(rap_table_origin, rap_table, "sum", affected_area_field, [renamed_city], discarded_city=None)
+                s_affectedarea = summaryStatistics(rap_table_origin, rap_table, "sum", affected_area_field, [renamed_city])
                 affectedarea_stats = s_affectedarea.process_data_before_after()
 
                 ### 3.0. Export summary statistics table

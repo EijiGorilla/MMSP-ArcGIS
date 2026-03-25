@@ -37,6 +37,11 @@ def first_letter_capital(table, column_names): # column_names are list
         table[name] = table[name].str.title()
     return table
 
+def rename_city_to_municipality(table, renamed_city):
+    col = table.columns[table.columns.str.contains('|'.join(['City','city', 'Muni']))]
+    table = table.rename(columns={str(col[0]): renamed_city})
+    return table
+
 def reformat_cp_label(table, cp_field):
     table[cp_field] = table[cp_field].replace(r'3A|3A|3a', '3a',regex=True)
     table[cp_field] = table[cp_field].replace(r'3B|3B|3b', '3b',regex=True)
@@ -165,6 +170,7 @@ class summaryStatistics():
             stats = calculate_summary()
 
             #-- Create an empty dataframe
+            arcpy.AddMessage(stats)
             stats0 = stats['table1']
             stats0['values2'] = stats['table2']['values1']
             stats0['dff'] = np.array(stats0['values1']) - np.array(stats0['values2'])
@@ -297,6 +303,7 @@ class CompileRAPtables(object):
               
             lotid_field = 'LotID'
             status_field = 'StatusLA'
+            renamed_city = 'Municipality'
             handedOverArea_field = 'HandedOverArea'
             handedOverDate_field = 'HandedOverDate'
             affectedArea_field = 'AffectedArea'
@@ -398,7 +405,7 @@ class CompileRAPtables(object):
                         ### In this case, we ignore.
 
                     
-                    # 'StatusLA' = 0 => None
+                    #--- 'StatusLA' = 0 => None ---#
                     cols = latest_ml.filter(regex='\\d+$', axis=1).columns
                     for col in cols:
                         idx = latest_ml.query(f"{col} == 0").index
@@ -407,11 +414,14 @@ class CompileRAPtables(object):
                     idx = latest_ml.query(f"{status_field} == 0").index
                     latest_ml.loc[idx, status_field] = None
 
-                    # HandedOverDate
+                    #--- HandedOverDate ---#
                     ## remove "-", "_"
                     latest_ml[handedOverDate_field] = latest_ml[handedOverDate_field].replace(r'^[-_]','',regex=True)
 
-                    # Save the compiled master list
+                    #--- Rename a field to 'Municipality'
+                    latest_ml = rename_city_to_municipality(latest_ml, renamed_city)
+
+                    #--- Save the compiled master list ---#
                     latest_ml[note_field] = latest_ml.pop(note_field)
                     yyyymmdd_latest = os.path.basename(rap_files[-1])[:8]
                     export_file_name = str(yyyymmdd_latest) + "_" + proj + '_Compiled_RAP_Master_List' + '.xlsx'
@@ -578,7 +588,10 @@ class UpdateLot(object):
                     rap_table = convert_lotids_to_correct_cp(rap_table, joinField, '10155|10156|10158-5', package_field, "S-01")
                     rap_table = convert_lotids_to_correct_cp(rap_table, joinField, '60136-A', package_field, "S-04")
                     rap_table = convert_lotids_to_correct_cp(rap_table, joinField, '^100003$|^100004$|^100005$|^100010$', package_field, "S-06")
-                    
+                
+                #--- Get the first CP (e.g., N-03,N-02 => N-03)
+                rap_table[package_field] = rap_table[package_field].apply(lambda x: re.sub(r',.*','',x))
+                
                 # Convert to date   
                 to_date_fields = [handover_date_field, handedover_date_field]
                 for field in to_date_fields:
@@ -611,9 +624,11 @@ class UpdateLot(object):
                 ## 5. is.na(HandedOverArea) -> HandedOverArea = 0
                 rap_table.loc[rap_table.query(f'{handedover_area_field}.isna() or {handedover_area_field}.isna()').index, handedover_area_field] = 0
 
-                # Calculate percent handed-over
+                #--- Calculate percent handed-over
                 rap_table[percent_handedover_area_field] = round((rap_table[handedover_area_field] / rap_table[affected_area_field])*100,0)
 
+                #---
+                
                 # Export
                 export_file_name = os.path.splitext(os.path.basename(gis_lot_ms))[0]
                 to_excel_file = os.path.join(gis_dir, export_file_name + ".xlsx")
@@ -747,13 +762,11 @@ class UpdateISF(object):
             
             # Rename 'City' to Municipality
             try:
-                renamed_col = rap_table.columns[rap_table.columns.str.contains('|'.join(['City','city', 'Muni']))]
-                rap_table = rap_table.rename(columns={str(renamed_col[0]): municipality_field})
+                rap_table = rename_city_to_municipality(rap_table, municipality_field)
                 rap_table = first_letter_capital(rap_table, [municipality_field])
 
                 # For Summary Stats
-                renamed_col = rap_table_stats.columns[rap_table_stats.columns.str.contains('|'.join(['City','city', 'Muni']))]
-                rap_table_stats = rap_table_stats.rename(columns={str(renamed_col[0]): municipality_field})
+                rap_table = rename_city_to_municipality(rap_table, municipality_field)
                 rap_table_stats = first_letter_capital(rap_table_stats, [municipality_field])
             except:
                 pass
@@ -2296,13 +2309,13 @@ class UpdateBarangayGIS(object):
 
 class JustMessage3(object):
     def __init__(self):
-        self.label = "7.0. ----- Compare Statistics in Status Field between Two Tables (Optional)  -----"
-        self.description = "Compare Statistics in Status Field between Two Tables (Optional)"
+        self.label = "7.0. ----- Calculate Statistics between Two Tables (Optional)  -----"
+        self.description = "Calculate Statistics between Two Tables (Optional)"
 
 class GenerateStatisticsBetweenTwoTables(object):
     def __init__(self):
-        self.label = "7.1. Summary Stats for Lot Status between GIS ML and GIS Portal"
-        self.description = "Summary Stats for Lot Status"
+        self.label = "7.1. Comparing Statistics between Two Tables"
+        self.description = "Comparing Statistics between Two Tables"
 
     def getParameterInfo(self):
         proj = arcpy.Parameter(
@@ -2339,10 +2352,49 @@ class GenerateStatisticsBetweenTwoTables(object):
             direction = "Input"
         )
 
+        groupby_fields = arcpy.Parameter(
+            displayName = "Group-by Fields",
+            name = "Group-by Fields",
+            datatype = "GPString",
+            parameterType = "Required",
+            direction = "Input",
+            multiValue = True,
+        )
 
+        stats_field = arcpy.Parameter(
+            displayName = "Statistics Field",
+            name = "Statistics Field",
+            datatype = "GPString",
+            parameterType = "Required",
+            direction = "Input",
+            multiValue = True,
+        )
 
-        params = [proj, gis_dir, table1, table2]
+        stats_type = arcpy.Parameter(
+            displayName = "Statistics Type",
+            name = "Statistics Type",
+            datatype = "GPString",
+            parameterType = "Required",
+            direction = "Input",
+        )
+        stats_type.filter.type = "ValueList"
+        stats_type.filter.list = ['count', 'sum']
+
+        params = [proj, gis_dir, table1, table2, groupby_fields, stats_field, stats_type]
         return params
+    
+    def updateParameters(self, params):
+        if params[2].value and not params[4].altered:
+            excel_path = params[2].valueAsText
+            tab = pd.read_excel(excel_path)
+            # tab = tab.select_dtypes(include=['object'])
+            params[4].filter.list = list(tab.columns)
+
+        if params[2].value and not params[5].altered:
+            excel_path = params[2].valueAsText
+            tab = pd.read_excel(excel_path)
+            # tab = tab.select_dtypes(include=['object'])
+            params[5].filter.list = list(tab.columns)      
 
     def updateMessages(self, params):
         return
@@ -2352,34 +2404,33 @@ class GenerateStatisticsBetweenTwoTables(object):
         gis_dir = params[1].valueAsText
         table1 = params[2].valueAsText
         table2 = params[3].valueAsText
+        groupby_fields = params[4].valueAsText
+        stats_field = params[5].valueAsText
+        stats_type = params[6].valueAsText
 
         # Read table
         tab1 = pd.read_excel(table1)
         tab2 = pd.read_excel(table2)
 
-        # 0. Defin field names
-        statusla_field = 'StatusLA'
-        handedover_field = 'HandedOver'
-        municipality_field = 'Municipality'
+        groupby_fields = list(groupby_fields.split(';'))
+        stats_field = list(stats_field.split(';'))
 
-        # Status LA
-        s_statusla = summaryStatistics(tab1, tab2, "count", statusla_field, [municipality_field, statusla_field], discarded_city='Mabalacat')
-        statusla_stats = s_statusla.process_data_before_after()
-
-        # HandedOver
-        s_handedover = summaryStatistics(tab1, tab2, "count", handedover_field, [municipality_field, handedover_field], discarded_city='Mabalacat')
-        handedover_stats = s_handedover.process_data_before_after()
+        compile_list = []
+        for field in stats_field:
+            summary = summaryStatistics(tab1, tab2, stats_type, field, groupby_fields)
+            stats_summary = summary.process_data_before_after()
+            compile_list.append(stats_summary)
 
         # Export the updated GIS portal to excel sheet for checking lot IDs
         tab1_name = re.sub(r'.xlsx|.xls', "", os.path.basename(table1))
         tab2_name = re.sub(r'.xlsx|.xls', "", os.path.basename(table2))
 
-        file_name = f"CHECK-{project}_Comparing_Status_&_HandedOver_{tab1_name}_and_{tab2_name}.xlsx"
+        file_name = f"CHECK-{stats_field}_{tab1_name}_and_{tab2_name}.xlsx"
             
         to_excel_file = os.path.join(gis_dir, file_name)
         with pd.ExcelWriter(to_excel_file) as writer:
-            statusla_stats.to_excel(writer, sheet_name=statusla_field, index=False)
-            handedover_stats.to_excel(writer, sheet_name=handedover_field, index=False)
+            for i, stats in enumerate(compile_list):
+                stats.to_excel(writer, sheet_name=stats_field[i], index=False)
 
 class JustMessage4(object):
     def __init__(self):

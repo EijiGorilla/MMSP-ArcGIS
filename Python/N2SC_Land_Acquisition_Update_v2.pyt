@@ -827,7 +827,7 @@ class UpdateISF(object):
             id = rap_table_stats.index[rap_table_stats[nlo_status_field] == 0]
             rap_table_stats.loc[id, nlo_status_field] = np.nan
 
-            s_statusla = summaryStatistics(rap_table_stats, rap_table, "count", nlo_status_field, [municipality_field, nlo_status_field], None)
+            s_statusla = summaryStatistics(rap_table_stats, rap_table, "count", nlo_status_field, [municipality_field, nlo_status_field])
             statusla_stats = s_statusla.process_data_before_after()
 
             ### Export summary statistics table
@@ -1064,11 +1064,11 @@ class UpdateStructure(object):
                 rap_table_stats.loc[id, structure_status_field] = np.nan
 
                 ## Count status for each municipality
-                s_statusla = summaryStatistics(rap_table_stats, rap_table, "count", structure_status_field, [municipality_field, structure_status_field], None)
+                s_statusla = summaryStatistics(rap_table_stats, rap_table, "count", structure_status_field, [municipality_field, structure_status_field])
                 status_stats = s_statusla.process_data_before_after()
 
                 ## Count handedover structures for each municipality
-                s_handedover = summaryStatistics(rap_table_stats, rap_table, "count", handover_field, [municipality_field, handover_field], None)
+                s_handedover = summaryStatistics(rap_table_stats, rap_table, "count", handover_field, [municipality_field, handover_field])
                 handedover_stats = s_handedover.process_data_before_after()
  
                 ## Export summary statistics table

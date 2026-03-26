@@ -466,7 +466,7 @@ class UpdateLot(object):
         )
 
         rap_lot_ms = arcpy.Parameter(
-            displayName = "RAP Land Status ML (Excel)",
+            displayName = "RAP Land Status ML Compiled (Excel)",
             name = "RAP Land Status ML (Excel)",
             datatype = "DEFile",
             parameterType = "Required",
@@ -1888,8 +1888,7 @@ class UpdateLotGIS(object):
             pass
 
         ## Copy feature layer 
-        basename = os.path.basename(target_feature)
-        copy_feature = basename + '_copy'
+        copy_feature = 'copy_feature'
         arcpy.management.CopyFeatures(target_feature, copy_feature)
 
         # Join fields to attribute table

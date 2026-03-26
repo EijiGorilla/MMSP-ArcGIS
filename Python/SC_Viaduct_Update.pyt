@@ -98,6 +98,12 @@ def find_duplicates_ordered(arr):
     non_na = [x for x in list(duplicates) if x == x] # this removes nan
     return non_na
 
+def reformat_pier_numbers_in_civil_table(table, field, array):
+    for item in array:
+        table[field] = table[field].str.replace(item, array[item], regex=True)
+    table[field] = table[field].str.upper()
+    return table
+
 def preprocess_civil_table(idx,
                            file,
                            sheet_name,
@@ -135,11 +141,14 @@ def preprocess_civil_table(idx,
     x = add_status(x, start_actual_field, finish_actual_field, status_field)
 
     # Reformat Pier: BUEP-(x) -> BUE-P (O)
-    x[civil_pier_field] = x[civil_pier_field].str.replace(r'BUEP-','BUE-P',regex=True)
-    x[civil_pier_field] = x[civil_pier_field].str.replace(r'^P-','P', regex=True)
-    x[civil_pier_field] = x[civil_pier_field].str.replace(r'^P','P-', regex=True)
-    x[civil_pier_field] = x[civil_pier_field].str.replace(r'^P-R','PR', regex=True)
-    x[civil_pier_field] = x[civil_pier_field].str.upper()
+    changed_items_array = {
+        r'BUEP-': 'BUE-P',
+        r'^P-': 'P',
+        r'^P': 'P-',
+        r'^P-R': 'PR'
+    }
+        
+    x = reformat_pier_numbers_in_civil_table(x, civil_pier_field, changed_items_array)
 
     # Drop empty rows
     ## Bored Pile
@@ -156,23 +165,24 @@ class Toolbox(object):
     def __init__(self):
         self.label = "UpdateSCViaduct"
         self.alias = "UpdateSCViaduct"
-        self.tools = [ViaductMultipatchMessage,
+        self.tools = [JustMessage1,
                       CompileViaductMasterList,
-                      UpdateExcelML, UpdateGISTable, 
+                      UpdateExcelML, UpdateGISTable,
+                      JustMessage2,
                       CreateWorkablePierLayer, CheckPierNumbers, 
                       UpdateWorkablePierLayer, UpdatePierPointLayer, UpdateStripMapLayer,
                       ReSortGISTable, CheckUpdatesCivilGIS,
                       ViaductBIMUpdateMessage,
                       CreateBIMtoGeodatabase, CreateBuildingLayers, AppendBatchesBIM, AddFieldsToBuildingLayerStation, EditBuildingLayerStation, DomainSettingStationStructure]
 
-class ViaductMultipatchMessage(object):
+class JustMessage1(object):
     def __init__(self):
-        self.label = "0.----- Update Viaduct using Multipatch & Excel -----"
+        self.label = "2.0.----- Update SC Viaduct -----"
         self.description = "Update Viaduct using Multipatch & Excel"
 
 class CompileViaductMasterList(object):
     def __init__(self):
-        self.label = "1. Compile Civil ML Tables (SC Viaduct)"
+        self.label = "2.1. Compile Civil ML Tables (SC Viaduct)"
         self.description = "Compile Civil ML Tables (SC Viaduct)"
 
     def getParameterInfo(self):
@@ -305,7 +315,7 @@ class CompileViaductMasterList(object):
 
 class UpdateExcelML(object):
     def __init__(self):
-        self.label = "2. Update GIS Excel ML (SC Viaduct)"
+        self.label = "2.2. Update GIS Excel ML (SC Viaduct)"
         self.description = "2. Update GIS Excel ML (SC Viaduct)"
 
     def getParameterInfo(self):
@@ -398,7 +408,7 @@ class UpdateExcelML(object):
 
 class UpdateGISTable(object):
     def __init__(self):
-        self.label = "3. Update GIS Attribute Table (SC Viaduct)"
+        self.label = "2.3. Update GIS Attribute Table (SC Viaduct)"
         self.description = "Update SC Viaduct multipatch layer (SC Viaduct)"
 
     def getParameterInfo(self):
@@ -491,7 +501,7 @@ class UpdateGISTable(object):
         uniqueid_miss_ml = [e for e in uniqueid_ml if e not in uniqueid_gis]
 
         if uniqueid_miss_ml or uniqueid_miss_gis:
-            arcpy.AddMessage('The following IDs do not match between ML and GIS.')
+            arcpy.AddMessage('The following uniqueIDs do not match between ML and GIS.')
             
         ## 3.2. Get Join Field from MasterList gdb table: Gain all fields except 'Id'
         viaduct_ml_fields = [f.name for f in arcpy.ListFields(viaduct_ml)]
@@ -534,9 +544,14 @@ class UpdateGISTable(object):
         deleteTempLayers = [gis_copied, viaduct_ml]
         arcpy.Delete_management(deleteTempLayers)
 
+class JustMessage2(object):
+    def __init__(self):
+        self.label = "3.0.----- Update SC Pier Workability -----"
+        self.description = "Update Viaduct using Multipatch & Excel"
+
 class CreateWorkablePierLayer(object):
     def __init__(self):
-        self.label = "3. Create Pier Workable Layer (Polygon)"
+        self.label = "3.1. Create Pier Workable Layer (Polygon)"
         self.description = "Create Pier Workable Layer"
 
     def getParameterInfo(self):
@@ -594,32 +609,33 @@ class CreateWorkablePierLayer(object):
 
         new_cols = ['AllWorkable','LandWorkable','StrucWorkable','NLOWorkable', 'UtilWorkable', 'OthersWorkable']
 
-        ####### Pier Workability Status 
+        #--- Pier Workability Status ---#
         # 0 = 'Workable'
         # 1 = 'Non-workable'
         # 2 = Completed (construction)
 
-        # Filter by Type = 2 and keep only 'CP', 'PierNumber', and 'uniqueID'
+        # Extract pile cap only (Type = 2)
         temp_layer = 'temp_layer'
-        arcpy.management.MakeFeatureLayer(via_layer, temp_layer, '"Type" = 2')
+        type2_exression = f"{type_field} = 2"
+        # '"Type" = 2'
+        arcpy.management.MakeFeatureLayer(via_layer, temp_layer, type2_exression)
 
         # 'multipatch footprint'
-        ## new_cols and 'Type' (sting) = 'Pile Cap'
         new_layer = 'SC_Pier_Workable'
         arcpy.ddd.MultiPatchFootprint(temp_layer, new_layer)
 
         ## Delete field
-        arcpy.management.DeleteField(new_layer, ['CP','PierNumber','uniqueID','Status'], "KEEP_FIELDS")
+        arcpy.management.DeleteField(new_layer, [cp_field, pier_number_field, unique_id_field, status_field], "KEEP_FIELDS")
 
         # Add field
-        new_fields = new_cols + ['Type']
+        new_fields = new_cols + [type_field]
         for field in new_fields:
-            if field == 'Type':
+            if field == type_field:
                 arcpy.management.AddField(new_layer, field, "TEXT", field_alias=field, field_is_nullable="NULLABLE")
             else:
                 arcpy.management.AddField(new_layer, field, "SHORT", field_alias=field, field_is_nullable="NULLABLE")
 
-        with arcpy.da.UpdateCursor(new_layer, ['Type', 'Status', 'AllWorkable','LandWorkable','StrucWorkable','NLOWorkable', 'UtilWorkable', 'OthersWorkable']) as cursor:
+        with arcpy.da.UpdateCursor(new_layer, [type_field, status_field, 'AllWorkable','LandWorkable','StrucWorkable','NLOWorkable', 'UtilWorkable', 'OthersWorkable']) as cursor:
             # 0: Non-workable, 1: Workable, 2: Completed
             for row in cursor:
                 row[0] = 'Pile Cap'
@@ -645,12 +661,12 @@ class CreateWorkablePierLayer(object):
         # Export the latest N2 Viaduct layer to excel
         arcpy.conversion.TableToExcel(via_layer, os.path.join(workable_dir, "SC_Viaduct_ML.xlsx"))
 
-        ########################################
-        ##### Update SC Pier Point Layer #######
-        ########################################
+        #--------------------------------------#
+        #       Update SC Pier Point Layer     #
+        #--------------------------------------#
         try:
             temp_layer = 'temp_layer'
-            arcpy.management.MakeFeatureLayer(via_layer, temp_layer, '"Type" = 2')
+            arcpy.management.MakeFeatureLayer(via_layer, temp_layer, type2_exression)
         
             # 'multipatch footprint'
             ## new_cols and 'Type' (sting) = 'Pile Cap'
@@ -676,7 +692,7 @@ class CreateWorkablePierLayer(object):
 
 class UpdateWorkablePierLayer(object):
     def __init__(self):
-        self.label = "4. Update Pier Workability Tracker (Excel) & Layer (Polygon)"
+        self.label = "3.2. Update Pier Workability Tracker (Excel) & Layer (Polygon)"
         self.description = "Update Pier Workability Tracker (Excel) & Layer (Polygon)"
 
     def getParameterInfo(self):
@@ -1288,7 +1304,7 @@ class UpdateWorkablePierLayer(object):
 
 class CheckPierNumbers(object):
     def __init__(self):
-        self.label = "5. Check Pier Numbers between Civil and GIS Portal"
+        self.label = "3.3. Check Pier Numbers between Civil and GIS Portal"
         self.description = "Check Pier Numbers between Civil and GIS Portal"
 
     def getParameterInfo(self):
@@ -1418,7 +1434,7 @@ class CheckPierNumbers(object):
 
 class UpdatePierPointLayer(object):
     def __init__(self):
-        self.label = "6. Update Pier Layer (Point)"
+        self.label = "3.4. Update Pier Layer (Point)"
         self.description = "Update Pier Layer (Point)"
 
     def getParameterInfo(self):
@@ -1495,7 +1511,7 @@ class UpdatePierPointLayer(object):
 
 class UpdateStripMapLayer(object):
     def __init__(self):
-        self.label = "7. Update Strip Map Layer (Polygon)"
+        self.label = "3.5. Update Strip Map Layer (Polygon)"
         self.description = "Update Strip Map Layer (Polygon)"
 
     def getParameterInfo(self):

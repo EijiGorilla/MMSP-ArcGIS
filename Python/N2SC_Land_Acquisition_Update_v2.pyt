@@ -42,11 +42,17 @@ def rename_city_to_municipality(table, renamed_city):
     table = table.rename(columns={str(col[0]): renamed_city})
     return table
 
-def reformat_cp_label(table, cp_field):
-    table[cp_field] = table[cp_field].replace(r'3A|3A|3a', '3a',regex=True)
-    table[cp_field] = table[cp_field].replace(r'3B|3B|3b', '3b',regex=True)
-    table[cp_field] = table[cp_field].replace(r'3C|3C|3c', '3c',regex=True)
-    table[cp_field] = table[cp_field].apply(lambda x: re.sub(r',.*','',x))
+def replace_strings_table(table, field, array):
+    """
+    table: pandas dataFrame
+    field: field to be updated
+    array: array of pattern and replacement strings (e.g., {r'3A|3B': '3a', r''...})
+    """
+    # for item in array:
+    #     table[field] = table[field].apply(lambda x: re.sub(item, array[item], str(x)))
+    for item in array:
+        table[field] = table[field].str.replace(item, array[item], regex=True)
+        table[field] = table[field].apply(lambda x: re.sub(item, array[item], str(x)))
     return table
 
 def toString(table, to_string_fields):
@@ -190,7 +196,7 @@ class Toolbox(object):
         self.alias = "UpdateLandAcquisition"
         self.tools = [RestoreScaleForLot, JustMessage1, CompileRAPtables, UpdateLot, UpdateISF, UpdateStructure,
                       JustMessage10, AddObstructionToLotN2, AddObstructionToStructureN2, AddObstructionToLotSC, AddObstructionToStructureSC,
-                      JustMessage2, UpdateLotGIS, UpdateStructureGIS, UpdateBarangayGIS,
+                      JustMessage2, UpdateLotGIS, UpdateStructureGIS,
                       JustMessage3, GenerateStatisticsBetweenTwoTables,
                       JustMessage4, CompareStringFieldExcelTables, CompareStringFieldFeatureClasses,
                       ]
@@ -583,7 +589,13 @@ class UpdateLot(object):
                 if proj == 'N2':
                     rap_table[package_field] = rap_table[package_field].str.replace(r'N','N-',regex=True)
                 else:
-                    rap_table = reformat_cp_label(rap_table, package_field)
+                    arrays = {
+                        r'3A|3A|3a': '3a',
+                        r'3B|3B|3b': '3b',
+                        r'3C|3C|3c': '3c',
+                        r'/.*|,.*': ''
+                    }
+                    rap_table = replace_strings_table(rap_table, package_field, arrays)
 
                     rap_table = convert_lotids_to_correct_cp(rap_table, joinField, '10155|10156|10158-5', package_field, "S-01")
                     rap_table = convert_lotids_to_correct_cp(rap_table, joinField, '60136-A', package_field, "S-04")
@@ -639,7 +651,13 @@ class UpdateLot(object):
                 #*****************************************************************************************
                 # Create summary statistics between rap_table and updated GIS table to confirm matching #
                 #*****************************************************************************************
-                rap_table_origin = reformat_cp_label(rap_table_origin, package_field)
+                arrays = {
+                        r'3A|3A|3a': '3a',
+                        r'3B|3B|3b': '3b',
+                        r'3C|3C|3c': '3c',
+                        r'/.*|,.*': ''
+                    }
+                rap_table_origin = replace_strings_table(rap_table_origin, package_field, arrays)
                 
                 ## Count of statusLA by municipality
                 s_statusla = summaryStatistics(rap_table_origin, rap_table, "count", statusla_field, [renamed_city, statusla_field])
@@ -790,8 +808,14 @@ class UpdateISF(object):
                 rap_table_stats[field] = rap_table_stats[field].astype(str)
 
             # Re-format CP
-            rap_table = reformat_cp_label(rap_table, package_field)
-            rap_table_stats = reformat_cp_label(rap_table_stats, package_field)
+            arrays = {
+                        r'3A|3A|3a': '3a',
+                        r'3B|3B|3b': '3b',
+                        r'3C|3C|3c': '3c',
+                        r'/.*|,.*': ''
+                    }
+            rap_table = replace_strings_table(rap_table, package_field, arrays)
+            rap_table_stats = replace_strings_table(rap_table_stats, package_field, arrays)
 
             ## If Projec is N2
             if proj == 'N2':
@@ -1023,8 +1047,14 @@ class UpdateStructure(object):
                 if proj == 'N2':
                     rap_table[cp_field] = rap_table[cp_field].replace(r'N', 'N-',regex=True)
                 else: ## SC
-                    rap_table = reformat_cp_label(rap_table, cp_field)
-                    rap_table_stats = reformat_cp_label(rap_table_stats, cp_field)
+                    arrays = {
+                        r'3A|3A|3a': '3a',
+                        r'3B|3B|3b': '3b',
+                        r'3C|3C|3c': '3c',
+                        r'/.*|,.*': ''
+                    }
+                    rap_table = replace_strings_table(rap_table, cp_field, arrays)
+                    rap_table_stats = replace_strings_table(rap_table_stats, cp_field, arrays)
 
                     # Conver the following LotIDs to S-01
                     rap_table = convert_lotids_to_correct_cp(rap_table, joinField, 'NSRP-01-08-ML046', cp_field, "S-01")
@@ -1817,7 +1847,7 @@ class JustMessage2(object):
 
 class UpdateLotGIS(object):
     def __init__(self):
-        self.label = "5.1. Update GIS Attribute Table (Lot) - Disconnect Layer before execution"
+        self.label = "5.1. Update GIS Attribute Table (Lot) - Stop Service & Disconnect"
         self.description = "Update feature layer for land acquisition"
 
     def getParameterInfo(self):
@@ -1973,7 +2003,7 @@ class UpdateLotGIS(object):
 
 class UpdateStructureGIS(object):
     def __init__(self):
-        self.label = "5.2. Update GIS Attribute Tables (Structures/Occupancy/ISF Relocation)"
+        self.label = "5.3. Update GIS Attribute Tables (Structures/Occupancy/ISF Relocation)"
         self.description = "Update feature layers for structures including occupany and ISF Relocation"
 
     def getParameterInfo(self):
@@ -2202,109 +2232,6 @@ class UpdateStructureGIS(object):
             arcpy.AddMessage('The following Struc IDs are duplicated in the GIS attribute table:')
             arcpy.AddMessage(dup)
             arcpy.AddError('There are duplicated StrucIDs in the GIS attribute table. The process stops. Please fix this first.')
-
-class UpdateBarangayGIS(object):
-    def __init__(self):
-        self.label = "5.3. Update GIS Attribute Tables (SC1 Barangay)"
-        self.description = "Update GIS Attribute Tables (SC1 Barangay)"
-
-    def getParameterInfo(self):
-        in_pier = arcpy.Parameter(
-            displayName = "GIS SC1 arangay (Polygon)",
-            name = "GIS SC1 arangay (Polygon)",
-            datatype = "GPFeatureLayer",
-            parameterType = "Required",
-            direction = "Input"
-        )
-
-        ml_barangay = arcpy.Parameter(
-            displayName = "Excel MasterList (SC1 Barangay)",
-            name = "Excel MasterList (SC1 Barangay)",
-            datatype = "GPTableView",
-            parameterType = "Required",
-            direction = "Input"
-        )
-
-        params = [in_pier, ml_barangay]
-        return params
-
-    def updateMessages(self, params):
-        return
-
-    def execute(self, params, messages):
-        inPier = params[0].valueAsText
-        mlPier = params[1].valueAsText
-
-        arcpy.env.overwriteOutput = True
-
-        def unique_values(table, field):  ##uses list comprehension
-            with arcpy.da.SearchCursor(table, [field]) as cursor:
-                return sorted({row[0] for row in cursor if row[0] is not None})
-
-        # 1. For Pier
-        try:
-            join_field = 'Barangay'
-            arcpy.AddMessage('Updating SC1 Barangay has started..')
-            barangay_copied_name = 'N2_Pier_barangay'
-            barangay_copied_gis = arcpy.CopyFeatures_management(inPier, barangay_copied_name)
-            
-            # 2. Delete fields: 'Municipality' and 'AccessDate'
-            barangay_gis_fields = [f.name for f in arcpy.ListFields(barangay_copied_gis)]
-            
-            ## 2.1. Fields to be dropped
-            barangay_drop_fields = [e for e in barangay_gis_fields if e not in (join_field,'Shape','Shape_Length','Shape_Area','Shape.STArea()','Shape.STLength()','OBJECTID','GlobalID')]
-            
-            ## 2.3. Check if there are fields to be dropped
-            barangay_drop_fields_check = [f for f in barangay_gis_fields if f in tuple(barangay_drop_fields)]
-            
-            ## 2.4 Drop
-            if len(barangay_drop_fields_check) == 0:
-                arcpy.AddMessage("There is no field that can be dropped from the feature layer")
-            else:
-                arcpy.DeleteField_management(barangay_copied_gis, barangay_drop_fields_check)
-
-            # 3. Join Field
-            ## 3.1. Convert Excel tables to feature table
-            ##MasterListN2Pier = arcpy.TableToTable_conversion(mlPier, workspace, 'MasterListN2Pier')
-            barangay_ml_table = arcpy.conversion.ExportTable(mlPier, 'barangay_ml_table')
-
-            # Check if pier numbers match between ML and GIS
-            barangay_field = 'PIER'
-            piers_gis = unique_values(barangay_copied_gis, barangay_field)
-            piers_ml = unique_values(barangay_ml_table, barangay_field)
-            
-            piers_miss_gis = [e for e in piers_gis if e not in piers_ml] # missing in gis
-            piers_miss_ml = [e for e in piers_ml if e not in piers_gis] # missing in ML
-
-            if piers_miss_ml:
-                arcpy.AddMessage('The following pier numbers do not match between ML and GIS.')
-                arcpy.AddMessage('Subject piers for GIS: {}'.format(piers_miss_gis))
-                arcpy.AddMessage('Subject piers for ML: {}'.format(piers_miss_ml))
-            
-            ## 3.2. Get Join Field from MasterList gdb table: Gain all fields except 'Id'
-            barangay_ml_fields = [f.name for f in arcpy.ListFields(barangay_ml_table)]
-            transfer_fields = [e for e in barangay_ml_fields if e not in (join_field, 'barangay','OBJECTID')]
-            
-            ## 3.3. Extract a Field from MasterList and Feature Layer to be used to join two tables
-            gis_join_field = ' '.join(map(str, [f for f in barangay_gis_fields if f in (join_field, 'barangay')]))
-            ml_join_field =' '.join(map(str, [f for f in barangay_ml_fields if f in (join_field, 'barangay')]))
-            
-            ## 3.4 Join
-            arcpy.JoinField_management(in_data=barangay_copied_gis, in_field=gis_join_field, join_table=barangay_ml_table, join_field=ml_join_field, fields=transfer_fields)
-            
-            # 4. Trucnate
-            arcpy.TruncateTable_management(inPier)
-            
-            # 5. Append
-            arcpy.Append_management(barangay_copied_gis, inPier, schema_type = 'NO_TEST')
-
-            # Delete the copied feature layer
-            deleteTempLayers = [barangay_copied_gis, barangay_ml_table]
-            arcpy.Delete_management(deleteTempLayers)
-            
-        except:
-            arcpy.AddError("Something went wrong..process stopped.")
-            pass
 
 class JustMessage3(object):
     def __init__(self):

@@ -77,11 +77,31 @@ def identify_missing_ids_fc(ids1, ids2):
     noids = noids_ids2 + noids_id1
     return noids
 
+def update_N2_CP_notation(table, field):
+    table[field] = table[field].str.replace(r'\s+','',regex=True)
+    table[field] = table[field].replace(r'CPN','N-',regex=True)
+    #--- Fix N-01/N-02 => N-01, N-02/N-03 => N-02
+    table[field] = table[field].apply(lambda x: re.sub(r'[,/].*','',x))
+    return table
+
+#--- Update pier numbers
+def update_monopile_pier_numbers_civilML(table, field):
+    """
+    Renaming pier numbers: 'P-159' and 'P-160'
+    New pier numbers: 'P-159C' and 'P-160C'
+
+    """
+    for pier in ['P-159', 'P-160']:
+        idx = table.query(f"{field} == '{pier}'").index
+        table.loc[idx, field] = f"{pier}C"
+    return table
+
 def extract_pier_numbers(cp, cp_field, pier_num_field, type_field=None, viat=None, civilt=None, piertrackt=None):
     if viat:
         x = pd.read_excel(viat)
         ids = x.query(f"{cp_field} == '{cp}' and {type_field} == 2").index
         piers = x.loc[ids, pier_num_field].values
+
     elif civilt:
         new_cols = ['PierNumber', 'CP', 'util1', 'util2', 'Others', 'Workability']
         x = pd.read_excel(civilt, skiprows=2)
@@ -89,10 +109,13 @@ def extract_pier_numbers(cp, cp_field, pier_num_field, type_field=None, viat=Non
         x = x.loc[:, ids]
         for i, col in enumerate(ids):
             x = x.rename(columns={col: new_cols[i]})
-        x[cp_field] = x[cp_field].str.replace(r'/.*','',regex=True)
-        x[cp_field] = x[cp_field].str.replace(r'CPN','N-',regex=True)
+
+        #--- Update pier number for monopiles
+        x = update_monopile_pier_numbers_civilML(x, pier_num_field)
+
         ids = x.query(f"{cp_field} == '{cp}'").index
         piers = x.loc[ids, pier_num_field].values
+
     elif piertrackt:
         x = pd.read_excel(piertrackt, sheet_name=cp, skiprows=1)
         # Find nth row wheren field name 'PierNumber' begins and drop emty row.
@@ -231,7 +254,7 @@ class CompileViaductMasterList(object):
         proj.filter.list = ['N2', 'SC']
 
         via_dir = arcpy.Parameter(
-            displayName = "Output Directory for N2 Viaduct",
+            displayName = "N2 Viaduct Directory",
             name = "Output Directory for N2 Viaduct",
             datatype = "DEWorkspace",
             parameterType = "Required",
@@ -584,14 +607,6 @@ class CreateWorkablePierLayer(object):
         self.description = "Create Pier Workable Layer"
 
     def getParameterInfo(self):
-        pier_workable_dir = arcpy.Parameter(
-            displayName = "N2 Pier Workability Directory",
-            name = "N2 Pier Workability Directory",
-            datatype = "DEWorkspace",
-            parameterType = "Required",
-            direction = "Input"
-        )
-
         # Input Feature Layers
         workable_pier_layer = arcpy.Parameter(
             displayName = "N2 Pier Workability Layer (Polygon)",
@@ -609,25 +624,15 @@ class CreateWorkablePierLayer(object):
             direction = "Input"
         )
 
-        pier_number_layer = arcpy.Parameter(
-            displayName = "N2 Pier Number Layer (Point)",
-            name = "N2 Pier Number Layer (Point)",
-            datatype = "GPFeatureLayer",
-            parameterType = "Optional",
-            direction = "Input"
-        )
-
-        params = [pier_workable_dir, workable_pier_layer, via_layer,pier_number_layer]
+        params = [workable_pier_layer, via_layer]
         return params
 
     def updateMessages(self, params):
         return
 
     def execute(self, params, messages):
-        workable_dir = params[0].valueAsText
-        workable_pier_layer = params[1].valueAsText
-        via_layer = params[2].valueAsText
-        pier_pt_layer = params[3].valueAsText
+        workable_pier_layer = params[0].valueAsText
+        via_layer = params[1].valueAsText
 
         arcpy.env.overwriteOutput = True
         
@@ -638,33 +643,36 @@ class CreateWorkablePierLayer(object):
         unique_id_field = 'uniqueID'
         type_field = 'Type'
 
-        new_cols = ['AllWorkable','LandWorkable','StrucWorkable','NLOWorkable', 'UtilWorkable', 'OthersWorkable']
+        new_fields = ['AllWorkable','LandWorkable','StrucWorkable','NLOWorkable', 'UtilWorkable', 'OthersWorkable']
 
-        # Filter by Type = 2 and keep only 'CP', 'PierNumber', and 'uniqueID'
+        #--- Keep Type = 2 and only 'CP', 'PierNumber', and 'uniqueID'
+        pilecaps_layer = 'pilecaps_layer'
+        arcpy.management.MakeFeatureLayer(via_layer, pilecaps_layer, '"Type" = 2')
+
+        # Use pier head for monopiles: P-159C, P-159NB/SB, P-160C, P-160NB/SB        
+        monopile_query = f"({pier_number_field} LIKE '%P-159%' OR {pier_number_field} LIKE '%P-160%') AND {type_field} = 4"
+        monopile_layer = 'monopile_layer'
+        arcpy.management.MakeFeatureLayer(via_layer, monopile_layer, monopile_query)
+
+        #-- Add monopile pier head
         temp_layer = 'temp_layer'
-        arcpy.management.MakeFeatureLayer(via_layer, temp_layer, '"Type" = 2')
+        arcpy.management.Merge([pilecaps_layer, monopile_layer], temp_layer)
 
-        # 'multipatch footprint'
-        ## new_cols and 'Type' (sting) = 'Pile Cap'
+        #--- 'multipatch footprint'
         new_layer = 'N2_Pier_Workable'
         arcpy.ddd.MultiPatchFootprint(temp_layer, new_layer)
 
-        ## Delete field
-        arcpy.management.DeleteField(new_layer, [cp_field, pier_number_field, unique_id_field, status_field], "KEEP_FIELDS")
+        #--- Keep fields
+        arcpy.management.DeleteField(new_layer, [cp_field, pier_number_field, unique_id_field, status_field, type_field], "KEEP_FIELDS")
 
         # Add field
-        new_fields = new_cols + ['Type']
         for field in new_fields:
-            if field == 'Type':
-                arcpy.management.AddField(new_layer, field, "TEXT", field_alias=field, field_is_nullable="NULLABLE")
-            else:
-                arcpy.management.AddField(new_layer, field, "SHORT", field_alias=field, field_is_nullable="NULLABLE")
+            arcpy.management.AddField(new_layer, field, "SHORT", field_alias=field, field_is_nullable="NULLABLE")
 
-        # When the construction of 'pile cap' is completed, 'Workable' fields must be 2 (completed). 
+        # Status = 4 => 'Workable' = 2 (completed). 
         with arcpy.da.UpdateCursor(new_layer, [type_field, status_field, 'AllWorkable','LandWorkable','StrucWorkable','NLOWorkable', 'UtilWorkable', 'OthersWorkable']) as cursor:
             # 0: Non-workable, 1: Workable, 2: Completed
             for row in cursor:
-                row[0] = 'Pile Cap'
                 if row[1] == 4:
                     row[2] = 2
                     row[3] = 2
@@ -687,138 +695,9 @@ class CreateWorkablePierLayer(object):
         deleteTempLayers = [new_layer, temp_layer]
         arcpy.Delete_management(deleteTempLayers)
 
-        # Export the latest N2 Viaduct layer to excel
-        arcpy.conversion.TableToExcel(via_layer, os.path.join(workable_dir, "N2_Viaduct_MasterList.xlsx"))
-        
-        #--------------------------------------#
-        ##       Update N2 Pier Point Layer   ##
-        #--------------------------------------#
-        try:
-            temp_layer = 'temp_layer'
-            arcpy.management.MakeFeatureLayer(via_layer, temp_layer, '"Type" = 2')
-        
-            # 'multipatch footprint'
-            ## new_cols and 'Type' (sting) = 'Pile Cap'
-            new_layer = 'N2_Pier_Point'
-            arcpy.ddd.MultiPatchFootprint(temp_layer, new_layer)
-
-            ## Feature to Point
-            new_point_layer = 'N2_new_Pier_Point'
-            arcpy.management.FeatureToPoint(new_layer, new_point_layer)
-
-            ## We need to desselect Piers P-159, P159NB/SB, P-160, P-160NB-SB so it won't be deleted in the table
-            pier_number_field = 'PierNumber'
-            where_clause_pt = f"{pier_number_field} LIKE '%P-159%' OR {pier_number_field} LIKE '%P-160%'"
-            arcpy.management.SelectLayerByAttribute(pier_pt_layer, 'NEW_SELECTION', where_clause_pt, 'INVERT')
-
-            ## Delete rows except Piers P-159, P159NB/SB, P-160, P-160NB-SB
-            arcpy.management.DeleteRows(pier_pt_layer)
-
-            ## Truncate original point layer
-            ## arcpy.management.TruncateTable(pier_pt_layer)
-
-            ## Append a new point layer to the original
-            arcpy.management.Append(new_point_layer, pier_pt_layer, schema_type = 'NO_TEST')
-
-            # delete
-            deleteTempLayers = [new_layer, new_point_layer, temp_layer]
-            arcpy.Delete_management(deleteTempLayers)
-
-        except:
-            pass
-
-class CheckPierNumbers(object):
-    def __init__(self):
-        self.label = "3.2. Check Pier Numbers between Civil, GIS Portal, and RAP ML"
-        self.description = "Check Pier Numbers between Civil, GIS Portal, and RAP ML"
-
-    def getParameterInfo(self):
-        pier_tracker_dir = arcpy.Parameter(
-            displayName = "N2 Pier Workability Directory",
-            name = "N2 Pier Workability Directory",
-            datatype = "DEWorkspace",
-            parameterType = "Required",
-            direction = "Input"
-        )
-
-        civil_workable_ms = arcpy.Parameter(
-            displayName = "N2 Pier Workability Civil ML (Excel)",
-            name = "N2 Pier Workability Civil ML (Excel)",
-            datatype = "DEFile",
-            parameterType = "Required",
-            direction = "Input"
-        )
-
-        gis_viaduct_ms = arcpy.Parameter(
-            displayName = "N2 Viaduct GIS ML (Excel)",
-            name = "N2 Viaduct GIS ML (Excel)",
-            datatype = "DEFile",
-            parameterType = "Required",
-            direction = "Input"
-        )
-
-        gis_pier_tracker_ms = arcpy.Parameter(
-            displayName = "N2 Pier Workability Tracker ML (RAP or GIS) (Excel)",
-            name = "N2 Pier Workability Tracker ML (Excel)",
-            datatype = "DEFile",
-            parameterType = "Required",
-            direction = "Input"
-        )
-
-        params = [pier_tracker_dir, civil_workable_ms, gis_viaduct_ms, gis_pier_tracker_ms]
-        return params
-
-    def updateMessages(self, params):
-        return
-
-    def execute(self, params, messages):
-        pier_tracker_dir = params[0].valueAsText
-        civil_workable_ms = params[1].valueAsText
-        gis_viaduct_ms = params[2].valueAsText
-        gis_pier_tracker_ms = params[3].valueAsText
-        
-        arcpy.env.overwriteOutput = True
-        #arcpy.env.addOutputsToMap = True
-
-        def Workable_Pier_Table_Update():
-
-            # List of fields
-            cp_field = 'CP'
-            type_field = 'Type'
-            pier_num_field = 'PierNumber'
-            cps = ['N-01','N-02','N-03']
-
-            compile_table = pd.DataFrame()
-            for cp in cps:
-                arcpy.AddMessage("Contract Package: " + cp)
-  
-                # Get pier numbers
-                gis_piers = extract_pier_numbers(cp, cp_field, pier_num_field, type_field, gis_viaduct_ms, None, None)
-                civil_piers = extract_pier_numbers(cp, cp_field, pier_num_field, None, None, civil_workable_ms, None)
-                tracker_piers = extract_pier_numbers(cp, cp_field, pier_num_field, None, None, None, gis_pier_tracker_ms)
-                
-                columns = ['cp',
-                           'civil',
-                            'gis',
-                            'tracker',
-                            'non-matched piers (civil-gis)',
-                            'non-matched piers (civil-tracker)'
-                            ]
-                
-                table = summary_statistics_count_piers(cp, civil_piers, gis_piers, columns, tracker_piers)
- 
-                # Compile cps
-                compile_table = pd.concat([compile_table, table])
-            
-            # Export
-            compile_table.to_excel(os.path.join(pier_tracker_dir, '99-CHECK_Summary_N2_PierNumbers_Civil_vs_GISportal_vs_pierTracker.xlsx'),
-                                              index=False)
-
-        Workable_Pier_Table_Update()
-
 class UpdatePierWorkableTrackerML(object):
     def __init__(self):
-        self.label = "3.3. Update GIS Pier Workable Tracker ML (Excel)"
+        self.label = "3.2. Update GIS Pier Workable Tracker ML (Excel)"
         self.description = "Update GIS Pier Workable Tracker ML (Excel)"
 
     def getParameterInfo(self):
@@ -910,9 +789,6 @@ class UpdatePierWorkableTrackerML(object):
             via_t = pd.read_excel(viaduct_ms)
             gis_nlo_t = pd.read_excel(gis_nlo_ms)
             
-            #------------------------------------------#
-            #--- Update N2 Pier Workability Tracker ---#
-            #------------------------------------------#
             new_cols = ['PierNumber', 'CP', 'util1', 'util2', 'Others', 'Workability']
             
             #----------------------#
@@ -923,9 +799,8 @@ class UpdatePierWorkableTrackerML(object):
             for i, col in enumerate(ids):
                 civil_t = civil_t.rename(columns={col: new_cols[i]})
                 
-            # change CP notation
-            civil_t[new_cols[1]] = civil_t[new_cols[1]].replace(r'CPN','N-',regex=True)
-            civil_t[new_cols[1]] = civil_t[new_cols[1]].apply(lambda x: re.sub(r',.*','',x))
+            #--- change CP notation           
+            civil_t = update_N2_CP_notation(civil_t, new_cols[1])
 
             #--- Update 'Workability' field ---#
             civil_t[new_cols[5]] = civil_t[new_cols[5]].str.title()
@@ -948,10 +823,9 @@ class UpdatePierWorkableTrackerML(object):
             civil_t.loc[ids, new_cols[4]] = 1
 
             #--------------------------------------------------------#
-            #  Clean RAP's Tracker        #
+            #              Clean RAP Team's Tracker                  #
             #--------------------------------------------------------#
             # Add obstructing Lot and structure IDs to pier workable tracker ML
-            ## Read the RAP table
             final_table = pd.DataFrame()
             cps = ['N-01', 'N-02', 'N-03']
             for cp in cps:
@@ -993,8 +867,13 @@ class UpdatePierWorkableTrackerML(object):
             #--------------------------------------------------------#
             #           Finalize Pier Workable Tracker ML            #
             #--------------------------------------------------------#
-            # Monopile (no pile cap) to Completed => P-159, P-159NB/SB, P-160, P-160NB/SB 
-            mono_piles = ["P-159", "P-159NB", "P-159SB", "P-160", "P-160NB", "P-160SB"]
+            #--- Monopile (no pile cap) to Completed => P-159C, P-159NB/SB, P-160C, P-160NB/SB ---#
+            # P-159 => P-159C
+            # P-160 => P-160C
+            # This code must be executed before adding 'Completed' pile cap.
+            final_table = update_monopile_pier_numbers_civilML(final_table, pier_num_field)
+
+            mono_piles = ["P-159C", "P-159NB", "P-159SB", "P-160C", "P-160NB", "P-160SB"]
             ids = final_table.query(f"{pier_num_field}.isin({mono_piles})").index
             final_table.loc[ids, workability_field] = "Workable"
 
@@ -1059,6 +938,108 @@ class UpdatePierWorkableTrackerML(object):
                 final_table.query(f"{cp_field} == 'N-03'").reset_index(drop=True).to_excel(writer, sheet_name='N-03', index=False)
 
         Workable_Pier_Tracker_Update()
+
+class CheckPierNumbers(object):
+    def __init__(self):
+        self.label = "3.3. Check Pier Numbers between Civil, GIS Portal, and RAP ML"
+        self.description = "Check Pier Numbers between Civil, GIS Portal, and RAP ML"
+
+    def getParameterInfo(self):
+        pier_tracker_dir = arcpy.Parameter(
+            displayName = "N2 Pier Workability Directory",
+            name = "N2 Pier Workability Directory",
+            datatype = "DEWorkspace",
+            parameterType = "Required",
+            direction = "Input"
+        )
+
+        civil_workable_ms = arcpy.Parameter(
+            displayName = "N2 Pier Workability Civil ML (Excel)",
+            name = "N2 Pier Workability Civil ML (Excel)",
+            datatype = "DEFile",
+            parameterType = "Required",
+            direction = "Input"
+        )
+
+        gis_viaduct_ms = arcpy.Parameter(
+            displayName = "N2 Viaduct GIS ML (Excel)",
+            name = "N2 Viaduct GIS ML (Excel)",
+            datatype = "DEFile",
+            parameterType = "Required",
+            direction = "Input"
+        )
+
+        gis_pier_tracker_ms = arcpy.Parameter(
+            displayName = "N2 Pier Workability Tracker (Excel)",
+            name = "N2 Pier Workability Tracker ML (Excel)",
+            datatype = "DEFile",
+            parameterType = "Required",
+            direction = "Input"
+        )
+
+        params = [pier_tracker_dir, civil_workable_ms, gis_viaduct_ms, gis_pier_tracker_ms]
+        return params
+
+    def updateMessages(self, params):
+        return
+
+    def execute(self, params, messages):
+        pier_tracker_dir = params[0].valueAsText
+        civil_workable_ms = params[1].valueAsText
+        gis_viaduct_ms = params[2].valueAsText
+        gis_pier_tracker_ms = params[3].valueAsText
+        
+        arcpy.env.overwriteOutput = True
+        #arcpy.env.addOutputsToMap = True
+
+        def Workable_Pier_Table_Update():
+
+            # List of fields
+            cp_field = 'CP'
+            type_field = 'Type'
+            pier_num_field = 'PierNumber'
+            cps = ['N-01','N-02','N-03']
+
+            compile_table = pd.DataFrame()
+
+            #--- Preprocess Civil ML 
+            # must run this first for cp notations like N-01/N-02
+            new_cols = ['PierNumber', 'CP', 'util1', 'util2', 'Others', 'Workability']           
+            x = pd.read_excel(civil_workable_ms, skiprows=2)
+            ids = x.columns[x.columns.str.contains(r'^Pier No.*|Contract P.*|^Name of Utilities|^Others|^Pile Cap Workable.*',regex=True,na=False)]
+            x = x.loc[:, ids]
+            for i, col in enumerate(ids):
+                x = x.rename(columns={col: new_cols[i]})
+
+            #--- Update pier number for monopiles
+            x = update_monopile_pier_numbers_civilML(x, pier_num_field)
+
+            for cp in cps:
+                arcpy.AddMessage("Contract Package: " + cp)
+  
+                #--- Get pier numbers ---#
+                gis_piers = extract_pier_numbers(cp, cp_field, pier_num_field, type_field, gis_viaduct_ms, None, None)
+                tracker_piers = extract_pier_numbers(cp, cp_field, pier_num_field, None, None, None, gis_pier_tracker_ms)
+                civil_piers = x.loc[x.query(f"{cp_field} == '{cp}'").index, pier_num_field].values
+                
+                columns = ['cp',
+                           'civil',
+                            'gis',
+                            'tracker',
+                            'non-matched piers (civil-gis)',
+                            'non-matched piers (civil-tracker)'
+                            ]
+                
+                table = summary_statistics_count_piers(cp, civil_piers, gis_piers, columns, tracker_piers)
+ 
+                # Compile cps
+                compile_table = pd.concat([compile_table, table])
+            
+            # Export
+            compile_table.to_excel(os.path.join(pier_tracker_dir, '99-CHECK_Summary_N2_PierNumbers_Civil_vs_GISportal_vs_pierTracker.xlsx'),
+                                              index=False)
+
+        Workable_Pier_Table_Update()
 
 class UpdatePierWorkablePolygonLayer(object):
     def __init__(self):
@@ -1157,6 +1138,7 @@ class UpdatePierWorkablePolygonLayer(object):
                 # --- Update fields to 'Workable' for incomplete pile caps ---#
                 id_workable_piers = pier_tracker_t.index[pier_tracker_t[workability_field] == 'Workable']
                 workable_piers = pier_tracker_t.loc[id_workable_piers, pier_number_field].values
+
                 with arcpy.da.UpdateCursor(gis_workable_layer, [pier_number_field,'AllWorkable','LandWorkable','StrucWorkable','NLOWorkable', 'UtilWorkable', 'OthersWorkable', cp_field]) as cursor:
                     for row in cursor:
                         if row[0] in tuple(workable_piers) and row[7] == cp:
@@ -1181,6 +1163,7 @@ class UpdatePierWorkablePolygonLayer(object):
                     else:
                         ids = pier_tracker_t.query(f"{obstruction_cols[i]} == 1").index
                         nonworkable_piers = pier_tracker_t.loc[ids, pier_number_field].values
+
                         with arcpy.da.UpdateCursor(gis_workable_layer, [pier_number_field, workable_cols[i], cp_field]) as cursor:
                             for row in cursor:
                                 if row[0] in tuple(nonworkable_piers) and row[2] == cp:
@@ -1197,17 +1180,16 @@ class UpdatePierWorkablePolygonLayer(object):
 
 
                 #--- Completed pile cap => 2 (completed). 
-                with arcpy.da.UpdateCursor(gis_workable_layer, [type_field, status_field, 'AllWorkable','LandWorkable','StrucWorkable','NLOWorkable', 'UtilWorkable', 'OthersWorkable']) as cursor:
+                with arcpy.da.UpdateCursor(gis_workable_layer, [status_field, 'AllWorkable','LandWorkable','StrucWorkable','NLOWorkable', 'UtilWorkable', 'OthersWorkable']) as cursor:
                     # 0: Non-workable, 1: Workable, 2: Completed
                     for row in cursor:
-                        row[0] = 'Pile Cap'
-                        if row[1] == 4:
+                        if row[0] == 4:
+                            row[1] = 2
                             row[2] = 2
                             row[3] = 2
                             row[4] = 2
                             row[5] = 2
                             row[6] = 2
-                            row[7] = 2
                         cursor.updateRow(row)
 
                 #--------------------------------------------------------#
@@ -1253,15 +1235,7 @@ class UpdatePierPointLayer(object):
             direction = "Input"
         )
 
-        viaduct_layer = arcpy.Parameter(
-            displayName = "N2 Viaduct Layer (multipatch)",
-            name = "N2 Viaduct Layer (multipatch)",
-            datatype = "GPFeatureLayer",
-            parameterType = "Required",
-            direction = "Input"
-        )
-
-        params = [pier_point_layer, pier_workable_layer, viaduct_layer]
+        params = [pier_point_layer, pier_workable_layer]
         return params
 
     def updateMessages(self, params):
@@ -1270,7 +1244,7 @@ class UpdatePierPointLayer(object):
     def execute(self, params, messages):
         pier_point_layer = params[0].valueAsText
         pier_workable_layer = params[1].valueAsText
-        viaduct_layer = params[2].valueAsText
+        # viaduct_layer = params[2].valueAsText
         
         arcpy.env.overwriteOutput = True
         #arcpy.env.addOutputsToMap = True
@@ -1280,61 +1254,13 @@ class UpdatePierPointLayer(object):
             unique_id_field = 'uniqueID'
             new_point_layer = 'N2_new_Pier_Point'
             arcpy.management.FeatureToPoint(pier_workable_layer, new_point_layer)
-            
-            deleteFieldsList = ['AllWorkable','LandWorkable','StrucWorkable','NLOWorkable', 'UtilWorkable', 'OthersWorkable']
 
-            #--- Delete Fields ---#
-            arcpy.management.DeleteField(new_point_layer, deleteFieldsList)
-            
-            #--- Join Field ---#
-            arcpy.management.JoinField(new_point_layer, unique_id_field, pier_workable_layer, unique_id_field, deleteFieldsList)
-            
-            #--------------------------------------------------------#
-            #    Update Piers: P-159, P-159NB/SB, P-160, P-160NB/SB  #
-            #--------------------------------------------------------#
-            #--- Keep P-159, P159NB/SB, P-160, P-160NB-SB from being deleted ---#
-            pier_number_field = 'PierNumber'
-            where_clause_pt = f"{pier_number_field} LIKE '%P-159%' OR {pier_number_field} LIKE '%P-160%'"
-            arcpy.management.SelectLayerByAttribute(pier_point_layer, 'NEW_SELECTION', where_clause_pt, 'INVERT')
-            arcpy.management.DeleteRows(pier_point_layer)
+            #--- Truncate an existing pier point layer
+            arcpy.management.TruncateTable(pier_point_layer)
 
-            #--- Append a new point layer to the original ---#
+            #--- Append new point layer to the old one
             arcpy.management.Append(new_point_layer, pier_point_layer, schema_type = 'NO_TEST')
-            deleteTempLayers = [new_point_layer]
-            arcpy.Delete_management(deleteTempLayers)
-
-            #--- Use pier head for piers: P-159, P-159NB/SB, P-160, P-160NB/SB (no pile caps)
-            pier_number_field = "PierNumber"
-            type_field = "Type"
-            status_field = "Status"
-
-            where_clause = f"({pier_number_field} LIKE '%P-159%' OR {pier_number_field} LIKE '%P-160%') AND {type_field} = 1"
-            arcpy.management.SelectLayerByAttribute(viaduct_layer, 'NEW_SELECTION', where_clause)
-
-            #--- Compile status in a dictionary ---#
-            piers_status = {}
-            with arcpy.da.SearchCursor(viaduct_layer, [pier_number_field, status_field]) as cursor:
-                for row in cursor:
-                    if row[0]:
-                        pier_id = row[0].replace("CA", "")
-                        if row[1] < 4:
-                            piers_status[pier_id] = 0
-                        elif row[1] == 4:
-                            piers_status[pier_id] = 2
-
-            arcpy.AddMessage(piers_status)
-            
-            #** {'P-160NB': 0, 'P-159': 0, 'P-159NB': 0, 'P-159SB': 0, 'P-160SB': 0, 'P-160': 0}
-            #** {PierNumber: AllWorkable}, where Workable (AllWorkable = 0), Nonworkable (AllWorkable = 1), and Completed (AllWorkable = 2)
-            where_clause = f"{pier_number_field} LIKE '%P-159%' OR {pier_number_field} LIKE '%P-160%'"
-            arcpy.management.SelectLayerByAttribute(pier_point_layer, 'NEW_SELECTION', where_clause)
-            with arcpy.da.UpdateCursor(pier_point_layer, [pier_number_field, 'AllWorkable']) as cursor:
-                for row in cursor:
-                    if row[0]:
-                        status = piers_status[row[0]]
-                        row[1] = status
-                    cursor.updateRow(row)
-
+ 
         Pier_Point_Layer_Update()
 
 class UpdateStripMapLayer(object):

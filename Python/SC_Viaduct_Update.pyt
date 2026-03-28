@@ -8,12 +8,6 @@ import string
 import numpy as np
 import time
 
-def whitespace_removal(dataframe, field):
-    try:
-        dataframe[field] = dataframe[field].apply(lambda x: x.strip())
-    except:
-        pass
-
 def unique(lists):
     collect = []
     unique_list = pd.Series(lists).drop_duplicates().tolist()
@@ -33,7 +27,7 @@ def toString(table, to_string_fields): # list of fields to be converted to strin
         ## Need to convert string first, then apply space removal, and then convert to string again
         ## If you do not apply string conversion twice, it will fail to join with the GIS attribute table
         table[field] = table[field].astype(str)
-        table[field] = table[field].apply(lambda x: x.replace(r'/s+', ''))
+        table[field] = table[field].apply(lambda x: x.replace(r'\s+', ''))
         table[field] = table[field].astype(str)
         
 def rename_columns_title(table, search_names, renamed_word): # one by one
@@ -841,7 +835,10 @@ class UpdatePierWorkableTrackerML(object):
             nlo_field = 'NLO'
             remarks_field = 'Remarks'
 
-            civil_t = pd.read_excel(os.path.join(pier_workability_dir, civil_workable_ms), sheet_name="Summary (B271 only)")
+            #--- Get a correct sheetname
+            xls = pd.ExcelFile(civil_workable_ms)
+            # sheet_name = [f for f in xls.sheet_names if f.startswith('Summary')][0]
+            civil_t = pd.read_excel(civil_workable_ms, sheet_name="SUMMARY BREAKDOWN (B271 only)")
 
             columns = [cp_field, 
                        pier_number_field, 
@@ -855,8 +852,8 @@ class UpdatePierWorkableTrackerML(object):
                        struc1_field,
                        remarks_field]
             
-            cols = find_word_location(civil_t, "Workability")
-            civil_t = civil_t.iloc[:, np.r_[0,1,cols[0]['colidx']:17]].loc[2:, ].reset_index(drop=True)
+            cols = find_word_location(civil_t, "Workability")[1]
+            civil_t = civil_t.iloc[:, np.r_[0,1,cols['colidx']:21]].loc[2:, ].reset_index(drop=True)
             civil_t.columns = columns
 
             #--- Reformat Obstruction ids for land and structure (with NLO) ---#
@@ -880,6 +877,10 @@ class UpdatePierWorkableTrackerML(object):
             #--- Add 'Status' ---#
             civil_t[status_field] = 1
             civil_t.loc[idx, status_field] = 4
+
+            #---- Keep only pier numbers starting with 'P' and 'BUE'
+            ids = civil_t[civil_t[pier_number_field].str.contains(r'^P|^BUE', regex=True, na=False)].index
+            civil_t = civil_t.loc[ids, ]
 
             #--------------------------------------------------------#
             #                 Identify Discrepancies                 #
@@ -1839,7 +1840,7 @@ class CheckUpdatesCivilGIS(object):
             # 1. Summary statistics:
             # Re-formata 'Package'
             x[cp_field_civil] = x[cp_field_civil].astype(str)
-            x[cp_field_civil] = x[cp_field_civil].replace(r'/s+','',regex=True)
+            x[cp_field_civil] = x[cp_field_civil].replace(r'\s+','',regex=True)
 
             # Remove 'S' or 'S0'
             x[cp_field_civil] = x[cp_field_civil].replace(r'S|S0|0|.0','',regex=True)

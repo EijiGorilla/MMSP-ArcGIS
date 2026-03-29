@@ -77,11 +77,22 @@ def identify_missing_ids_fc(ids1, ids2):
     noids = noids_ids2 + noids_id1
     return noids
 
-def update_N2_CP_notation(table, field):
-    table[field] = table[field].str.replace(r'\s+','',regex=True)
-    table[field] = table[field].replace(r'CPN','N-',regex=True)
-    #--- Fix N-01/N-02 => N-01, N-02/N-03 => N-02
-    table[field] = table[field].apply(lambda x: re.sub(r'[,/].*','',x))
+def replace_strings_in_dataframe(table, field, search_replace_arrays):
+    """
+    Replace multiple strings in a DataFrame column.
+    table: pandas DataFrame
+    field: column name where the replacement will occur
+    search_replace_arrays: list of dictionary containing (search_string, replace_string)
+    Example: {
+    search_replace_arrays = {
+        r'\s+': '',
+        r'CPN': 'N-',
+        r'[,/].*' : '' # This will remove anything after ',' or '/' in the string
+    }
+    """
+    for search in search_replace_arrays:
+        # table[field] = table[field].str.replace(search, search_replace_arrays[search], regex=True)
+        table[field] = table[field].apply(lambda x: re.sub(search, search_replace_arrays[search], str(x)))
     return table
 
 #--- Update pier numbers
@@ -96,33 +107,20 @@ def update_monopile_pier_numbers_civilML(table, field):
         table.loc[idx, field] = f"{pier}C"
     return table
 
-def extract_pier_numbers(cp, cp_field, pier_num_field, type_field=None, viat=None, civilt=None, piertrackt=None):
-    if viat:
-        x = pd.read_excel(viat)
-        ids = x.query(f"{cp_field} == '{cp}' and {type_field} == 2").index
-        piers = x.loc[ids, pier_num_field].values
 
-    elif civilt:
-        new_cols = ['PierNumber', 'CP', 'util1', 'util2', 'Others', 'Workability']
-        x = pd.read_excel(civilt, skiprows=2)
-        ids = x.columns[x.columns.str.contains(r'^Pier No.*|Contract P.*|^Name of Utilities|^Others|^Pile Cap Workable.*',regex=True,na=False)]
-        x = x.loc[:, ids]
-        for i, col in enumerate(ids):
-            x = x.rename(columns={col: new_cols[i]})
+def extract_pier_numbers(pier_num_field, type_field=None, gist=None, civilt=None, piertrackt=None):
+    if gist is not None:
+        # ids = gist.query(f"{type_field} == 2").index
+        piers = gist[pier_num_field].values
 
+    elif civilt is not None:
         #--- Update pier number for monopiles
-        x = update_monopile_pier_numbers_civilML(x, pier_num_field)
+        civilt = update_monopile_pier_numbers_civilML(civilt, pier_num_field)
+        piers = civilt[pier_num_field].values
 
-        ids = x.query(f"{cp_field} == '{cp}'").index
-        piers = x.loc[ids, pier_num_field].values
-
-    elif piertrackt:
-        x = pd.read_excel(piertrackt, sheet_name=cp, skiprows=1)
-        # Find nth row wheren field name 'PierNumber' begins and drop emty row.
-        ids = x.iloc[:, 0].index[x.iloc[:, 0].str.contains(r'PierNumber', regex=True, na=False)]
-        x = x.drop(ids).reset_index(drop=True)
-        x = x.rename(columns={x.columns[0]: pier_num_field}) 
-        piers = x[pier_num_field].values
+    elif piertrackt is not None:
+        piertrackt = piertrackt.rename(columns={piertrackt.columns[0]: pier_num_field}) 
+        piers = piertrackt[pier_num_field].values
     return piers
 
 def summary_statistics_count_piers(cp, ids1, ids2, columns, ids3=None):
@@ -141,20 +139,6 @@ def summary_statistics_count_piers(cp, ids1, ids2, columns, ids3=None):
         for i in range(0, len(columns)):
             table.loc[0, columns[i]] = params[i]
 
-    return table
-
-def reformat_obstructon_fields(table, field):
-    table[field] = table[field].astype(str)
-    table[field] = table[field].str.replace(r'\n',',',regex=True)
-    table[field] = table[field].str.replace(r';',',',regex=True)
-    table[field] = table[field].str.replace(r';;',',',regex=True)
-    table[field] = table[field].str.replace(r',,',',',regex=True)
-    table[field] = table[field].str.replace(r',,,',',',regex=True)
-    table[field] = table[field].str.replace(r',$','',regex=True)
-    table[field] = table[field].str.replace(r'nan','',regex=True)
-    table[field] = table[field].str.replace(r'\s+','',regex=True)
-    table[field] = table[field].str.lstrip(',') # remove leading comma
-    table[field] = table[field].str.rstrip(',') # remove leading comma
     return table
 
 def convert_to_nan(table, ids, fields):
@@ -799,8 +783,9 @@ class UpdatePierWorkableTrackerML(object):
             for i, col in enumerate(ids):
                 civil_t = civil_t.rename(columns={col: new_cols[i]})
                 
-            #--- change CP notation           
-            civil_t = update_N2_CP_notation(civil_t, new_cols[1])
+            #--- change CP notation
+            arrays = {r'\s+': '', r'^CPN': 'N-', r'[,/].*': ''}
+            civil_t = replace_strings_in_dataframe(civil_t, new_cols[1], arrays)
 
             #--- Update 'Workability' field ---#
             civil_t[new_cols[5]] = civil_t[new_cols[5]].str.title()
@@ -836,13 +821,28 @@ class UpdatePierWorkableTrackerML(object):
                                     land1_field,
                                     struc1_field]]
                 
-                # Land1                
-                rap_t = reformat_obstructon_fields(rap_t, land1_field)
+                #--- Define dictionary for cleaning RAP obstruction table ---#
+                arrays = {
+                    r'\n': ',',
+                    r';': ',',
+                    r';;': ',',
+                    r',,': ',',
+                    r',,,': ',',
+                    r',$': '',
+                    r'^,': '',
+                    r'nan': '',
+                    r'\s+': '',
+                    r'^[,./]': '',
+                    r'[,./]$': ''
+                    }
+
+                # Land1        
+                rap_t = replace_strings_in_dataframe(rap_t, land1_field, arrays)
                 ids = rap_t.index[rap_t[land1_field] == '']
                 rap_t.loc[ids, land1_field] = np.nan
 
                 # struc1
-                rap_t = reformat_obstructon_fields(rap_t, struc1_field)               
+                rap_t = replace_strings_in_dataframe(rap_t, struc1_field, arrays)             
                 ids = rap_t.index[rap_t[struc1_field] == '']
                 rap_t.loc[ids, struc1_field] = np.nan
 
@@ -863,7 +863,7 @@ class UpdatePierWorkableTrackerML(object):
                 final_table = pd.concat([final_table, merged])
             
             final_table = final_table.reset_index(drop=True)
-
+    
             #--------------------------------------------------------#
             #           Finalize Pier Workable Tracker ML            #
             #--------------------------------------------------------#
@@ -932,10 +932,7 @@ class UpdatePierWorkableTrackerML(object):
 
             # Export as a new tracker
             to_excel_file0 = os.path.join(pier_workablet_dir, "N2_Pier_Workability_Tracker.xlsx")
-            with pd.ExcelWriter(to_excel_file0) as writer:
-                final_table.query(f"{cp_field} == 'N-01'").reset_index(drop=True).to_excel(writer, sheet_name='N-01', index=False)
-                final_table.query(f"{cp_field} == 'N-02'").reset_index(drop=True).to_excel(writer, sheet_name='N-02', index=False)
-                final_table.query(f"{cp_field} == 'N-03'").reset_index(drop=True).to_excel(writer, sheet_name='N-03', index=False)
+            final_table.to_excel(to_excel_file0, index=False)
 
         Workable_Pier_Tracker_Update()
 
@@ -995,35 +992,34 @@ class CheckPierNumbers(object):
         def Workable_Pier_Table_Update():
 
             # List of fields
-            cp_field = 'CP'
             type_field = 'Type'
             pier_num_field = 'PierNumber'
-            cps = ['N-01','N-02','N-03']
+            cp_field = 'CP'
+
+            #-- Rename civilt columns
+            civil_t = pd.read_excel(civil_workable_ms, skiprows=2)
+            new_cols = ['PierNumber', 'CP', 'util1', 'util2', 'Others', 'Workability']
+            ids = civil_t.columns[civil_t.columns.str.contains(r'^Pier No.*|Contract P.*|^Name of Utilities|^Others|^Pile Cap Workable.*',regex=True,na=False)]
+            civil_t = civil_t.loc[:, ids]
+            for i, col in enumerate(ids):
+                civil_t = civil_t.rename(columns={col: new_cols[i]})
+            
+            gis_ml = pd.read_excel(gis_viaduct_ms)
+            gist_t = pd.read_excel(gis_pier_tracker_ms)
 
             compile_table = pd.DataFrame()
 
-            #--- Preprocess Civil ML 
-            # must run this first for cp notations like N-01/N-02
-            new_cols = ['PierNumber', 'CP', 'util1', 'util2', 'Others', 'Workability']           
-            x = pd.read_excel(civil_workable_ms, skiprows=2)
-            ids = x.columns[x.columns.str.contains(r'^Pier No.*|Contract P.*|^Name of Utilities|^Others|^Pile Cap Workable.*',regex=True,na=False)]
-            x = x.loc[:, ids]
-            for i, col in enumerate(ids):
-                x = x.rename(columns={col: new_cols[i]})
+            for cp in ['N-01', 'N-02', 'N-03']:
+                civilt = civil_t.query(f"{cp_field} == '{cp}'").reset_index(drop=True)
+                gist = gis_ml.query(f"{cp_field} == '{cp}' and {type_field} == 2").reset_index(drop=True)
+                trackert = gist_t.query(f"{cp_field} == '{cp}'").reset_index(drop=True)
 
-            #--- Update pier number for monopiles
-            x = update_monopile_pier_numbers_civilML(x, pier_num_field)
+                gis_piers = extract_pier_numbers(pier_num_field, type_field, gist, None, None)
+                tracker_piers = extract_pier_numbers(pier_num_field, None, None, None, trackert)
+                civil_piers = extract_pier_numbers(pier_num_field, type_field, civilt, None, None)
 
-            for cp in cps:
-                arcpy.AddMessage("Contract Package: " + cp)
-  
-                #--- Get pier numbers ---#
-                gis_piers = extract_pier_numbers(cp, cp_field, pier_num_field, type_field, gis_viaduct_ms, None, None)
-                tracker_piers = extract_pier_numbers(cp, cp_field, pier_num_field, None, None, None, gis_pier_tracker_ms)
-                civil_piers = x.loc[x.query(f"{cp_field} == '{cp}'").index, pier_num_field].values
-                
                 columns = ['cp',
-                           'civil',
+                            'civil',
                             'gis',
                             'tracker',
                             'non-matched piers (civil-gis)',
@@ -1031,7 +1027,7 @@ class CheckPierNumbers(object):
                             ]
                 
                 table = summary_statistics_count_piers(cp, civil_piers, gis_piers, columns, tracker_piers)
- 
+
                 # Compile cps
                 compile_table = pd.concat([compile_table, table])
             
@@ -1092,12 +1088,12 @@ class UpdatePierWorkablePolygonLayer(object):
             nlo_obstruc_field = 'NLO'
             remarks_field = 'Remarks'
 
+            pier_tracker = pd.read_excel(pier_tracker_ms)
+
             # 1. Clean fields
             cps = ['N-01','N-02','N-03']
             for cp in cps:
-                pier_tracker_t = pd.read_excel(pier_tracker_ms, sheet_name = cp)
-                idx = pier_tracker_t.iloc[:, 0].index[pier_tracker_t.iloc[:, 0].str.contains(r'PierNumber',regex=True,na=False)]
-                pier_tracker_t = pier_tracker_t.drop(idx).reset_index(drop=True)
+                pier_tracker_t = pier_tracker.query(f"{cp_field} == '{cp}'").reset_index(drop=True)
 
                 # to string
                 pier_tracker_t[lot_obstrucid_field] = pier_tracker_t[lot_obstrucid_field].astype(str)

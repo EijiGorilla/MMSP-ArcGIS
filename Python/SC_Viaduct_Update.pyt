@@ -194,6 +194,11 @@ def preprocess_civil_table(idx,
                            ):
     x = pd.read_excel(file, sheet_name = sheet_name)
     ids = x.query(f"{remarks_field} == 'SAMPLE'").index
+    x = x.iloc[ids[0] + 1:, ].reset_index(drop=True)
+    # x = x.drop(ids).reset_index(drop=True)
+
+    # Remove empty pier number
+    ids = x.query(f"{civil_pier_field}.isna()").index
     x = x.drop(ids).reset_index(drop=True)
     
     # Keep columns until 'Remarks' field
@@ -233,9 +238,9 @@ def preprocess_civil_table(idx,
     if idx == 0:
         ids = x.query(f"{package_field}.isna() or {No_field}.isna()").index
         x = x.drop(ids).reset_index(drop=True)
-    else:
-        ids = x.query(f"{civil_pier_field}.isna()").index
-        x = x.drop(ids).reset_index(drop=True)
+    # else:
+    #     ids = x.query(f"{civil_pier_field}.isna()").index
+    #     x = x.drop(ids).reset_index(drop=True)
     return x
 
 #--- Custom class for generating a summary statistics table ---#
@@ -323,16 +328,16 @@ class CompileViaductMasterList(object):
         proj.filter.list = ['N2', 'SC']
 
         via_dir = arcpy.Parameter(
-            displayName = "Output Directory for SC Viaduct",
-            name = "Output Directory for SC Viaduct",
+            displayName = "SC Viaduct Output Directory",
+            name = "SC Viaduct Output Directory",
             datatype = "DEWorkspace",
             parameterType = "Required",
             direction = "Input"
         )
 
         civil_ml = arcpy.Parameter(
-            displayName = "Civil Master List Table (Excel)",
-            name = "Civil Master List Table",
+            displayName = "SC Viaduct Civil Master List (Excel)",
+            name = "SC Viaduct Civil Master List",
             datatype = "DEFile",
             parameterType = "Required",
             direction = "Input"
@@ -432,6 +437,23 @@ class CompileViaductMasterList(object):
                     r'^P--': 'P-'
                 }
                 comp_table = replace_strings_in_dataframe(comp_table, pierno_field, arrays)
+
+                #--- Fix CP notation
+                arrays = {
+                    r'^1$': 'S-01',
+                    r'^2$': 'S-02',
+                    r'^4$': 'S-04',
+                    r'^5$': 'S-05',
+                    r'^6$': 'S-06',
+                    r'^3a$': 'S-03a',
+                    r'^3c$': 'S-03c',
+                    r'^S02$': r'S-02',
+                    r'^S03A$': r'S-03a',
+                    r'^S04$': r'S-04',
+                    r'^S05$': r'S-05',
+                    r'^S06$': r'S-06',
+                }
+                comp_table = replace_strings_in_dataframe(comp_table, cp_field, arrays)
 
                 #--- Remove Pier Number with 'ES..'
                 ids = comp_table[comp_table[pierno_field].str.contains(r'^ES.*', regex=True, na=False)].index

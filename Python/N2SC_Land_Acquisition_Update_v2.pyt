@@ -84,7 +84,7 @@ def convert_lotids_to_correct_cp(table, search_field, lotids, cp_field, new_cp):
 def flatten_extend(matrix):
     flat_list = []
     for row in matrix:
-        row = [re.sub(r'\s+','',e) for e in row]
+        row = [re.sub(r'\s+','',str(e)) for e in row]
         flat_list.extend(row)
     return flat_list
 
@@ -1203,6 +1203,7 @@ class AddObstructionToLotN2(object):
             # Read as xlsx
             gis_lot_table = pd.read_excel(gis_lot_ms)
             gis_lot_portal_t = pd.read_excel(gis_lot_portal)
+            pier_wtracker = pd.read_excel(pier_workable_tracker)
 
             # to string
             gis_lot_table[lot_id_field] = gis_lot_table[lot_id_field].astype(str)
@@ -1219,7 +1220,7 @@ class AddObstructionToLotN2(object):
             cps = ['N-01','N-02','N-03']
             for cp in cps:
                 gis_lot_t = gis_lot_table.query(f"{cp_field} == '{cp}'").reset_index(drop=True)
-                pier_wtracker_t = pd.read_excel(pier_workable_tracker, sheet_name=cp)
+                pier_wtracker_t = pier_wtracker.query(f"{cp_field} == '{cp}'").reset_index(drop=True)
 
                 #--------------------------------------------------------------#
                 ## B. Identify Obstruction (Yes' or 'No') to GIS master list ###
@@ -1373,6 +1374,7 @@ class AddObstructionToStructureN2(object):
             gis_struc_table = pd.read_excel(gis_struc_ms)
             gis_struc_portal_t = pd.read_excel(gis_struc_portal)
             gis_nlo_table = pd.read_excel(gis_nlo_ms)
+            pier_wtracker = pd.read_excel(pier_workable_tracker)
 
             # 0. Reset 'Obstruction' to 'No' first
             gis_struc_table.loc[:, obstruc_field] = np.nan
@@ -1387,8 +1389,7 @@ class AddObstructionToStructureN2(object):
             for cp in cps:
                 gis_struc_t = gis_struc_table.query(f"{cp_field} == '{cp}'").reset_index(drop=True)
                 gis_nlo_t = gis_nlo_table.query(f"{cp_field} == '{cp}'").reset_index(drop=True)
-
-                pier_wtracker_t = pd.read_excel(pier_workable_tracker, sheet_name=cp)
+                pier_wtracker_t = pier_wtracker.query(f"{cp_field} == '{cp}'").reset_index(drop=True)
 
                 #--------------------------------------------------------------#
                 ## B. Identify Obstruction (Yes' or 'No') to GIS master list ###
@@ -1576,6 +1577,7 @@ class AddObstructionToLotSC(object):
             # Read as xlsx
             gis_lot_table = pd.read_excel(gis_lot_ms)
             gis_lot_portal_t = pd.read_excel(gis_lot_portal)
+            pier_wtracker = pd.read_excel(pier_tracker_ms)
 
             # 0. Reset 'Obstruction' to 'No' first
             gis_lot_table.loc[:, obstruc_field] = np.nan
@@ -1587,10 +1589,8 @@ class AddObstructionToLotSC(object):
             cps = ['S-01','S-02','S-03a','S-03c','S-04','S-05','S-06']
             for cp in cps:
                 gis_lot_t = gis_lot_table.query(f"{cp_field} == '{cp}'").reset_index(drop=True)
-
-                pier_workable_t = pd.read_excel(pier_tracker_ms)
-                pier_t = pier_workable_t.query(f"{cp_field} == '{cp}'").reset_index(drop=True)
-
+                pier_t = pier_wtracker.query(f"{cp_field} == '{cp}'").reset_index(drop=True)
+                
                 #--------------------------------------------------------------#
                 ## B. Identify Obstruction (Yes' or 'No') to GIS master list ###
                 #--------------------------------------------------------------#
@@ -1727,6 +1727,7 @@ class AddObstructionToStructureSC(object):
             gis_struc_table = pd.read_excel(gis_struc_ms)
             gis_struc_portal_t = pd.read_excel(gis_struc_portal)
             gis_nlo_table = pd.read_excel(gis_nlo_ms)
+            pier_wtracker = pd.read_excel(pier_tracker_ms)
 
             # List of fields
             obstruc_field = 'Obstruction' ## ('Yes' or 'No')
@@ -1748,9 +1749,7 @@ class AddObstructionToStructureSC(object):
             for i, cp in enumerate(cps):
                 gis_struc_t = gis_struc_table.query(f"{cp_field} == '{cp}'").reset_index(drop=True)
                 gis_nlo_t = gis_nlo_table.query(f"{cp_field} == '{cp}'").reset_index(drop=True)
-
-                pier_workable_t = pd.read_excel(pier_tracker_ms)
-                pier_t = pier_workable_t.query(f"{cp_field} == '{cp}'").reset_index(drop=True)
+                pier_t = pier_wtracker.query(f"{cp_field} == '{cp}'").reset_index(drop=True)
 
                 #--------------------------------------------------------------#
                 ##  Identify Obstruction (Yes' or 'No') to GIS master list    ##

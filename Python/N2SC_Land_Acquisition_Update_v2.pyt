@@ -1590,6 +1590,7 @@ class AddObstructionToLotSC(object):
             for cp in cps:
                 gis_lot_t = gis_lot_table.query(f"{cp_field} == '{cp}'").reset_index(drop=True)
                 pier_t = pier_wtracker.query(f"{cp_field} == '{cp}'").reset_index(drop=True)
+                pier_t[land_obstrucid_field] =pier_t[land_obstrucid_field].astype(str)
                 
                 #--------------------------------------------------------------#
                 ## B. Identify Obstruction (Yes' or 'No') to GIS master list ###
@@ -1750,6 +1751,7 @@ class AddObstructionToStructureSC(object):
                 gis_struc_t = gis_struc_table.query(f"{cp_field} == '{cp}'").reset_index(drop=True)
                 gis_nlo_t = gis_nlo_table.query(f"{cp_field} == '{cp}'").reset_index(drop=True)
                 pier_t = pier_wtracker.query(f"{cp_field} == '{cp}'").reset_index(drop=True)
+                pier_t[struc_obstruc_field] =pier_t[struc_obstruc_field].astype(str)
 
                 #--------------------------------------------------------------#
                 ##  Identify Obstruction (Yes' or 'No') to GIS master list    ##

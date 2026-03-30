@@ -902,14 +902,6 @@ class UpdateStructure(object):
             direction = "Input"
         )
 
-        rap_struc_sc1_ms = arcpy.Parameter(
-            displayName = "RAP SC1 Structure Status ML for SC (Excel)",
-            name = "RAP SC1 Structure Status for SC (Excel)",
-            datatype = "DEFile",
-            parameterType = "Optional",
-            direction = "Input"
-        )
-
         rap_relo_ms = arcpy.Parameter(
             displayName = "RAP Structure ISF Relocation Status ML (Excel)",
             name = "RAP Structure Relocation Status ML (Excel)",
@@ -935,7 +927,7 @@ class UpdateStructure(object):
         )
 
         params = [proj, gis_dir, gis_struc_ms,
-                  rap_struc_ms, rap_struc_sc1_ms, rap_relo_ms, gis_bakcup_dir, lastupdate]
+                  rap_struc_ms, rap_relo_ms, gis_bakcup_dir, lastupdate]
         return params
 
     def updateMessages(self, params):
@@ -946,10 +938,9 @@ class UpdateStructure(object):
         gis_dir = params[1].valueAsText
         gis_struc_ms = params[2].valueAsText
         rap_struc_ms = params[3].valueAsText
-        rap_struc_sc1_ms = params[4].valueAsText
-        rap_relo_ms = params[5].valueAsText
-        gis_bakcup_dir = params[6].valueAsText
-        lastupdate = params[7].valueAsText
+        rap_relo_ms = params[4].valueAsText
+        gis_bakcup_dir = params[5].valueAsText
+        lastupdate = params[6].valueAsText
 
         arcpy.env.overwriteOutput = True
         #arcpy.env.addOutputsToMap = True
@@ -988,44 +979,6 @@ class UpdateStructure(object):
             if len(duplicated_Ids) == 0:
                 # Common query and definitions
                 search_names_city = ['City/Municipality', 'City', 'Munici']
-
-                # SC
-                if proj == 'SC':
-                    ## Update SC1_table
-                    try:
-                        joinedFields = [joinField, sc1_contsubm, sc1_subcon, sc1_basic_plan]
-                        rap_table_sc1 = pd.read_excel(rap_struc_sc1_ms)
-                        rap_table_sc1[sc1_contsubm] = 1
-
-                        # Conver to string with white space removal and uppercase
-                        to_string_fields = [joinField]
-                        toString(rap_table_sc1, to_string_fields)
-
-                        rap_table[joinField] = rap_table[joinField].apply(lambda x: x.upper())
-                        rap_table_sc1[joinField] = rap_table_sc1[joinField].apply(lambda x: x.upper())
-
-                        # Filter fields
-                        rap_table_sc1 = rap_table_sc1[joinedFields]
-                        rap_table = rap_table.drop(joinedFields[2:], axis=1)
-        
-                        # Left join
-                        rap_table[joinField] = rap_table[joinField].astype(str)
-                        rap_table_sc1[joinField] = rap_table_sc1[joinField].astype(str)
-                        rap_table = pd.merge(left=rap_table, right=rap_table_sc1, how='left', left_on=joinField, right_on=joinField)
-
-                        # Check if any missing StrucID when joined
-                        id = rap_table.index[rap_table[sc1_contsubm] == 1]
-                        lotID_sc = unique(rap_table.loc[id,joinField])
-                        lotID_sc1 = unique(rap_table_sc1[joinField])
-                        non_match_LotID = non_match_elements(lotID_sc, lotID_sc1)
-                        if (len(non_match_LotID) > 0):
-                            print('StrucIDs do not match between SC and SC1 tables.')
-                        arcpy.AddMessage("ok7")
-
-                    except Exception:
-                        arcpy.AddMessage('Did you select {0} master list for updating contractors submission status.'.format('SC1_Structure_Status '))
-                        arcpy.AddMessage('Or some geoprocessing process failed. Please check again.')
-
 
                 # Rename column names
                 colname_change = rap_table.columns[rap_table.columns.str.contains('|'.join(search_names_city))]
@@ -1918,13 +1871,9 @@ class UpdateLotGIS(object):
         except:
             pass
 
-        ## Copy feature layer 
-        copy_feature = 'copy_feature'
-        arcpy.management.CopyFeatures(target_feature, copy_feature)
-
         # Join fields to attribute table
         # 2. Delete Field
-        gis_fields = [f.name for f in arcpy.ListFields(copy_feature)]
+        gis_fields = [f.name for f in arcpy.ListFields(target_feature)]
             
         ## 2.1. Identify fields to be dropped
         gis_drop_fields_check = [e for e in gis_fields if e not in ('LotId', 'LotID','created_user', 'created_date', 'last_edited_user', 'last_edited_date', 'Shape','Shape_Length','Shape_Area','Shape.STArea()','Shape.STLength()','OBJECTID','GlobalID')]
@@ -1942,7 +1891,7 @@ class UpdateLotGIS(object):
         if len(gis_drop_fields) == 0:
             arcpy.AddMessage("There is no field that can be dropped from the feature layer")
         else:
-            arcpy.management.DeleteField(copy_feature, gis_drop_fields)
+            arcpy.management.DeleteField(target_feature, gis_drop_fields)
 
 
         # arcpy.AddMessage("Deleted Fields from Polygon: ", [e.name for e in arcpy.ListFields(target_feature)])     
@@ -1955,7 +1904,7 @@ class UpdateLotGIS(object):
 
         # Check if LotID match between ML and GIS
         lotid_field = 'LotID'
-        lotid_gis = unique_values(copy_feature, lotid_field)
+        lotid_gis = unique_values(target_feature, lotid_field)
         lotid_ml = unique_values(lot_ml, lotid_field)
         
         lotid_miss_gis = [e for e in lotid_gis if e not in lotid_ml]
@@ -1969,34 +1918,13 @@ class UpdateLotGIS(object):
         ## 3.2. Get Join Field from MasterList gdb table: Gain all fields except 'Id'
         lot_ml_fields = [f.name for f in arcpy.ListFields(lot_ml)]
         lot_ml_transfer_fields = [e for e in lot_ml_fields if e not in ('LotId', lotid_field,'OBJECTID')]
-
-        # arcpy.AddMessage("Transfer Fields: ", lot_ml_transfer_fields)
             
-        ## 3.3. Extract a Field from MasterList and Feature Layer to be used to join two tables
+        ## 3.3. Extract a join field from both tables
         gis_join_field = ' '.join(map(str, [f for f in gis_fields if f in ('LotId', lotid_field)]))                      
         lot_ml_join_field =' '.join(map(str, [f for f in lot_ml_fields if f in ('LotId', lotid_field)]))
             
         ## 3.4 Join fields 
-        arcpy.management.JoinField(in_data=copy_feature, in_field=gis_join_field, join_table=lot_ml, join_field=lot_ml_join_field, fields=lot_ml_transfer_fields)
-
-        ## 3.5. Truncate SDE
-        arcpy.management.TruncateTable(target_feature)
-
-        # ## 3.6. Append copy_feature to target feature
-        arcpy.management.Append(copy_feature, target_feature, schema_type = 'NO_TEST')
-
-        # ## 3.7 Join missing fields in copy_feature to target feature
-        ### Unmatched fields
-        target_fields = [f.name for f in arcpy.ListFields(target_feature)]
-        miss_fields = [item for item in gis_fields if item not in target_fields]
-
-        ## 3.8. Join missing_fields to target feature
-        arcpy.management.JoinField(in_data=target_feature, in_field=gis_join_field, join_table=copy_feature, join_field=gis_join_field, fields=miss_fields)
-
-        ## 3.9. Check all the fields are matched between copy_feature and target_feature
-        new_target_fields = [f.name for f in arcpy.ListFields(target_feature)]
-        missing_fields = [item for item in gis_fields if item not in target_fields]
-        arcpy.AddMessage(f"Missing LotIDs: {missing_fields}")
+        arcpy.management.JoinField(in_data=target_feature, in_field=gis_join_field, join_table=lot_ml, join_field=lot_ml_join_field, fields=lot_ml_transfer_fields)
 
         # # Export
         file_name = project + "_" + "GIS_Land_Portal.xlsx"

@@ -591,7 +591,14 @@ class CreateWorkablePierLayer(object):
         self.description = "Create Pier Workable Layer"
 
     def getParameterInfo(self):
-        # Input Feature Layers
+        gis_dir = arcpy.Parameter(
+            displayName = "N2 Viaduct Directory",
+            name = "N2 Viaduct Directory",
+            datatype = "DEWorkspace",
+            parameterType = "Required",
+            direction = "Input"
+        )
+
         workable_pier_layer = arcpy.Parameter(
             displayName = "N2 Pier Workability Layer (Polygon)",
             name = "N2 Pier Workability Layer (Polygon)",
@@ -608,15 +615,16 @@ class CreateWorkablePierLayer(object):
             direction = "Input"
         )
 
-        params = [workable_pier_layer, via_layer]
+        params = [gis_dir, workable_pier_layer, via_layer]
         return params
 
     def updateMessages(self, params):
         return
 
     def execute(self, params, messages):
-        workable_pier_layer = params[0].valueAsText
-        via_layer = params[1].valueAsText
+        gis_dir = params[0].valueAsText
+        workable_pier_layer = params[1].valueAsText
+        via_layer = params[2].valueAsText
 
         arcpy.env.overwriteOutput = True
         
@@ -678,6 +686,9 @@ class CreateWorkablePierLayer(object):
         # delete
         deleteTempLayers = [new_layer, temp_layer]
         arcpy.Delete_management(deleteTempLayers)
+
+        # Export to excel
+        arcpy.conversion.TableToExcel(via_layer, os.path.join(gis_dir, 'N2_Viaduct_ML.xlsx'))
 
 class UpdatePierWorkableTrackerML(object):
     def __init__(self):

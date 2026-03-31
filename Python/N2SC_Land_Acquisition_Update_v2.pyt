@@ -310,11 +310,14 @@ class CompileRAPtables(object):
             lotid_field = 'LotID'
             status_field = 'StatusLA'
             renamed_city = 'Municipality'
+            handedover_field = 'HandedOver'
             handedOverArea_field = 'HandedOverArea'
             handedOverDate_field = 'HandedOverDate'
             affectedArea_field = 'AffectedArea'
             totalarea_field = 'TotalArea'
             note_field = 'note'
+
+            keep_fields = [lotid_field, status_field, affectedArea_field, handedOverArea_field, handedover_field]
             
             # Read and compile a list of RAP ML files from each directory:
             rap_dirs = [dir for dir in os.listdir(rap_ml_dir) if dir.startswith('20') and os.path.isdir(os.path.join(rap_ml_dir, dir))]# extract ONLY folder starting with '20..'
@@ -324,19 +327,20 @@ class CompileRAPtables(object):
             # Each ML is merged with the latest ML
             yyyymm_latest = os.path.basename(rap_files[-1])[:8]
             latest_ml = pd.read_excel(rap_files[-1])
-            latest_ml = remove_underline_hyphen_from_numeric_field(latest_ml, [affectedArea_field, totalarea_field])
+            latest_ml = remove_underline_hyphen_from_numeric_field(latest_ml, [affectedArea_field, totalarea_field, handedover_field])
 
             latest_ml = toString(latest_ml, [lotid_field])
             latest_ml['x' + yyyymm_latest] = latest_ml[status_field]
             latest_ml['x' + yyyymm_latest + '_HOA'] = latest_ml[handedOverArea_field] # HOA: Handed-Over Area
-            latest_ml['x' + yyyymm_latest + '_TAA'] = latest_ml[affectedArea_field] # TAA: Total Affected Area
+            latest_ml['x' + yyyymm_latest + '_TAA'] = latest_ml[affectedArea_field] # TAA: Affected Area
+            latest_ml['x' + yyyymm_latest + '_HO'] = latest_ml[handedover_field] # HO: Handed Over
             latest_ml[note_field] = ""
 
             # compiled_ml = pd.DataFrame()
             for file in rap_files[:-1]:
                 arcpy.AddMessage(f"Check input table: {file}")
                 table0 = pd.read_excel(file)
-                table0 = remove_underline_hyphen_from_numeric_field(table0, [affectedArea_field, totalarea_field])
+                table0 = remove_underline_hyphen_from_numeric_field(table0, [affectedArea_field, totalarea_field, handedover_field])
                 table0 = toString(table0, [lotid_field])
                 yyyymm = os.path.basename(file)[:8]
 
@@ -355,12 +359,12 @@ class CompileRAPtables(object):
                     ## when no duplication, proceed:
                     # Check LotIDs are matched between input and target tables.
                     if np.array_equal(input_lotids, target_lotids):
-                        # Keep only 'LotID', 'StatusLA', 'TotalAffectedArea', 'HandedOverArea'
-                        table = table0[[lotid_field, status_field, affectedArea_field, handedOverArea_field]]
+                        # Keep only 'LotID', 'StatusLA', 'AffectedArea', 'HandedOverArea', 'HandedOver'
+                        table = table0[keep_fields]
                         table[lotid_field] = table[lotid_field].astype(str)
 
                         # Rename columns
-                        table = table.rename(columns={status_field: 'x' + yyyymm, affectedArea_field: 'x' + yyyymm + '_TAA', handedOverArea_field: 'x' + yyyymm + '_HOA'})
+                        table = table.rename(columns={status_field: f"x{yyyymm}", affectedArea_field: f"x{yyyymm}_TAA", handedOverArea_field: f"x{yyyymm}_HOA", handedover_field: f"x{yyyymm}_HO"})
 
                         # Merge to the latest
                         latest_ml = pd.merge(left=latest_ml, right=table, how='left', left_on=lotid_field, right_on=lotid_field)
@@ -397,11 +401,9 @@ class CompileRAPtables(object):
                                 else:
                                     latest_ml.loc[id, note_field] = add_items + " (" + yyyymm + ")"
                         
-                        # Keep only 'LotID', 'TotalAffectedArea', 'HandedOverArea'
-                        table = table0[[lotid_field, status_field, affectedArea_field, handedOverArea_field]]
-                        table = table.rename(columns={status_field: 'x' + yyyymm, affectedArea_field: 'x' + yyyymm + '_TAA', handedOverArea_field: 'x' + yyyymm + '_HOA'})
-                        # table = table.rename(columns={status_field: 'x' + yyyymm, lotid_field: 'x' + yyyymm + '_LOT', affectedArea_field: 'x' + yyyymm + '_TAA', handedOverArea_field: 'x' + yyyymm + '_HOA'})
-                        # table[lotid_field] = table0[lotid_field]
+                        # Keep only 'LotID', 'StatusLA', 'AffectedArea', 'HandedOverArea', 'HandedOver'
+                        table = table0[keep_fields]
+                        table = table.rename(columns={status_field: f"x{yyyymm}", affectedArea_field: f"x{yyyymm}_TAA", handedOverArea_field: f"x{yyyymm}_HOA", handedover_field: f"x{yyyymm}_HO"})
 
                         arcpy.AddMessage(table.head())
                         arcpy.AddMessage(latest_ml.head())

@@ -846,8 +846,8 @@ class UpdatePierWorkableTrackerML(object):
 
             #--- Get a correct sheetname
             xls = pd.ExcelFile(civil_workable_ms)
-            # sheet_name = [f for f in xls.sheet_names if f.startswith('Summary')][0]
-            civil_t = pd.read_excel(civil_workable_ms, sheet_name="SUMMARY BREAKDOWN (B271 only)")
+            sheet_name = [f for f in xls.sheet_names if f.startswith('SUMMARY')][0]
+            civil_t = pd.read_excel(civil_workable_ms, sheet_name=sheet_name)
 
             columns = [cp_field, 
                        pier_number_field, 
@@ -861,9 +861,13 @@ class UpdatePierWorkableTrackerML(object):
                        struc1_field,
                        remarks_field]
             
-            cols = find_word_location(civil_t, "Workability")[1]
-            civil_t = civil_t.iloc[:, np.r_[0,1,cols['colidx']:22]].loc[2:, ].reset_index(drop=True)
+            #--- Find column index of each field and keep columns until 'Remarks' field ---#
+            workability_col = find_word_location(civil_t, "Workability")[1]['colidx']
+            remarks_col = find_word_location(civil_t, "Remarks")[0]['colidx']+1
+            civil_t = civil_t.iloc[:, np.r_[0,1,workability_col:remarks_col]].loc[2:, ].reset_index(drop=True)
             civil_t.columns = columns
+
+            arcpy.AddMessage(civil_t.head(20))
 
             #--- Reformat Obstruction ids for land and structure (with NLO) ---#
             arrays = {

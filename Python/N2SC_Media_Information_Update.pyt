@@ -15,6 +15,105 @@ from datetime import datetime
 from pathlib import Path
 import shutil
 
+
+def get_image_capture_time(filename):
+    image = Image.open(filename)
+    # Get all EXIF data
+    image_exif = image._getexif()
+
+    if image_exif:
+        # Map tag codes to tag names for readability
+        exif = {
+            ExifTags.TAGS[k]: v
+            for k, v in image_exif.items()
+            if k in ExifTags.TAGS and type(v) is not bytes
+        }
+
+        # Try to get the original date and time
+        if 'DateTimeOriginal' in exif:
+            date_str = exif['DateTimeOriginal']
+            # Convert the string to a Python datetime object
+            date_obj = datetime.strptime(date_str, '%Y:%m:%d %H:%M:%S')
+            yyyy = date_obj.year
+            mm = date_obj.month
+            dd = date_obj.day
+
+            if mm < 10:
+                mm = "0" + str(mm)
+            date_str = f'{yyyy}{mm}{dd}'
+            return date_str
+        else:
+            return "DateTimeOriginal tag not found"
+    else:
+        return "No EXIF data found for this image"
+
+def unique(lists):
+    collect = []
+    unique_list = pd.Series(lists).drop_duplicates().tolist()
+    for x in unique_list:
+        collect.append(x)
+    return(collect)
+
+def convert_nongeoimage_to_point_feature(input_point_feature, 
+                                         nongeo_layer, 
+                                         nongeotag_layer, 
+                                         main_fields, 
+                                         feature_field, 
+                                         timestamp_field, 
+                                         kwd_field, 
+                                         kwd, 
+                                         timestamp):
+    #---- Get a point feature from pier point layer:
+    where_clause = f"{feature_field} = '{kwd}'"
+
+    #---- Define layers
+    temp_layer = 'temp_layer'
+    output_layer = "output_layer"
+    
+    #--- Process
+    arcpy.management.MakeFeatureLayer(input_point_feature, temp_layer, where_clause)
+    arcpy.management.CopyFeatures(temp_layer, output_layer)
+    arcpy.management.DeleteField(output_layer, [feature_field], "KEEP_FIELDS")
+
+    ## Select nongeo layer
+    where_clause = f"{kwd_field} = '{kwd}'"
+    arcpy.management.SelectLayerByAttribute(nongeo_layer, "NEW_SELECTION", where_clause)
+    where_clause = f"{kwd_field} = '{kwd}' and {timestamp_field} = '{timestamp[i]}'"
+    arcpy.management.SelectLayerByAttribute(nongeo_layer, "NEW_SELECTION", where_clause)
+    arcpy.management.JoinField(output_layer, feature_field, nongeo_layer, kwd_field, main_fields) 
+    arcpy.management.Append(output_layer, nongeotag_layer, schema_type = 'NO_TEST')
+
+def convert_video_to_point_feature(point_feature, query_field, kwd, row_values_coordinates):
+    where_clause = f"{query_field} = '{kwd}'"
+    output_layer = 'output_layer'
+    arcpy.MakeFeatureLayer_management(point_feature, output_layer)
+    arcpy.management.SelectLayerByAttribute(output_layer, "NEW_SELECTION", where_clause)
+    xy = [f[0] for f in arcpy.da.SearchCursor(output_layer, ["SHAPE@XY"])]
+    row_values_coordinates.append(xy[0])
+
+def lower_image_quality(input_path, output_path, quality):
+    """
+    Saves a JPEG imag with a lower quality setting (1-100) to reduce file size.
+    95 is considered high quality, 1 is very low.
+    """
+    try:
+        with Image.open(input_path) as img:
+            # The quality parameter is effective for JPEG and related formats.
+            # Save with original EXIF data
+
+            # Check if EXIF data exists
+            exif_data = img.info.get('exif')
+            if exif_data:
+                img.save(output_path, quality=quality, exif=exif_data, optimize=True)
+                arcpy.AddMessage(f"Saved {output_path} with metadata. Quality = {quality}")
+            else:
+                img.save(output_path, quality=quality, optimize=True)
+                arcpy.AddMessage(f"Saved {output_path} without metadata.")
+
+    except IOError as e:
+        arcpy.AddError(f"Error processing image: {e}")
+
+
 class Toolbox(object):
     def __init__(self):
         self.label = "UpdateLandAcquisition"
@@ -58,28 +157,6 @@ class LowerResolutionImages(object):
         image_folder = params[0].valueAsText
         output_path = params[1].valueAsText
         
-        def lower_image_quality(input_path, output_path, quality):
-            """
-            Saves a JPEG imag with a lower quality setting (1-100) to reduce file size.
-            95 is considered high quality, 1 is very low.
-            """
-            try:
-                with Image.open(input_path) as img:
-                    # The quality parameter is effective for JPEG and related formats.
-                    # Save with original EXIF data
-    
-                    # Check if EXIF data exists
-                    exif_data = img.info.get('exif')
-                    if exif_data:
-                        img.save(output_path, quality=quality, exif=exif_data, optimize=True)
-                        arcpy.AddMessage(f"Saved {output_path} with metadata. Quality = {quality}")
-                    else:
-                        img.save(output_path, quality=quality, optimize=True)
-                        arcpy.AddMessage(f"Saved {output_path} without metadata.")
-
-            except IOError as e:
-                arcpy.AddError(f"Error processing image: {e}")
-
         def lower_Resolution_Images():
             arcpy.env.overwriteOutput = True
 
@@ -164,44 +241,6 @@ class DroneImagePoints(object):
         station_point_feature = params[4].valueAsText
         target_layer = params[5].valueAsText
 
-        def get_image_capture_time(filename):
-            image = Image.open(filename)
-            # Get all EXIF data
-            image_exif = image._getexif()
-
-            if image_exif:
-                # Map tag codes to tag names for readability
-                exif = {
-                    ExifTags.TAGS[k]: v
-                    for k, v in image_exif.items()
-                    if k in ExifTags.TAGS and type(v) is not bytes
-                }
-
-                # Try to get the original date and time
-                if 'DateTimeOriginal' in exif:
-                    date_str = exif['DateTimeOriginal']
-                    # Convert the string to a Python datetime object
-                    date_obj = datetime.strptime(date_str, '%Y:%m:%d %H:%M:%S')
-                    yyyy = date_obj.year
-                    mm = date_obj.month
-                    dd = date_obj.day
-
-                    if mm < 10:
-                        mm = "0" + str(mm)
-                    date_str = f'{yyyy}{mm}{dd}'
-                    return date_str
-                else:
-                    return "DateTimeOriginal tag not found"
-            else:
-                return "No EXIF data found for this image"
-
-        def unique(lists):
-            collect = []
-            unique_list = pd.Series(lists).drop_duplicates().tolist()
-            for x in unique_list:
-                collect.append(x)
-            return(collect)
-
         def Medeia_tables():
             arcpy.env.overwriteOutput = True
 
@@ -228,18 +267,20 @@ class DroneImagePoints(object):
                 arcpy.AddMessage(f"Folder '{temp_folder}' does not exist. Create a new temp folder")
                 os.makedirs(temp_folder)
 
-            # Copy ONLY top-level images:
+            #--- Copy ONLY top-level images:
             for filename in os.listdir(image_folder):
                 file_path = os.path.join(image_folder, filename)
                 if os.path.isfile(file_path) and filename.lower().endswith(('.jpg', '.JPG', '.jpeg', '.JPEG', 'tiff', 'TIFF')):
                     shutil.copy(file_path, temp_folder)
 
+            #--- Create point features using images
             arcpy.management.GeoTaggedPhotosToPoints(temp_folder, photo_points, badPhotoist, photoOption, attachmentsOption)
 
-            ## Delete temp folder 
+            #--- Delete temp folder 
             if photo_points:
                 shutil.rmtree(temp_folder)
 
+            #--- Add main fiedls
             fields = ['Name', 'Type', 'TimeStamp', 'temp', 'Project', 'Keyword', 'CP']
             for field in fields:
                 if (field == 'temp') or (field == 'id'):
@@ -261,22 +302,20 @@ class DroneImagePoints(object):
             cp_field = 'CP'
 
             main_fields = [f.name for f in arcpy.ListFields(photo_points) if f.name not in ("OBJECTID", "Shape")]
-
-            # Get station names from station point feature
+        
+            #--- Get station names from station point feature
             station_point_field = [f.name for f in arcpy.ListFields(station_point_feature) if (f.name == 'Station') or (f.name == 'station')][0]
             station_names = [f[0] for f in arcpy.da.SearchCursor(station_point_feature, [station_point_field])]
             station_names_lower = [f[0].lower() for f in arcpy.da.SearchCursor(station_point_feature, [station_point_field])]
-            # Get pier number from photo points layer
 
-
-            # Edit field
-            ## Add project name
+            #--- Edit field ---#
+            #--- Add project name
             with arcpy.da.UpdateCursor(photo_points, [project_field]) as cursor:
                 for row in cursor:
                     row[0] = proj
                     cursor.updateRow(row)
 
-            ## Add CP name
+            #--- Add CP name
             with arcpy.da.UpdateCursor(photo_points, [imageName_field, cp_field]) as cursor:
                 for row in cursor:
                     if row[0]:
@@ -289,7 +328,7 @@ class DroneImagePoints(object):
                             arcpy.AddMessage(f"No CPs were found.")
                         cursor.updateRow(row)
 
-            ## Add station name:
+            #--- Add station name:
             with arcpy.da.UpdateCursor(photo_points, [imageName_field, keyword_field]) as cursor:
                 for row in cursor:
                     if row[0]:
@@ -300,7 +339,7 @@ class DroneImagePoints(object):
                             row[1] = station_names[idx].title()
                     cursor.updateRow(row)
 
-            ## Add pier numbers:
+            #--- Add pier numbers:
             with arcpy.da.UpdateCursor(photo_points, [imageName_field, keyword_field]) as cursor:
                 for row in cursor:
                     if row[0]:
@@ -317,7 +356,7 @@ class DroneImagePoints(object):
                             arcpy.AddMessage(f"No pier numbers for this image.")
                         cursor.updateRow(row)
 
-            ## Add Depot:
+            #--- Add Depot:
             with arcpy.da.UpdateCursor(photo_points, [imageName_field, project_field, keyword_field]) as cursor:
                 for row in cursor:
                     if row[0]:
@@ -332,14 +371,14 @@ class DroneImagePoints(object):
                             arcpy.AddMessage(f"No depot for this image.")
                         cursor.updateRow(row)
 
-            ## Add type: image or video
+            #--- Add type: image or video
             with arcpy.da.UpdateCursor(photo_points, [imageName_field, type_field]) as cursor:
                 for row in cursor:
                     if row[0]:
                         row[1] = 'image'
                     cursor.updateRow(row)
 
-            ## Add time stamp from the file name
+            #--- Add time stamp from the file name
             with arcpy.da.UpdateCursor(photo_points, [imageName_field, timestamp_field]) as cursor:
                 for row in cursor:
                     if row[0]:
@@ -349,7 +388,9 @@ class DroneImagePoints(object):
                         row[1] = timeStamp
                         cursor.updateRow(row)
             
-            ######### For Non-Geotagged Images ##########################
+            #--------------------------------------------#
+            #         For Non-Geotagged Images           #
+            #--------------------------------------------#
             # If images are not geotagged, filter out all the geotagged layers.
             nongeo_layer = 'nongeo_images'
             x_field = 'X'
@@ -367,47 +408,41 @@ class DroneImagePoints(object):
                 arcpy.management.TruncateTable(nongeotag_layers)
                 timestamp = [f[0] for f in arcpy.da.SearchCursor(nongeo_layer, ['TimeStamp'])]
 
-
-                def convert_nongeoimage_to_point_feature(input_point_feature, temp_layer, feature_field, kwd_field, kwd, timestamp):
-                    ## Get a point feature from pier point layer:
-                    where_clause = f"{feature_field} = '{kwd}'"
-                    output_layer = 'output_layer'
-                    arcpy.management.MakeFeatureLayer(input_point_feature, temp_layer, where_clause)
-                    arcpy.management.CopyFeatures(temp_layer, output_layer)
-                    arcpy.management.DeleteField(output_layer, [feature_field], "KEEP_FIELDS")
-
-                    ## Select nongeo layer
-                    where_clause = f"{kwd_field} = '{kwd}'"
-                    arcpy.management.SelectLayerByAttribute(nongeo_layer, "NEW_SELECTION", where_clause)
-                    where_clause = f"{kwd_field} = '{kwd}' and {timestamp_field} = '{timestamp[i]}'"
-                    arcpy.management.SelectLayerByAttribute(nongeo_layer, "NEW_SELECTION", where_clause)
-                    arcpy.management.JoinField(output_layer, feature_field, nongeo_layer, kwd_field, main_fields) 
-                    arcpy.management.Append(output_layer, nongeotag_layers, schema_type = 'NO_TEST')
-
                 for i, kwd in enumerate(kwds):
-                    temp_layer = 'temp_layer'
+                    
                     if kwd in tuple(station_names):
-                        convert_nongeoimage_to_point_feature(station_point_feature, temp_layer, station_name_field, keyword_field, kwd, timestamp)
+                        convert_nongeoimage_to_point_feature(station_point_feature, 
+                                                             nongeo_layer, 
+                                                             nongeotag_layers, 
+                                                             main_fields, 
+                                                             station_name_field,
+                                                             timestamp_field,
+                                                             keyword_field,
+                                                             kwd,
+                                                             timestamp
+                                                             )
                     
                     else:
-                        convert_nongeoimage_to_point_feature(pier_point_feauture, temp_layer, piern_field, keyword_field, kwd, timestamp)
-                        arcpy.AddMessage("pier")
-
-                # Delete templayer
-                # arcpy.management.Delete([temp_layer, output_layer])
-                    
+                        arcpy.AddMessage(kwd)
+                        convert_nongeoimage_to_point_feature(station_point_feature, 
+                                        nongeo_layer, 
+                                        nongeotag_layers, 
+                                        main_fields, 
+                                        station_name_field,
+                                        timestamp_field,
+                                        keyword_field,
+                                        kwd,
+                                        timestamp
+                                        )
+                     
             ## Geotagged photos 
             where_clause = f"{x_field} is not Null"
             geotag_layer = arcpy.management.SelectLayerByAttribute(photo_points, "NEW_SELECTION", where_clause)
             result = arcpy.management.GetCount(geotag_layer)
             compile_layer = "compile_layer"
 
-            ##
             # If no nongeotag images,  'nongeo_layer'
             # If nongeotag images exist, use 'nongeotag_layers'
-            # result_nongeo = arcpy.management.GetCount(nongeotag_layers)
-
-            ## if geotag_images and nongeotag images:
             try:
                 result_nongeo = arcpy.management.GetCount(nongeotag_layers)
             except:
@@ -444,7 +479,6 @@ class DroneImagePoints(object):
             near_table = 'near_table'
             arcpy.analysis.GenerateNearTable(compile_layer, compile_layer, near_table, "", "", "", False, 1, "PLANAR", "", "")
             arcpy.management.AddField(near_table, id_field, "SHORT", "", "", "", id_field, "NULLABLE", "REQUIRED")
-
 
             # Assign group id
             fid_list = []
@@ -639,7 +673,7 @@ class DroneViedoPoints(object):
                     pass
 
                 try:
-                    kwd = re.search(r"DEPOT", item.upper()).group()
+                    kwd = re.search(r"Depot", item.title()).group()
                 except:
                     pass
 
@@ -666,20 +700,12 @@ class DroneViedoPoints(object):
                     elif proj == "SC":
                         kwd = "Banlic Depot"
 
-                def convert_video_to_point_feature(point_feature, query_field, kwd):
-                    where_clause = f"{query_field} = '{kwd}'"
-                    output_layer = 'output_layer'
-                    arcpy.MakeFeatureLayer_management(point_feature, output_layer)
-                    arcpy.management.SelectLayerByAttribute(output_layer, "NEW_SELECTION", where_clause)
-                    xy = [f[0] for f in arcpy.da.SearchCursor(output_layer, ["SHAPE@XY"])]
-                    row_values_coordinates.append(xy[0])
-
                 # print(kwd)
                 if kwd in tuple(station_names):
-                    convert_video_to_point_feature(station_point_feature, station_name_field, kwd)
+                    convert_video_to_point_feature(station_point_feature, station_name_field, kwd, row_values_coordinates)
  
                 else:
-                    convert_video_to_point_feature(pier_point_feature, piern_field, kwd)
+                    convert_video_to_point_feature(pier_point_feature, piern_field, kwd, row_values_coordinates)
                 
             # Update xy coordinates in nongeo_layer
             arcpy.AddMessage(row_values_coordinates)
@@ -727,10 +753,14 @@ class DroneViedoPoints(object):
             todict = table.to_dict()
             dbx_link_dict = {name[1]: link[1] for name, link in zip(todict[imageName_field].items(), todict['dbx_link'].items())}
 
-            with arcpy.da.UpdateCursor(nongeo_video, [path_field, imageName_field]) as cursor:
+            with arcpy.da.UpdateCursor(nongeo_video, [path_field, imageName_field, cp_field]) as cursor:
                 for row in cursor:
                     if row[1]:
                         row[0] = dbx_link_dict[row[1]]
+                    if row[2]:
+                        #--- Re-format CP notation
+                        row[2] = re.sub(r'--','-',re.sub(r'^N','N-',row[2]))
+                        row[2] = re.sub(r'--','-',re.sub(r'^S','S-',row[2]))
                     cursor.updateRow(row)
             
             # Truncate target layer

@@ -1916,7 +1916,9 @@ class UpdateLotGIS(object):
             arcpy.AddMessage('The following Lot IDs do not match between ML and GIS.')
             arcpy.AddMessage('Missing LotIDs in GIS table: {}'.format(lotid_miss_gis))
             arcpy.AddMessage('Missing LotIDs in ML Excel table: {}'.format(lotid_miss_ml))
-            
+        
+        arcpy.AddMessage("Section 3 was successfully implemented (checking matched LotIDs)")
+
         ## 3.2. Get Join Field from MasterList gdb table: Gain all fields except 'Id'
         lot_ml_fields = [f.name for f in arcpy.ListFields(lot_ml)]
         lot_ml_transfer_fields = [e for e in lot_ml_fields if e not in ('LotId', lotid_field,'OBJECTID')]

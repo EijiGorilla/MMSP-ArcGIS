@@ -94,6 +94,54 @@ def remove_empty_strings(string_list):
 def unlist_brackets(nested_list): ## Remove nested list in a list
     return [item for sublist in nested_list for item in sublist]
 
+#--- Fill and Remove dummy date in the first row
+def first_row_fill_empty(table, fields, data, datatype):
+    """
+    arg: the first row is filled when empty to avoide data type inconsistency in GIS attribute table
+    table: pandas dataFrame
+    fields: a list of subject fields
+    data: string, number, or date (e.g., 0.0, '1990-01-01')
+    datatype: only two types are allowd: 'float' or 'date'
+    """
+    for field in fields:
+        first_row = table[field].iloc[:1].item()
+        if first_row is None or pd.isnull(first_row):
+            if datatype == "float":
+                table.loc[0, field] = data
+                table[field] = pd.to_numeric(table[field], errors='coerce')
+            elif datatype == "date":
+                table.loc[0, field] = pd.to_datetime(data)
+    return table
+
+def first_row_delete_dummy_fc(fc, fields, datatype):
+    """
+    Arg: Delete dummy data from the first in selected fields.
+    fc: Feature Class (Layer),
+    datatype: Allowed for only 'float' or 'date'
+    """
+    try:
+        for field in fields:
+            if datatype == 'float':
+                with arcpy.da.UpdateCursor(fc, [field]) as cursor:
+                    for row in cursor:
+                        if row[0]:
+                            if row[0] == -99.0:
+                                row[0] = None
+                        cursor.updateRow(row)
+            elif datatype == 'date':
+                with arcpy.da.UpdateCursor(fc, [field]) as cursor:
+                    for row in cursor:
+                        if row[0]:
+                            year = row[0].strftime("%Y")
+                            if int(year) < 2000:
+                                row[0] = None
+                            else:
+                                row[0] = row[0]
+                        cursor.updateRow(row)
+    except:
+        arcpy.AddMessage(f"failed to delete dummy data in the first of selected fields..")
+        arcpy.AddError('error...')
+
 ### Check missing field between tables
 def identify_missing_ids_excel(table1, table2, field1, field2):    
     ids1 = table1[field1].values
@@ -361,6 +409,8 @@ class CompileRAPtables(object):
                     if np.array_equal(input_lotids, target_lotids):
                         # Keep only 'LotID', 'StatusLA', 'AffectedArea', 'HandedOverArea', 'HandedOver'
                         table = table0[keep_fields]
+
+                        #--- LotID to string
                         table[lotid_field] = table[lotid_field].astype(str)
 
                         # Rename columns
@@ -403,15 +453,17 @@ class CompileRAPtables(object):
                         
                         # Keep only 'LotID', 'StatusLA', 'AffectedArea', 'HandedOverArea', 'HandedOver'
                         table = table0[keep_fields]
+
+                        #--- Entery dummy number for following fields (-99) in TAA, HOA, and HO
+                        table = first_row_fill_empty(table, [affectedArea_field, handedOverArea_field, handedover_field], -99.0, "float")
+
+                        #--- Rename columns
                         table = table.rename(columns={status_field: f"x{yyyymm}", affectedArea_field: f"x{yyyymm}_TAA", handedOverArea_field: f"x{yyyymm}_HOA", handedover_field: f"x{yyyymm}_HO"})
 
+                        #--- Merge pre-processed historical ML to the latest ML
                         arcpy.AddMessage(table.head())
                         arcpy.AddMessage(latest_ml.head())
                         latest_ml = pd.merge(left=latest_ml, right=table, how='left', left_on='LotID', right_on='LotID')
-
-                        ## 2. Unmatched LotIDs arise from different lots:
-                        ### In this case, we ignore.
-
                     
                     #--- 'StatusLA' = 0 => None ---#
                     cols = latest_ml.filter(regex='\\d+$', axis=1).columns
@@ -630,10 +682,11 @@ class UpdateLot(object):
                 rap_table.loc[rap_table.query(f'{statusla_field} == 0').index, statusla_field] = None
 
                 ## 4. if the first row is empty, temporarily add the first row for 'HandedOverDate' and 'HandOverDate'
-                for field in to_date_fields:
-                    date_item = rap_table[field].iloc[:1].item()
-                    if date_item is None or pd.isnull(date_item):
-                        rap_table.loc[0, field] = pd.to_datetime('1990-01-01')
+                rap_table = first_row_fill_empty(rap_table, to_date_fields, '1990-01-01', 'date')
+                # for field in to_date_fields:
+                #     date_item = rap_table[field].iloc[:1].item()
+                #     if date_item is None or pd.isnull(date_item):
+                #         rap_table.loc[0, field] = pd.to_datetime('1990-01-01')
 
                 ## 5. is.na(HandedOverArea) -> HandedOverArea = 0
                 rap_table.loc[rap_table.query(f'{handedover_area_field}.isna() or {handedover_area_field}.isna()').index, handedover_area_field] = 0
@@ -1855,23 +1908,16 @@ class UpdateLotGIS(object):
         target_feature = params[2].valueAsText
         mlLot = params[3].valueAsText
 
+        to_date_fields = ['HandOverDate', 'HandedOverDate']
+
+        #--- Extract fields where dummy numbers are removed
+        temp_fields = [f.name for f in arcpy.ListFields(mlLot) if f.name.endswith(('TAA', 'HOA', 'HO'))]
+
         arcpy.env.overwriteOutput = True
-        ### Remove temporary date added
-        try:
-            arcpy.AddMessage('Removing temporary added date from Lot excel master list has started...')
-            to_date_fields = ['HandOverDate', 'HandedOverDate']
-            for field in to_date_fields:
-                with arcpy.da.UpdateCursor(mlLot, [field]) as cursor:
-                    for row in cursor:
-                        if row[0]:
-                            year = row[0].strftime("%Y")
-                            if int(year) < 2000:
-                                row[0] = None
-                            else:
-                                row[0] = row[0]
-                        cursor.updateRow(row)
-        except:
-            pass
+
+        #--- Remove temporary date added
+        first_row_delete_dummy_fc(mlLot, to_date_fields, 'date')
+        first_row_delete_dummy_fc(mlLot, temp_fields, 'float' )
 
         # Join fields to attribute table
         # 2. Delete Field

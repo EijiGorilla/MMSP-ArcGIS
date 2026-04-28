@@ -62,7 +62,8 @@ def convert_nongeoimage_to_point_feature(input_point_feature,
                                          timestamp_field, 
                                          kwd_field, 
                                          kwd, 
-                                         timestamp):
+                                         timestamp,
+                                         i):
     #---- Get a point feature from pier point layer:
     where_clause = f"{feature_field} = '{kwd}'"
 
@@ -86,7 +87,7 @@ def convert_nongeoimage_to_point_feature(input_point_feature,
 def convert_video_to_point_feature(point_feature, query_field, kwd, row_values_coordinates):
     where_clause = f"{query_field} = '{kwd}'"
     output_layer = 'output_layer'
-    arcpy.MakeFeatureLayer_management(point_feature, output_layer)
+    arcpy.management.MakeFeatureLayer(point_feature, output_layer)
     arcpy.management.SelectLayerByAttribute(output_layer, "NEW_SELECTION", where_clause)
     xy = [f[0] for f in arcpy.da.SearchCursor(output_layer, ["SHAPE@XY"])]
     row_values_coordinates.append(xy[0])
@@ -112,6 +113,18 @@ def lower_image_quality(input_path, output_path, quality):
 
     except IOError as e:
         arcpy.AddError(f"Error processing image: {e}")
+
+def lower_Resolution_Images(image_folder, output_path):
+    arcpy.env.overwriteOutput = True
+
+    if image_folder == output_path:
+        arcpy.AddError('You are trying to overwrite raw images by choosing the same folder for input and output. Make sure to choose different folders.')
+    else:
+        image_files = [os.path.join(image_folder, image) for image in os.listdir(image_folder) ]
+        for image_path in image_files:
+            basename = os.path.basename(image_path)
+            output_file = os.path.join(output_path, basename)
+            lower_image_quality(image_path, output_file, 10) 
 
 
 class Toolbox(object):
@@ -156,20 +169,8 @@ class LowerResolutionImages(object):
     def execute(self, params, messages):
         image_folder = params[0].valueAsText
         output_path = params[1].valueAsText
-        
-        def lower_Resolution_Images():
-            arcpy.env.overwriteOutput = True
 
-            if image_folder == output_path:
-                arcpy.AddError('You are trying to overwrite raw images by choosing the same folder for input and output. Make sure to choose different folders.')
-            else:
-                image_files = [os.path.join(image_folder, image) for image in os.listdir(image_folder) ]
-                for image_path in image_files:
-                    basename = os.path.basename(image_path)
-                    output_file = os.path.join(output_path, basename)
-                    lower_image_quality(image_path, output_file, 10) 
-
-        lower_Resolution_Images()
+        lower_Resolution_Images(image_folder, output_path)
 
 class DroneImagePoints(object):
     def __init__(self):
@@ -250,6 +251,10 @@ class DroneImagePoints(object):
             photoOption = "ALL_PHOTOS" # "ONLY_GEOTAGGED"
             attachmentsOption = "NO_ATTACHMENTS"
 
+            #--------------------------------------------------------------#
+            #         Proprocess files & Create Geotagged Images           #
+            #--------------------------------------------------------------#
+
             full_path = Path(image_folder)
             parts = full_path.parts
             temp_path = str(Path(*parts[:9]))
@@ -270,7 +275,13 @@ class DroneImagePoints(object):
             #--- Copy ONLY top-level images:
             for filename in os.listdir(image_folder):
                 file_path = os.path.join(image_folder, filename)
-                if os.path.isfile(file_path) and filename.lower().endswith(('.jpg', '.JPG', '.jpeg', '.JPEG', 'tiff', 'TIFF')):
+                if os.path.isfile(file_path) and filename.lower().endswith(('.jpg', '.JPG', '.jpeg', '.JPEG', 'tiff', 'TIFF', 'PNG', 'png')):
+                    #--- Convert PNG to JPEG, if any (GeoTaggedPhotosToPoints does not support PNG format)
+                    if filename.lower().endswith(('PNG', 'png')):
+                        image = Image.open(file_path)
+                        rgb_image = image.convert('RGB')
+                        rgb_image.save(re.sub('png|PNG', 'jpg', file_path), 'JPEG')
+                        shutil.copy(re.sub('png|PNG', 'jpg', file_path), temp_folder)
                     shutil.copy(file_path, temp_folder)
 
             #--- Create point features using images
@@ -305,8 +316,7 @@ class DroneImagePoints(object):
         
             #--- Get station names from station point feature
             station_point_field = [f.name for f in arcpy.ListFields(station_point_feature) if (f.name == 'Station') or (f.name == 'station')][0]
-            station_names = [f[0] for f in arcpy.da.SearchCursor(station_point_feature, [station_point_field])]
-            station_names_lower = [f[0].lower() for f in arcpy.da.SearchCursor(station_point_feature, [station_point_field])]
+            station_names = [re.sub(" ", "", f[0]) for f in arcpy.da.SearchCursor(station_point_feature, [station_point_field])]
 
             #--- Edit field ---#
             #--- Add project name
@@ -333,10 +343,10 @@ class DroneImagePoints(object):
                 for row in cursor:
                     if row[0]:
                         # check and get index from station point layer when station name from photolayer exists
-                        idx = [(i, station) for i, station in enumerate(station_names_lower) if station in row[0].lower()]
+                        idx = [(i, station) for i, station in enumerate(station_names) if station in row[0]]
                         if idx:
                             idx = idx[0][0]
-                            row[1] = station_names[idx].title()
+                            row[1] = station_names[idx]
                     cursor.updateRow(row)
 
             #--- Add pier numbers:
@@ -344,7 +354,7 @@ class DroneImagePoints(object):
                 for row in cursor:
                     if row[0]:
                         try:
-                            pier_number = re.search(r"P[-_]?\d+[NS]?[SB]?|P[-_]?\d+[-]?[AB]?|BUE[-_]?P\d+[NS]?|DAT[-_]?\d+[NS]?|MT[-_]?\d+-\d+|MT[-_]?\d+-[ABUT]|SCT[-_]?P\d+[NS]?|STR[-_]?[Pp]\d+[NS]?", row[0].upper()).group()
+                            pier_number = re.search(r"P[-_]?\d+[-]\d+|P[-_]?\d+[NS]?[SB]?|P[-_]?\d+[-]?[AB]?|BUE[-_]?P\d+[NS]?|DAT[-_]?\d+[NS]?|MT[-_]?\d+-\d+|MT[-_]?\d+-[ABUT]|SCT[-_]?P\d+[NS]?|STR[-_]?[Pp]\d+[NS]?", row[0].upper()).group()
                             # pier_number = re.search(r"[Pp][-_]?\d+[NS]?", row[0].upper()).group()
                             arcpy.AddMessage(pier_number)
 
@@ -402,7 +412,7 @@ class DroneImagePoints(object):
             kwds = [f[0] for f in arcpy.da.SearchCursor(nongeo_layer, [keyword_field])]
 
             if int(result[0]) > 0:
-                # Create an empty layer for compilation
+                #--- nongeotag_layers are output point features to be used for compilation later
                 nongeotag_layers = 'nongeotag_layers'
                 arcpy.management.CopyFeatures(photo_points, nongeotag_layers)
                 arcpy.management.TruncateTable(nongeotag_layers)
@@ -419,11 +429,11 @@ class DroneImagePoints(object):
                                                              timestamp_field,
                                                              keyword_field,
                                                              kwd,
-                                                             timestamp
+                                                             timestamp,
+                                                             i
                                                              )
                     
                     else:
-                        arcpy.AddMessage(kwd)
                         convert_nongeoimage_to_point_feature(station_point_feature, 
                                         nongeo_layer, 
                                         nongeotag_layers, 
@@ -432,10 +442,13 @@ class DroneImagePoints(object):
                                         timestamp_field,
                                         keyword_field,
                                         kwd,
-                                        timestamp
+                                        timestamp,
+                                        i
                                         )
-                     
-            ## Geotagged photos 
+            
+            #--------------------------------------------#
+            #             For Geotagged Images           #
+            #--------------------------------------------#
             where_clause = f"{x_field} is not Null"
             geotag_layer = arcpy.management.SelectLayerByAttribute(photo_points, "NEW_SELECTION", where_clause)
             result = arcpy.management.GetCount(geotag_layer)
@@ -446,11 +459,11 @@ class DroneImagePoints(object):
             try:
                 result_nongeo = arcpy.management.GetCount(nongeotag_layers)
             except:
-                result_nongeo = arcpy.management.GetCount(nongeo_layer)
-            
+                result_nongeo = arcpy.management.GetCount(nongeo_layer)  
 
+            #--- Compile all geotagged and nongeotagged images into one layer, 'compile_layer', if non-geotagged images exist. If not, 'compile_layer' is the same as geotag_layer.
             if int(result[0]) > 0 and int(result_nongeo[0]) > 0:
-                compile_layer = arcpy.management.Append(nongeotag_layers, geotag_layer)
+                compile_layer = arcpy.management.Append(geotag_layer, nongeotag_layers)
             
             ## only geotag_images:
             elif int(result[0]) > 0 and int(result_nongeo[0]) == 0:
@@ -512,10 +525,14 @@ class DroneImagePoints(object):
             todict = table.to_dict()
             dbx_link_dict = {name[1]: link[1] for name, link in zip(todict[imageName_field].items(), todict['dbx_link'].items())}
 
-            with arcpy.da.UpdateCursor(compile_layer, [path_field, imageName_field]) as cursor:
+            with arcpy.da.UpdateCursor(compile_layer, [path_field, imageName_field, cp_field]) as cursor:
                 for row in cursor:
                     if row[0]:
                         row[0] = dbx_link_dict[row[1]]
+                    if row[2]:
+                        #--- Re-format CP notation
+                        row[2] = re.sub(r'--','-',re.sub(r'^N','N-',row[2]))
+                        row[2] = re.sub(r'--','-',re.sub(r'^S','S-',row[2]))
                     cursor.updateRow(row)
 
             # Truncate target layer
@@ -527,7 +544,7 @@ class DroneImagePoints(object):
             arcpy.AddMessage("Target layer was successfully appended")
 
             # Delete all temporary layers
-            # arcpy.management.Delete([nongeotag_layers, nongeo_layer, photo_points, geotag_layer])
+            arcpy.management.Delete([nongeotag_layers, nongeo_layer, photo_points, geotag_layer])
 
 
         Medeia_tables()
@@ -626,8 +643,7 @@ class DroneViedoPoints(object):
 
             # Extract station names
             station_point_field = [f.name for f in arcpy.ListFields(station_point_feature) if (f.name == 'Station') or (f.name == 'station')][0]
-            station_names = [f[0] for f in arcpy.da.SearchCursor(station_point_feature, [station_point_field])]
-            station_names_lower = [f[0].lower() for f in arcpy.da.SearchCursor(station_point_feature, [station_point_field])]
+            station_names = [re.sub(" ", "", f[0]) for f in arcpy.da.SearchCursor(station_point_feature, [station_point_field])]
  
             # Create an empty feature class and add fields
             geometry_type = "POINT" # Other options: POLYLINE, POLYGON, MULTIPOINT, MULTIPATCH
@@ -643,7 +659,7 @@ class DroneViedoPoints(object):
                     arcpy.management.AddField(nongeo_video, field, "TEXT", "", "", "", field, "NULLABLE", "REQUIRED")
 
             # Add video contents from the folder
-            imageName_field= "Name"
+            videoName_field= "Name"
             type_field = "Type"
             timestamp_field = "TimeStamp"
             temp_field = "temp"
@@ -656,29 +672,13 @@ class DroneViedoPoints(object):
             id_field = 'id'
             cp_field = 'CP'
 
-            item_table = pd.DataFrame(columns=main_fields)
+            # item_table = pd.DataFrame(columns=main_fields)
             items = [item for item in os.listdir(video_folder) if item.endswith('.mp4')]
 
             row_values = []
             for i, item in enumerate(items):
-                # cp = re.search(r"[NS]-?0\d+[abc]?", item).group()
-                # Add pier nuber first, so when station exists, station name is prioritized.
-                try:
-                    kwd = re.search(r"P[-]?\d+[NS]?[SB]?|P[-]?\d+[-]?[AB]?|BUE[-]?P\d+[NS]?|DAT[-]?\d+[NS]?|MT[-]?\d+-\d+|MT[-]?\d+-[ABUT]|SCT[-]?P\d+[NS]?|STR[-]?[Pp]\d+[NS]?", item.upper()).group().upper()
-                except:
-                    pass
-                try:
-                    kwd = [station for station in station_names_lower if station in item.lower()][0].title()
-                except:
-                    pass
-
-                try:
-                    kwd = re.search(r"Depot", item.title()).group()
-                except:
-                    pass
-
-                row_values.append((None, item, "video", item.split('_')[-1].split('.')[0], i+1, proj, kwd, re.search(r"[NS]-?0\d+[abc]?", item).group()))
-
+                row_values.append((None, item, "video", None, i+1, proj, None, re.search(r"[NS]-?0\d+[abc]?", item).group()))
+                
             # Insert rows
             with arcpy.da.InsertCursor(nongeo_video, main_fields) as cursor:
                 for row in row_values:
@@ -689,21 +689,67 @@ class DroneViedoPoints(object):
             if null_keyword:
                 arcpy.AddMessage('You fail to extract a keyword. Check your code and run again.')
 
-            # Fill in information in the fields
+            #--- Add station name:
+            with arcpy.da.UpdateCursor(nongeo_video, [videoName_field, keyword_field]) as cursor:
+                for row in cursor:
+                    if row[0]:
+                        # check and get index from station point layer when station name from photolayer exists
+                        idx = [(i, station) for i, station in enumerate(station_names) if station in row[0]]
+                        if idx:
+                            idx = idx[0][0]
+                            row[1] = station_names[idx]
+                    cursor.updateRow(row)
+
+            #--- Add pier numbers:
+            with arcpy.da.UpdateCursor(nongeo_video, [videoName_field, keyword_field]) as cursor:
+                for row in cursor:
+                    if row[0]:
+                        try:
+                            fileName = row[0].split(".mp4")[0]
+                            pier_number = re.search(r"P[-_]?\d+[-]\d+|P[-_]?\d+[NS]?[SB]?|P[-_]?\d+[-]?[AB]?|BUE[-_]?P\d+[NS]?|DAT[-_]?\d+[NS]?|MT[-_]?\d+-\d+|MT[-_]?\d+-[ABUT]|SCT[-_]?P\d+[NS]?|STR[-_]?[Pp]\d+[NS]?",fileName.upper()).group()
+                            # pier_number = re.search(r"[Pp][-_]?\d+[NS]?", row[0].upper()).group()
+                            arcpy.AddMessage(pier_number)
+
+                            piern = re.sub("P", "P-", pier_number)
+                            piern = re.sub("--","-", piern)
+                            piern = re.sub("_","", piern)
+                            row[1] = piern.upper()
+                        except:
+                            arcpy.AddMessage(f"No pier numbers for this image.")
+                        cursor.updateRow(row)
+
+            #--- Add Depot:
+            with arcpy.da.UpdateCursor(nongeo_video, [videoName_field, project_field, keyword_field]) as cursor:
+                for row in cursor:
+                    if row[0]:
+                        try:
+                            depot = re.search(r"DEPOT", row[0].upper()).group()
+                            if depot:
+                                if row[1] == "N2":
+                                    row[2] = "Mabalacat Depot"
+                                elif row[1] == "SC":
+                                    row[2] = "Banlic Depot"
+                        except:
+                            arcpy.AddMessage(f"No depot for this image.")
+                        cursor.updateRow(row)
+
+            #--- Add time stamp from the file name
+            with arcpy.da.UpdateCursor(nongeo_video, [videoName_field, timestamp_field]) as cursor:
+                for row in cursor:
+                    if row[0]:
+                        timeStamp = row[0].split('_')[-1].split('.')[0]
+                        if len(timeStamp) >= 8:
+                            timeStamp = timeStamp[:6]
+                        row[1] = timeStamp
+                        cursor.updateRow(row)
+
             kwds = [f[0] for f in arcpy.da.SearchCursor(nongeo_video, [keyword_field])]
             row_values_coordinates = []
-            for i, kwd in enumerate(kwds):
-                arcpy.AddMessage(kwd)
-                if kwd == "Depot":
-                    if proj == "N2":
-                        kwd = "Mabalacat Depot"
-                    elif proj == "SC":
-                        kwd = "Banlic Depot"
-
-                # print(kwd)
+            for kwd in kwds:
                 if kwd in tuple(station_names):
                     convert_video_to_point_feature(station_point_feature, station_name_field, kwd, row_values_coordinates)
- 
+                elif kwd == "Mabalacat Depot" or kwd == "Banlic Depot":
+                    convert_video_to_point_feature(station_point_feature, station_name_field, kwd, row_values_coordinates)
                 else:
                     convert_video_to_point_feature(pier_point_feature, piern_field, kwd, row_values_coordinates)
                 
@@ -751,9 +797,9 @@ class DroneViedoPoints(object):
             # Update Path using dropbox usercontent link
             table = pd.read_excel(dbx_link_table)
             todict = table.to_dict()
-            dbx_link_dict = {name[1]: link[1] for name, link in zip(todict[imageName_field].items(), todict['dbx_link'].items())}
+            dbx_link_dict = {name[1]: link[1] for name, link in zip(todict[videoName_field].items(), todict['dbx_link'].items())}
 
-            with arcpy.da.UpdateCursor(nongeo_video, [path_field, imageName_field, cp_field]) as cursor:
+            with arcpy.da.UpdateCursor(nongeo_video, [path_field, videoName_field, cp_field]) as cursor:
                 for row in cursor:
                     if row[1]:
                         row[0] = dbx_link_dict[row[1]]

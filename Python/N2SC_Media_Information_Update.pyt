@@ -85,6 +85,14 @@ def convert_nongeoimage_to_point_feature(input_point_feature,
     arcpy.management.Append(output_layer, nongeotag_layer, schema_type = 'NO_TEST')
 
 def get_coordinates_for_nongeotag_media(point_feature, query_field, kwd, row_values_coordinates):
+    if kwd == 'SanFernando':
+        kwd = 'San Fernando'
+    elif kwd == 'SanPedro':
+        kwd = 'San Pedro'
+    elif kwd == 'Sta.Rosa':
+        kwd = 'Sta. Rosa'
+    elif kwd == 'Sta. Mesa':
+        kwd = 'Sta. Mesa'
     where_clause = f"{query_field} = '{kwd}'"
     output_layer = 'output_layer'
     arcpy.management.MakeFeatureLayer(point_feature, output_layer)
@@ -154,17 +162,6 @@ def add_contents_field(point_feature, station_names, proj, project_field, name_f
                     arcpy.AddMessage(f"No CPs were found.")
                 cursor.updateRow(row)
 
-    #--- Add chainage label:
-    # with arcpy.da.UpdateCursor(point_feature, [name_field, keyword_field]) as cursor:
-    #     for row in cursor:
-    #         if row[0]:
-    #             try:
-    #                 chainage = re.search(r'_((\d+)\+(\d+))_', name_field).group(1)
-    #                 row[1] = chainage.upper()
-    #             except:
-    #                 arcpy.AddMessage(f"No chainage label for this image.")
-    #             cursor.updateRow(row)
-
     #--- Add station name:
     with arcpy.da.UpdateCursor(point_feature, [name_field, keyword_field]) as cursor:
         for row in cursor:
@@ -192,6 +189,17 @@ def add_contents_field(point_feature, station_names, proj, project_field, name_f
                     row[1] = piern.upper()
                 except:
                     arcpy.AddMessage(f"No pier numbers for this image.")
+                cursor.updateRow(row)
+
+    #--- Add chainage label:
+    with arcpy.da.UpdateCursor(point_feature, [name_field, keyword_field]) as cursor:
+        for row in cursor:
+            if row[0]:
+                try:
+                    chainage = re.search(r'_((\d+)\+(\d+))_', row[0]).group(1)
+                    row[1] = chainage.upper()
+                except:
+                    arcpy.AddMessage(f"No chainage label for this image.")
                 cursor.updateRow(row)
 
     #--- Add Depot:
@@ -268,6 +276,11 @@ def update_coordinates_to_nongeotagged_points(layer, row_values_coordinates):
             row[0] = row_values_coordinates[i]
             cursor.updateRow(row)
 
+def get_values_from_field(layer, field_name):
+    field = [f.name for f in arcpy.ListFields(layer) if f.name == field_name][0]
+    values = [re.sub(" ", "", f[0]) for f in arcpy.da.SearchCursor(layer, [field])]
+    return values
+            
 class Toolbox(object):
     def __init__(self):
         self.label = "UpdateLandAcquisition"
@@ -361,6 +374,14 @@ class DroneImagePoints(object):
             direction = "Input"
         )
 
+        chainage_point_fc = arcpy.Parameter(
+            displayName = "Chainage Point Feature Layer",
+            name = "Chainage Point Feature Layer",
+            datatype = "GPFeatureLayer",
+            parameterType = "Required",
+            direction = "Input"
+        )
+
         target_point_layer = arcpy.Parameter(
             displayName = "Target Geotagged Point Feature Layer (To be updated)",
             name = "Target Geotagged Feature Layer (Point)",
@@ -369,7 +390,7 @@ class DroneImagePoints(object):
             direction = "Input"
         )
 
-        params = [proj, image_folder, dbx_linke_file, pier_point_fc, station_point_fc, target_point_layer]
+        params = [proj, image_folder, dbx_linke_file, pier_point_fc, station_point_fc, chainage_point_fc, target_point_layer]
         return params
 
     def updateMessages(self, params):
@@ -381,7 +402,8 @@ class DroneImagePoints(object):
         dbx_link_table = params[2].valueAsText
         pier_point_prs92 = params[3].valueAsText
         station_point_prs92 = params[4].valueAsText
-        target_layer = params[5].valueAsText
+        chainage_point_prs92 = params[5].valueAsText
+        target_layer = params[6].valueAsText
 
         def Medeia_tables():
             arcpy.env.overwriteOutput = True
@@ -394,13 +416,15 @@ class DroneImagePoints(object):
 
             # Convert PRSS92 to WGS84
             station_point_feature = "station_point_feature"
-            pier_point_feauture = "pier_point_feature"
+            pier_point_feature = "pier_point_feature"
+            chainage_point_feature = "chainage_point_feature"
 
             # prs92 = arcpy.SpatialReference(3123)
             wgs84 = arcpy.SpatialReference(4326)
             geo_trans = "PRS_1992_To_WGS_1984_1"
             arcpy.management.Project(station_point_prs92, station_point_feature, wgs84, geo_trans)
-            arcpy.management.Project(pier_point_prs92, pier_point_feauture, wgs84, geo_trans)
+            arcpy.management.Project(pier_point_prs92, pier_point_feature, wgs84, geo_trans)
+            arcpy.management.Project(chainage_point_prs92, chainage_point_feature, wgs84, geo_trans)
 
             #--------------------------------------------------------------#
             #         Proprocess files & Create Geotagged Images           #
@@ -458,13 +482,22 @@ class DroneImagePoints(object):
             project_field = "Project"
             station_name_field = 'Station'
             piern_field = 'PierNumber'
+            chainage_point_field = 'KmSpot'
             keyword_field = 'Keyword'
             id_field = 'id'
             cp_field = 'CP'
         
             #--- Get station names from station point feature
-            station_point_field = [f.name for f in arcpy.ListFields(station_point_feature) if (f.name == 'Station') or (f.name == 'station')][0]
-            station_names = [re.sub(" ", "", f[0]) for f in arcpy.da.SearchCursor(station_point_feature, [station_point_field])]
+            station_names = get_values_from_field(station_point_feature, station_name_field)
+            arcpy.AddMessage(f"Station names: {station_names}")
+
+            #--- Get chainage labels from chainage point feature
+            chainage_labels = get_values_from_field(chainage_point_feature, 'KmSpot')
+            arcpy.AddMessage(f"Chainage labels: {chainage_labels}")
+
+            #--- Get pier numbers
+            pier_numbers = get_values_from_field(pier_point_feature, 'PierNumber')
+            arcpy.AddMessage(f"Pier numbers: {pier_numbers}")
 
             #--- Add contents to fields (project, CP, station name, pier number, depot, time stamp) based on the file name
             add_contents_field(photo_points, station_names, proj, project_field, imageName_field, cp_field, keyword_field, timestamp_field, type_field, 'image')          
@@ -492,11 +525,18 @@ class DroneImagePoints(object):
                 ## Add xy coordinates based on station names and pier numbers:
                 for kwd in kwds:
                     if kwd in tuple(station_names):
+                        arcpy.AddMessage(f"kwd {kwd} is in station names."    )
                         get_coordinates_for_nongeotag_media(station_point_feature, station_name_field, kwd, row_values_coordinates)
                     elif kwd == "Mabalacat Depot" or kwd == "Banlic Depot":
+                        arcpy.AddMessage(f"kwd {kwd} is in station names."    )
                         get_coordinates_for_nongeotag_media(station_point_feature, station_name_field, kwd, row_values_coordinates)
-                    else:
-                        get_coordinates_for_nongeotag_media(pier_point_feauture, piern_field, kwd, row_values_coordinates)
+                    elif kwd in tuple(chainage_labels):
+                        arcpy.AddMessage(f"kwd {kwd} is in station names."    )
+                        arcpy.AddMessage(f"kwd {kwd} is in chainage labels."    )
+                        get_coordinates_for_nongeotag_media(chainage_point_feature, chainage_point_field, kwd, row_values_coordinates)
+                    elif kwd in tuple(pier_numbers):
+                        arcpy.AddMessage(f"kwd {kwd} is in station names."    )
+                        get_coordinates_for_nongeotag_media(pier_point_feature, piern_field, kwd, row_values_coordinates)
 
             #--- Update xy coordinates in nongeo_layer
             arcpy.AddMessage(f"row_values_coordinates: {row_values_coordinates}")
@@ -519,6 +559,9 @@ class DroneImagePoints(object):
             result_nongeo = arcpy.management.GetCount(nongeo_layer)
             arcpy.AddMessage(f"Geotag Layer count: {result[0]}, Nongeo Layer count: {result_nongeo[0]}")
 
+            #---------------------------------------------------------------------#
+            #             Compile all geotagged and nongeotagged images           #
+            #---------------------------------------------------------------------#
             #--- Compile all geotagged and nongeotagged images into one layer, 'compile_layer', if non-geotagged images exist. If not, 'compile_layer' is the same as geotag_layer.
             if int(result[0]) > 0 and int(result_nongeo[0]) > 0:
                 arcpy.AddMessage("Both geotagged and non-geotagged images exist. Compile them into one layer.")
@@ -625,6 +668,14 @@ class DroneViedoPoints(object):
             direction = "Input"
         )
 
+        chainage_point_fc = arcpy.Parameter(
+            displayName = "Chainage Point Feature Layer",
+            name = "Chainage Point Feature Layer",
+            datatype = "GPFeatureLayer",
+            parameterType = "Required",
+            direction = "Input"
+        )
+
         target_point_layer = arcpy.Parameter(
             displayName = "Target Video Point Feature Layer (To be updated)",
             name = "Target Video Point Feature Layer (To be updated)",
@@ -633,7 +684,7 @@ class DroneViedoPoints(object):
             direction = "Input"
         )
 
-        params = [proj, fgdb, video_folder, dbx_linke_file, pier_point_fc, station_point_fc, target_point_layer]
+        params = [proj, fgdb, video_folder, dbx_linke_file, pier_point_fc, station_point_fc, chainage_point_fc, target_point_layer]
         return params
 
     def updateMessages(self, params):
@@ -646,7 +697,8 @@ class DroneViedoPoints(object):
         dbx_link_table = params[3].valueAsText
         pier_point_prs92 = params[4].valueAsText
         station_point_prs92 = params[5].valueAsText
-        target_layer = params[6].valueAsText
+        chainage_point_prs92 = params[6].valueAsText
+        target_layer = params[7].valueAsText
 
         def Medeia_tables():
             arcpy.env.overwriteOutput = True
@@ -654,17 +706,24 @@ class DroneViedoPoints(object):
             # Convert PRSS92 to WGS84
             station_point_feature = "station_point_feature"
             pier_point_feature = "pier_point_feature"
+            chainage_point_feature = "chainage_point_feature"
 
             # prs92 = arcpy.SpatialReference(3123)
             wgs84 = arcpy.SpatialReference(4326)
             geo_trans = "PRS_1992_To_WGS_1984_1"
             arcpy.management.Project(station_point_prs92, station_point_feature, wgs84, geo_trans)
             arcpy.management.Project(pier_point_prs92, pier_point_feature, wgs84, geo_trans)
+            arcpy.management.Project(chainage_point_prs92, chainage_point_feature, wgs84, geo_trans)
 
-            # Extract station names
-            station_point_field = [f.name for f in arcpy.ListFields(station_point_feature) if (f.name == 'Station') or (f.name == 'station')][0]
-            station_names = [re.sub(" ", "", f[0]) for f in arcpy.da.SearchCursor(station_point_feature, [station_point_field])]
- 
+            #--- Get station names from station point feature
+            station_names = get_values_from_field(station_point_feature, "Station")
+
+            #--- Get chainage labels from chainage point feature
+            chainage_labels = get_values_from_field(chainage_point_feature, 'KmSpot')
+
+            #--- Get pier numbers
+            pier_numbers = get_values_from_field(pier_point_feature, 'PierNumber')
+
             # Create an empty feature class and add fields
             geometry_type = "POINT" # Other options: POLYLINE, POLYGON, MULTIPOINT, MULTIPATCH
             spatial_reference = arcpy.SpatialReference(4326) # WGS 1984 spatial reference
@@ -687,6 +746,7 @@ class DroneViedoPoints(object):
             project_field = "Project"
             station_name_field = 'Station'
             piern_field = 'PierNumber'
+            chainage_point_field = 'KmSpot'
             keyword_field = 'Keyword'
             id_field = 'id'
             cp_field = 'CP'
@@ -714,12 +774,16 @@ class DroneViedoPoints(object):
             ## Add xy coordinates based on station names and pier numbers:
             kwds = [f[0] for f in arcpy.da.SearchCursor(nongeo_video, [keyword_field])]
             row_values_coordinates = []
+
             for kwd in kwds:
                 if kwd in tuple(station_names):
                     get_coordinates_for_nongeotag_media(station_point_feature, station_name_field, kwd, row_values_coordinates)
                 elif kwd == "Mabalacat Depot" or kwd == "Banlic Depot":
                     get_coordinates_for_nongeotag_media(station_point_feature, station_name_field, kwd, row_values_coordinates)
-                else:
+                elif kwd in tuple(chainage_labels):
+                    arcpy.AddMessage(f"kwd {kwd} is in chainage labels."    )
+                    get_coordinates_for_nongeotag_media(chainage_point_feature, chainage_point_field, kwd, row_values_coordinates)
+                elif kwd in tuple(pier_numbers):
                     get_coordinates_for_nongeotag_media(pier_point_feature, piern_field, kwd, row_values_coordinates)
                 
             #--- Update xy coordinates in nongeo_layer

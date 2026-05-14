@@ -25,7 +25,7 @@ def match_elements(list_a, list_b):
 def toString(table, to_string_fields): # list of fields to be converted to string
     for field in to_string_fields:
         ## Need to convert string first, then apply space removal, and then convert to string again
-        ## If you do not apply string conversion twice, it will fail to join with the GIS attribute table
+        ## If you do not apply string conversion twice, it will fail to join with the GIS attr ibute table
         table[field] = table[field].astype(str)
         table[field] = table[field].apply(lambda x: x.replace(r'\s+', ''))
         table[field] = table[field].astype(str)
@@ -67,18 +67,6 @@ def toDate(table, field):
 def to_Date_no_hms(table, field):
     table[field] = pd.to_datetime(table[field], format='%Y-%m-%d', errors='coerce').dt.date
     table[field] = table[field].astype('datetime64[ns]')
-    return table
-
-def add_status(table, start_field, finish_field, status_field):
-    table[status_field] = 1
-
-    ## if finishdate, completed (Status = 4)
-    idx = table.query(f"{finish_field}.notna()").index
-    table.loc[idx, status_field] = 4
-
-    ## if startdate & !finishdate, ongoing (Status = 2)
-    idx = table.query(f"{start_field}.notna() and {finish_field}.isna()").index
-    table.loc[idx, status_field] = 2
     return table
 
 def find_duplicates_ordered(arr):
@@ -180,9 +168,24 @@ def find_word_location(df, search_word):
                 locations.append({'index': idx, 'column': col, 'colidx': col_idx[col]})       
     return locations
 
-def preprocess_civil_table(idx,
+#--- Process civil ML ---#
+def add_status(table, start_field, finish_field, status_field):
+    table[status_field] = 1
+
+    ## if finishdate, completed (Status = 4)
+    idx = table.query(f"{finish_field}.notna()").index
+    table.loc[idx, status_field] = 4
+
+    ## if startdate & !finishdate, ongoing (Status = 2)
+    idx = table.query(f"{start_field}.notna() and {finish_field}.isna()").index
+    table.loc[idx, status_field] = 2
+    return table
+
+def preprocess_civil_table(via_type_index,
                            file,
                            sheet_name,
+                           id_field_atg,
+                           pileno_field,
                            remarks_field,
                            type_field, 
                            start_actual_field, 
@@ -194,12 +197,15 @@ def preprocess_civil_table(idx,
                            ):
     x = pd.read_excel(file, sheet_name = sheet_name)
     ids = x.query(f"{remarks_field} == 'SAMPLE'").index
-    x = x.iloc[ids[0] + 1:, ].reset_index(drop=True)
-    # x = x.drop(ids).reset_index(drop=True)
-
-    # Remove empty pier number
-    ids = x.query(f"{civil_pier_field}.isna()").index
-    x = x.drop(ids).reset_index(drop=True)
+    
+    try:
+        x = x.iloc[ids[0] + 1:, ].reset_index(drop=True)
+    
+        # Remove empty pier number
+        ids = x.query(f"{civil_pier_field}.isna()").index
+        x = x.drop(ids).reset_index(drop=True)
+    except:
+        pass
     
     # Keep columns until 'Remarks' field
     col_index = {name: i for i, name in enumerate(x.columns)}
@@ -210,9 +216,25 @@ def preprocess_civil_table(idx,
     col_index = {name: i for i, name in enumerate(x.columns)}
     ids = [v for k, v in col_index.items() if k.startswith('Unnamed')]
     x = x.drop(x.columns[ids], axis=1)
-    
+
+    if sheet_name == 'At-Grade':
+        # Keep only ID starts with 'PT.' (bored pile)
+        ids = np.where(x[id_field_atg].str.startswith("PT.", na=False))[0]
+        x = x.loc[ids, ]
+
+        # Delete 'PT.' and keep only numbers
+        x = replace_strings_in_dataframe(x, id_field_atg, {r'PT.': '', r'\s+': ''})
+        x = x.rename(columns={id_field_atg: pileno_field})
+
+        # Remove 'Chainage' columns
+        x = x.iloc[:, 1:]
+
+        # Add pier field and finish_plan for compilation later
+        x[civil_pier_field] = "" #np.nan
+        x[finish_plan_field] = np.nan
+ 
     # Add Type
-    x[type_field] = str(idx + 1)
+    x[type_field] = str(via_type_index[sheet_name])
 
     # Reformat date fields
     for field in [start_actual_field, finish_plan_field, finish_actual_field]:
@@ -228,14 +250,13 @@ def preprocess_civil_table(idx,
         r'^P': 'P-',
         r'^P-R': 'PR'
     }
-        
-    # x = replace_strings_table(x, civil_pier_field, changed_items_array)
+
     x = replace_strings_in_dataframe(x, civil_pier_field, changed_items_array)
     x[civil_pier_field] = x[civil_pier_field].str.upper()
 
     # Drop empty rows
     ## Bored Pile
-    if idx == 0:
+    if sheet_name == 'BoredPile':
         ids = x.query(f"{package_field}.isna() or {No_field}.isna()").index
         x = x.drop(ids).reset_index(drop=True)
     # else:
@@ -258,9 +279,11 @@ def summary_by_field(table, stats_type, stats_field, groupby_fields):
     return arrays
 
 class summaryStatistics():
-    # Make sure to use a list for groupby_field
-    # The first field in groupby_fields will be a primary field for generating statistics.
-    # Provide output table columns
+    """
+        Make sure to use a list for groupby_field
+        The first field in groupby_fields will be a primary field for generating statistics.
+        Provide output table columns
+    """
     def __init__(self, table1, table2, stats_type, stats_field, groupby_fields):
         self.tab1 = table1
         self.tab2 = table2
@@ -371,8 +394,11 @@ class CompileViaductMasterList(object):
             package_field = 'Package'
             remarks_field = 'Remarks'
             segment_field = 'Segment'
+            id_field_atg = 'ID'
 
-            viaduct_types = ['BoredPile', 'PileCap', 'Pier', 'PierHead', 'Precast']
+            viaduct_types = ['BoredPile', 'PileCap', 'Pier', 'PierHead', 'Precast', 'At-Grade']
+            viaduct_types_val = [1, 2, 3, 4, 5, 7]
+            via_type_index = {name: viaduct_types_val[i] for i, name in enumerate(viaduct_types)}
 
             rename_cols = {
                 civil_pier_field: pierno_field,
@@ -382,9 +408,11 @@ class CompileViaductMasterList(object):
 
             comp_table = pd.DataFrame()
             for i, type in enumerate(viaduct_types):
-                x = preprocess_civil_table(i,
+                x = preprocess_civil_table(via_type_index,
                    civil_ml,
                    type,
+                   id_field_atg,
+                   pileno_field,
                    remarks_field,
                    type_field, 
                    start_actual_field, 
@@ -401,6 +429,13 @@ class CompileViaductMasterList(object):
                 
                     # Crete pileId
                     x[pierno_id] = x[civil_pier_field] + "-" + x[No_field] + "-" + x[type_field]
+
+                    # Compile
+                    comp_table = pd.concat([comp_table, x])
+
+                #--- At Grade ---#
+                elif type == 'At-Grade':
+                    x[pierno_id] = x[pileno_field] + "-" + x[type_field]
 
                     # Compile
                     comp_table = pd.concat([comp_table, x])
@@ -539,6 +574,12 @@ class UpdateExcelML(object):
                 #--- Update Status ---#
                 gis_t[status_field] = 1
 
+                #--- Update 'start_actual', 'finish_plan', and 'finish_actual'
+                # Delete these fields from gis table
+                for field in [start_actual_field, finish_plan_field, finish_actual_field]:
+                    gis_t = gis_t.drop(field, axis=1)
+                    gis_t = pd.merge(gis_t, civil_t[[pierno_id, field]], on=pierno_id, how='left')
+
                 # Completed (status=4) and ongoing(status=2)
                 for status in (2, 4):
                     civil_piers = civil_t.loc[civil_t.query(f"{status_field} == {status}").index, pierno_id].values
@@ -644,7 +685,7 @@ class UpdateGISTable(object):
         ## 3.1. Convert Excel tables to feature table
         viaduct_ml = arcpy.conversion.ExportTable(excel_table, 'viaduct_ml')
 
-        # Check if LotID match between ML and GIS
+        # Check if uniqueID match between ML and GIS
         uniqueid_gis = unique_values(gis_copied, uniqueID)
         uniqueid_ml = unique_values(viaduct_ml, uniqueID)
         
@@ -656,11 +697,11 @@ class UpdateGISTable(object):
             
         ## 3.2. Get Join Field from MasterList gdb table: Gain all fields except 'Id'
         viaduct_ml_fields = [f.name for f in arcpy.ListFields(viaduct_ml)]
-        viaduct_ml_transfer_fields = [e for e in viaduct_ml_fields if e not in ('LotId', uniqueID,'OBJECTID')]
+        viaduct_ml_transfer_fields = [e for e in viaduct_ml_fields if e not in ('uniqueId', uniqueID,'OBJECTID')]
             
         ## 3.3. Extract a Field from MasterList and Feature Layer to be used to join two tables
-        gis_join_field = ' '.join(map(str, [f for f in gis_fields if f in ('LotId', uniqueID)]))                      
-        viaduct_ml_join_field =' '.join(map(str, [f for f in viaduct_ml_fields if f in ('LotId', uniqueID)]))
+        gis_join_field = ' '.join(map(str, [f for f in gis_fields if f in ('uniqueId', uniqueID)]))                      
+        viaduct_ml_join_field =' '.join(map(str, [f for f in viaduct_ml_fields if f in ('uniqueId', uniqueID)]))
             
         ## 3.4 Join
         arcpy.JoinField_management(in_data=gis_copied, in_field=gis_join_field, join_table=viaduct_ml, join_field=viaduct_ml_join_field, fields=viaduct_ml_transfer_fields)
@@ -1499,7 +1540,7 @@ class ReSortGISTable(object):
                                     row[1] = pier_s
                             cursor.updateRow(row)
                         else:
-                            row[0] = None
+                            row[1] = None
 
                 # 3. Sort
                 ## Sort by CP, temp, and type
@@ -1909,12 +1950,12 @@ class AddFieldsToBuildingLayerStation(object):
         layers = list(input_layers.split(";"))
 
         # 1. Add fields
-        add_fields = ['Types', 'CP', 'Status', 'PierNumber', 'nPierNumber']
+        add_fields = ['Types', 'CP', 'Status', 'PierNumber']
 
         arcpy.AddMessage("Add Fields start...")
         for layer in layers:
             for field in add_fields:
-                if field in ('CP', 'PierNumber', 'nPierNumber'):
+                if field in ('CP', 'PierNumber'):
                     arcpy.management.AddField(layer, field, "TEXT", "", "", "", field, "NULLABLE", "")
                 else:
                     arcpy.management.AddField(layer, field, "SHORT", "", "", "", field, "NULLABLE", "")

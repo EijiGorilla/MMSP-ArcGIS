@@ -1813,7 +1813,7 @@ class ReSortGISTable(object):
                                     row[1] = pier_s
                             cursor.updateRow(row)
                         else:
-                            row[0] = None
+                            row[1] = None
 
                 # 3. Sort
                 ## Sort by CP, temp, and type

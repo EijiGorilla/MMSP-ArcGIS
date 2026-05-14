@@ -642,7 +642,7 @@ class CreateWorkablePierLayer(object):
         arcpy.management.MakeFeatureLayer(via_layer, pilecaps_layer, '"Type" = 2')
 
         # Use pier head for monopiles: P-159C, P-159NB/SB, P-160C, P-160NB/SB        
-        monopile_query = f"({pier_number_field} LIKE '%P-159%' OR {pier_number_field} LIKE '%P-160%') AND {type_field} = 4"
+        monopile_query = f"({pier_number_field} LIKE '%P-159%' OR {pier_number_field} LIKE '%P-160%') AND {type_field} = 1"
         monopile_layer = 'monopile_layer'
         arcpy.management.MakeFeatureLayer(via_layer, monopile_layer, monopile_query)
 
@@ -878,7 +878,7 @@ class UpdatePierWorkableTrackerML(object):
             #--------------------------------------------------------#
             #           Finalize Pier Workable Tracker ML            #
             #--------------------------------------------------------#
-            #--- Monopile (no pile cap) to Completed => P-159C, P-159NB/SB, P-160C, P-160NB/SB ---#
+            #--- Exclude Monopile (no pile cap) from summary count => P-159C, P-159NB/SB, P-160C, P-160NB/SB ---#
             # P-159 => P-159C
             # P-160 => P-160C
             # This code must be executed before adding 'Completed' pile cap.
@@ -886,7 +886,7 @@ class UpdatePierWorkableTrackerML(object):
 
             mono_piles = ["P-159C", "P-159NB", "P-159SB", "P-160C", "P-160NB", "P-160SB"]
             ids = final_table.query(f"{pier_num_field}.isin({mono_piles})").index
-            final_table.loc[ids, workability_field] = "Workable"
+            final_table.loc[ids, workability_field] = ""
 
             # Add status_field
             final_table[status_field] = 1
@@ -1085,16 +1085,12 @@ class UpdatePierWorkablePolygonLayer(object):
 
         def Workable_Pier_Table_Update():            
             # List of fields
-            cp_field = 'CP'
-            type_field = 'Type'
             status_field = 'Status'
             pier_number_field = 'PierNumber'
             workability_field = 'Workability'
             land_obstruc_field = 'Land'
             struc_obstruc_field = 'Structure'
             others_obstruc_field = 'Others'
-            lot_obstrucid_field = 'Land.1'
-            struc_obstrucid_field = 'Structure.1'
             utility_obstruc_field = 'Utility'
             nlo_obstruc_field = 'NLO'
             remarks_field = 'Remarks'
@@ -1155,7 +1151,6 @@ class UpdatePierWorkablePolygonLayer(object):
                 else:
                     ids = x.query(f"{obstruction_cols[i]} == 1").index
                     nonworkable_piers = x.loc[ids, pier_number_field].values
-
                     with arcpy.da.UpdateCursor(gis_workable_layer, [pier_number_field, workable_cols[i]]) as cursor:
                         for row in cursor:
                             if row[0] in tuple(nonworkable_piers):
@@ -1185,6 +1180,16 @@ class UpdatePierWorkablePolygonLayer(object):
                         row[5] = 2
                         row[6] = 2
                     cursor.updateRow(row)
+
+            #--- Update fields to null for empty workable field (Monopiles: P-159, P160)
+            for i, col in enumerate(workable_cols):
+                ids = x.query(f"{workability_field}.isna()").index
+                piers = x.loc[ids, pier_number_field].values
+                with arcpy.da.UpdateCursor(gis_workable_layer, [pier_number_field, workable_cols[i]]) as cursor:
+                    for row in cursor:
+                        if row[0] in tuple(piers):
+                            row[1] = None
+                        cursor.updateRow(row)
 
             #--------------------------------------------------------#
             #       Update Pier Workable Layer for 'Remarks'         #

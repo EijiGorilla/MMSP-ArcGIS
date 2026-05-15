@@ -54,6 +54,32 @@ def unique(lists):
         collect.append(x)
     return(collect)
 
+def replace_strings(string, search_replace_arrays):
+    """
+    Replace strings
+    string: string or text subject to replacement
+    search_replace_arrays: list of dictionary containing (search_string, replace_string)
+    Example: {
+    search_replace_arrays = {
+        r'\s+': '',
+        r'CPN': 'N-',
+        r'[,/].*' : '' # This will remove anything after ',' or '/' in the string
+    }
+    """
+    compile = []
+    for search in search_replace_arrays:
+        try:
+            keyword = re.search(search, string).group(0)
+            new_name = re.sub(keyword, search_replace_arrays[search], string)
+            compile.append(new_name)
+        except:
+            pass
+
+    if compile:
+        return compile[0]
+    else:
+        return string
+
 def convert_nongeoimage_to_point_feature(input_point_feature, 
                                          nongeo_layer, 
                                          nongeotag_layer, 
@@ -93,12 +119,15 @@ def get_coordinates_for_nongeotag_media(point_feature, query_field, kwd, row_val
         kwd = 'Sta. Rosa'
     elif kwd == 'Sta. Mesa':
         kwd = 'Sta. Mesa'
+
+    arcpy.AddMessage(f"Found kwd: {kwd}")
     where_clause = f"{query_field} = '{kwd}'"
     output_layer = 'output_layer'
     arcpy.management.MakeFeatureLayer(point_feature, output_layer)
     arcpy.management.SelectLayerByAttribute(output_layer, "NEW_SELECTION", where_clause)
     xy = [f[0] for f in arcpy.da.SearchCursor(output_layer, ["SHAPE@XY"])]
     row_values_coordinates.append(xy[0])
+
 
 def lower_image_quality(input_path, output_path, quality):
     """
@@ -130,9 +159,20 @@ def lower_Resolution_Images(image_folder, output_path):
     else:
         image_files = [os.path.join(image_folder, image) for image in os.listdir(image_folder) ]
         for image_path in image_files:
-            basename = os.path.basename(image_path)
-            output_file = os.path.join(output_path, basename)
-            lower_image_quality(image_path, output_file, 10) 
+            if image_path.lower().endswith(('PNG', 'png')):
+                image = Image.open(image_path)
+                rgb_image = image.convert('RGB')
+                rgb_image.save(re.sub('png|PNG', 'jpg', image_path), 'JPEG')
+                shutil.copy(re.sub('png|PNG', 'jpg', image_path), output_path)
+                
+                new_basename = f"{Path(image_path).stem}.jpg"
+                new_image_path = os.path.join(output_path, new_basename)
+                output_file = os.path.join(output_path, new_basename)
+                lower_image_quality(new_image_path, output_file, 10) 
+            else:
+                basename = os.path.basename(image_path)
+                output_file = os.path.join(output_path, basename)
+                lower_image_quality(image_path, output_file, 10) 
 
 def add_contents_field(point_feature, station_names, proj, project_field, name_field, cp_field, keyword_field, timestamp_field, type_field = None, type_value = None):
     #--- Add type: image or video
@@ -159,7 +199,7 @@ def add_contents_field(point_feature, station_names, proj, project_field, name_f
                     cp = re.sub(r'N-', 'N', cp)
                     row[1] = cp
                 except:
-                    arcpy.AddMessage(f"No CPs were found.")
+                    pass
                 cursor.updateRow(row)
 
     #--- Add station name:
@@ -171,6 +211,7 @@ def add_contents_field(point_feature, station_names, proj, project_field, name_f
                 if idx:
                     idx = idx[0][0]
                     row[1] = station_names[idx]
+                    arcpy.AddMessage(f"Statio names: {station_names[idx]}")
             cursor.updateRow(row)
 
     #--- Add pier numbers:
@@ -181,14 +222,14 @@ def add_contents_field(point_feature, station_names, proj, project_field, name_f
                     fileName = row[0].split(".mp4")[0]
                     pier_number = re.search(r"P[-_]?\d+[-]\d+|P[-_]?\d+[NS]?[SB]?|P[-_]?\d+[-]?[AB]?|BUE[-_]?P\d+[NS]?|DAT[-_]?\d+[NS]?|MT[-_]?\d+-\d+|MT[-_]?\d+-[ABUT]|SCT[-_]?P\d+[NS]?|STR[-_]?[Pp]\d+[NS]?",fileName.upper()).group()
                     # pier_number = re.search(r"[Pp][-_]?\d+[NS]?", row[0].upper()).group()
-                    arcpy.AddMessage(pier_number)
 
                     piern = re.sub("P", "P-", pier_number)
                     piern = re.sub("--","-", piern)
                     piern = re.sub("_","", piern)
                     row[1] = piern.upper()
+                    arcpy.AddMessage(f"Pier Number: {piern.upper()}")
                 except:
-                    arcpy.AddMessage(f"No pier numbers for this image.")
+                    pass
                 cursor.updateRow(row)
 
     #--- Add chainage label:
@@ -198,8 +239,9 @@ def add_contents_field(point_feature, station_names, proj, project_field, name_f
                 try:
                     chainage = re.search(r'_((\d+)\+(\d+))_', row[0]).group(1)
                     row[1] = chainage.upper()
+                    arcpy.AddMessage(f"Chainage: {chainage.upper()}")
                 except:
-                    arcpy.AddMessage(f"No chainage label for this image.")
+                    pass
                 cursor.updateRow(row)
 
     #--- Add Depot:
@@ -211,10 +253,12 @@ def add_contents_field(point_feature, station_names, proj, project_field, name_f
                     if depot:
                         if row[1] == "N2":
                             row[2] = "Mabalacat Depot"
+                            arcpy.AddMessage(f"Depot name: 'Mabalacat Depot'")
                         elif row[1] == "SC":
                             row[2] = "Banlic Depot"
+                            arcpy.AddMessage(f"Depot name: 'Banlic Depot'")
                 except:
-                    arcpy.AddMessage(f"No depot for this image.")
+                    pass
                 cursor.updateRow(row)
 
     #--- Add time stamp from the file name
@@ -285,21 +329,17 @@ class Toolbox(object):
     def __init__(self):
         self.label = "UpdateLandAcquisition"
         self.alias = "UpdateLandAcquisition"
-        self.tools = [JustMessage1, LowerResolutionImages, DroneImagePoints, DroneViedoPoints]
+        self.tools = [FixFileNames, JustMessage1, LowerResolutionImages, DroneImagePoints, DroneViedoPoints]
 
-class JustMessage1(object):
-    def __init__(self):
-        self.label = "1.0. ----- Get Dropbox Link (Run a separate Python code) -----"
-        self.description = "Output is Excel file"
 
 class LowerResolutionImages(object):
     def __init__(self):
-        self.label = "1.1. Lower Image Resolution"
+        self.label = "1.0. Lower Image Resolution"
         self.description = "Lower Image Resolution"
 
     def getParameterInfo(self):
         image_folder = arcpy.Parameter(
-            displayName = "Folder of Drone Images to Be Processed",
+            displayName = "Folder of Drone Images to Be Processed (raw)",
             name = "Folder of Drone Images to Be Processed",
             datatype = "DEWorkspace",
             parameterType = "Required",
@@ -307,7 +347,7 @@ class LowerResolutionImages(object):
         )
 
         output_folder = arcpy.Parameter(
-            displayName = "Output Folder",
+            displayName = "Output Folder (Images)",
             name = "Output Folder",
             datatype = "DEWorkspace",
             parameterType = "Required",
@@ -326,9 +366,71 @@ class LowerResolutionImages(object):
 
         lower_Resolution_Images(image_folder, output_path)
 
+class FixFileNames(object):
+    def __init__(self):
+        self.label = "1.1. Fix File Names"
+        self.description = "Fix File Names"
+
+    def getParameterInfo(self):
+        image_folder = arcpy.Parameter(
+            displayName = "Media Folder of Drone Images and Videos Being Stored",
+            name = "Media Folder of Drone Images and Videos Being Stored",
+            datatype = "DEWorkspace",
+            parameterType = "Required",
+            direction = "Input"
+        )
+
+        params = [image_folder]
+        return params
+
+    def updateMessages(self, params):
+        return
+
+    def execute(self, params, messages):
+        local_main_dir = params[0].valueAsText #"C:/Users/oc3512/Dropbox/01-Railway/02-NSCR-Ex/99-Media"
+
+        search_array = {
+                            r'[Ss]ta.*[Rr]osa': "Sta.Rosa",
+                            r'[Ss]ta.*[Mm]esa': "Sta.Mesa",
+                            r'[Ss]an.*[fF]ernando': "SanFernando",
+                            r'[Ss]an.*[Pp]edro': "SanPedro",
+                            r'apalit|APALIT': 'Apalit',
+                            r'angeles|ANGELES': 'Angeles',
+                            r'clark|CLARK': 'Clark',
+                            r'calumpit|CALUMPIT': 'Calumpit',
+                            r'cabuyao|CABUYAO': 'Cabuyao',
+                            r'muntinlupa|MUNTINLUPA': 'Muntinlupa',
+                            r'pacita|PACITA': 'Pacita',
+                            r'biñan': 'Biñan',
+                            r'abalang|ABALANG': 'Abalang',
+                            r'españa': 'España',
+                            r'senate-DepEd|senate-depEd|SENATE-DepEd|SENATE-DEPED|Senate|SENATE|senate': 'Senate-DepEd',
+                            r'paco|PACO': 'Paco',
+                            r'calamba|CALAMBA': 'Calamba',
+                            r'blumentritt|BLUMENTRITT': 'Blumentritt',
+                            r'banlic|BANLIC': 'Banlic',
+                            r'makati|MAKATI': 'Makati',
+                            r'megallanes|MEGALLANES': 'Megallanes',
+                            r'bicutan|BICUTAN': 'Bicutan',
+                        }
+        
+        for media in ["Images", "Videos"]:
+            for proj in ["N2", "SC"]:
+                npath = os.path.join(local_main_dir, proj, media)
+                for filename in os.listdir(npath):
+                    if filename.lower().endswith(('.jpg', '.JPG', '.jpeg', '.JPEG', 'tiff', 'TIFF', 'PNG', 'png', 'mp4')):
+                        new_filename = replace_strings(filename, search_array)
+                        os.rename(os.path.join(npath, filename), os.path.join(npath, new_filename))
+                        arcpy.AddMessage(f"Renamed: {filename} -> {new_filename}")
+
+class JustMessage1(object):
+    def __init__(self):
+        self.label = "1.2 ----- Get Dropbox Link (Run a separate Python code) -----"
+        self.description = "Output is Excel file"
+
 class DroneImagePoints(object):
     def __init__(self):
-        self.label = "1.2. Generate Drone Image Points"
+        self.label = "1.3. Generate Drone Image Points"
         self.description = "Generate Drone Image Points"
 
     def getParameterInfo(self):
@@ -462,10 +564,6 @@ class DroneImagePoints(object):
             #--- Create point features using images
             arcpy.management.GeoTaggedPhotosToPoints(temp_folder, photo_points, badPhotoist, photoOption, attachmentsOption)
 
-            #--- Delete temp folder 
-            if photo_points:
-                shutil.rmtree(temp_folder)
-
             #--- Add main fiedls
             fields = ['Name', 'Type', 'TimeStamp', 'temp', 'Project', 'Keyword', 'CP']
             for field in fields:
@@ -489,15 +587,13 @@ class DroneImagePoints(object):
         
             #--- Get station names from station point feature
             station_names = get_values_from_field(station_point_feature, station_name_field)
-            arcpy.AddMessage(f"Station names: {station_names}")
 
             #--- Get chainage labels from chainage point feature
             chainage_labels = get_values_from_field(chainage_point_feature, 'KmSpot')
-            arcpy.AddMessage(f"Chainage labels: {chainage_labels}")
 
             #--- Get pier numbers
             pier_numbers = get_values_from_field(pier_point_feature, 'PierNumber')
-            arcpy.AddMessage(f"Pier numbers: {pier_numbers}")
+            pier_numbers.sort(key=lambda x: int(re.findall(r'\d+', x)[0]))
 
             #--- Add contents to fields (project, CP, station name, pier number, depot, time stamp) based on the file name
             add_contents_field(photo_points, station_names, proj, project_field, imageName_field, cp_field, keyword_field, timestamp_field, type_field, 'image')          
@@ -522,21 +618,30 @@ class DroneImagePoints(object):
 
             row_values_coordinates = []
             if int(result[0]) > 0:
-                ## Add xy coordinates based on station names and pier numbers:
                 for kwd in kwds:
+                    arcpy.AddMessage(f"Search for {kwd}:")
                     if kwd in tuple(station_names):
-                        arcpy.AddMessage(f"kwd {kwd} is in station names."    )
                         get_coordinates_for_nongeotag_media(station_point_feature, station_name_field, kwd, row_values_coordinates)
                     elif kwd == "Mabalacat Depot" or kwd == "Banlic Depot":
-                        arcpy.AddMessage(f"kwd {kwd} is in station names."    )
                         get_coordinates_for_nongeotag_media(station_point_feature, station_name_field, kwd, row_values_coordinates)
                     elif kwd in tuple(chainage_labels):
-                        arcpy.AddMessage(f"kwd {kwd} is in station names."    )
-                        arcpy.AddMessage(f"kwd {kwd} is in chainage labels."    )
                         get_coordinates_for_nongeotag_media(chainage_point_feature, chainage_point_field, kwd, row_values_coordinates)
                     elif kwd in tuple(pier_numbers):
-                        arcpy.AddMessage(f"kwd {kwd} is in station names."    )
                         get_coordinates_for_nongeotag_media(pier_point_feature, piern_field, kwd, row_values_coordinates)
+
+                    #-- When no kwd was found:
+                    else:
+                        #--- Pier numbers:
+                        try:
+                            search_kwds = [item for item in pier_numbers if re.search(kwd, item)]
+                            kwd = search_kwds[0]
+                            get_coordinates_for_nongeotag_media(pier_point_feature, piern_field, kwd, row_values_coordinates)
+                        
+                        #--- Chainage:
+                        except:
+                            search_kwds = [item for item in chainage_labels if re.search(kwd, item)]
+                            kwd = search_kwds[0]
+                            get_coordinates_for_nongeotag_media(chainage_point_feature, piern_field, kwd, row_values_coordinates)
 
             #--- Update xy coordinates in nongeo_layer
             arcpy.AddMessage(f"row_values_coordinates: {row_values_coordinates}")
@@ -609,12 +714,16 @@ class DroneImagePoints(object):
             # Delete all temporary layers
             arcpy.management.Delete([nongeo_layer, photo_points, geotag_layer])
 
+            #--- Delete temp folder 
+            if photo_points:
+                shutil.rmtree(temp_folder)
+
 
         Medeia_tables()
 
 class DroneViedoPoints(object):
     def __init__(self):
-        self.label = "1.3. Generate Drone Video Footage Points"
+        self.label = "1.4. Generate Drone Video Footage Points"
         self.description = "Generate Drone Video Footage Points"
 
     def getParameterInfo(self):
@@ -723,6 +832,7 @@ class DroneViedoPoints(object):
 
             #--- Get pier numbers
             pier_numbers = get_values_from_field(pier_point_feature, 'PierNumber')
+            pier_numbers.sort(key=lambda x: int(re.findall(r'\d+', x)[0]))
 
             # Create an empty feature class and add fields
             geometry_type = "POINT" # Other options: POLYLINE, POLYGON, MULTIPOINT, MULTIPATCH
@@ -763,11 +873,6 @@ class DroneViedoPoints(object):
                 for row in row_values:
                     cursor.insertRow(row)
 
-            # If keyword field is empty, it will fail to create a point:
-            null_keyword = [f[0] for f in arcpy.da.SearchCursor(nongeo_video, [keyword_field]) if f[0] is None]
-            if null_keyword:
-                arcpy.AddMessage('You fail to extract a keyword. Check your code and run again.')
-
             #--- Add contents to fields (project, CP, station name, pier number, depot, time stamp) based on the file name
             add_contents_field(nongeo_video, station_names, proj, project_field, videoName_field, cp_field, keyword_field, timestamp_field)          
 
@@ -776,15 +881,29 @@ class DroneViedoPoints(object):
             row_values_coordinates = []
 
             for kwd in kwds:
+                arcpy.AddMessage(f"Search for {kwd}:")
                 if kwd in tuple(station_names):
                     get_coordinates_for_nongeotag_media(station_point_feature, station_name_field, kwd, row_values_coordinates)
                 elif kwd == "Mabalacat Depot" or kwd == "Banlic Depot":
                     get_coordinates_for_nongeotag_media(station_point_feature, station_name_field, kwd, row_values_coordinates)
                 elif kwd in tuple(chainage_labels):
-                    arcpy.AddMessage(f"kwd {kwd} is in chainage labels."    )
                     get_coordinates_for_nongeotag_media(chainage_point_feature, chainage_point_field, kwd, row_values_coordinates)
                 elif kwd in tuple(pier_numbers):
                     get_coordinates_for_nongeotag_media(pier_point_feature, piern_field, kwd, row_values_coordinates)
+        
+                #-- When no kwd was found:
+                else:
+                    #--- Pier numbers:
+                    try:
+                        search_kwds = [item for item in pier_numbers if re.search(kwd, item)]
+                        kwd = search_kwds[0]
+                        get_coordinates_for_nongeotag_media(pier_point_feature, piern_field, kwd, row_values_coordinates)
+                    
+                    #--- Chainage:
+                    except:
+                        search_kwds = [item for item in chainage_labels if re.search(kwd, item)]
+                        kwd = search_kwds[0]
+                        get_coordinates_for_nongeotag_media(chainage_point_feature, piern_field, kwd, row_values_coordinates)
                 
             #--- Update xy coordinates in nongeo_layer
             arcpy.AddMessage(row_values_coordinates)

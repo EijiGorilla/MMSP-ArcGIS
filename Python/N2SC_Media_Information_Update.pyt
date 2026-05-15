@@ -117,7 +117,7 @@ def get_coordinates_for_nongeotag_media(point_feature, query_field, kwd, row_val
         kwd = 'San Pedro'
     elif kwd == 'Sta.Rosa':
         kwd = 'Sta. Rosa'
-    elif kwd == 'Sta. Mesa':
+    elif kwd == 'Sta.Mesa':
         kwd = 'Sta. Mesa'
 
     arcpy.AddMessage(f"Found kwd: {kwd}")
@@ -324,6 +324,10 @@ def get_values_from_field(layer, field_name):
     field = [f.name for f in arcpy.ListFields(layer) if f.name == field_name][0]
     values = [re.sub(" ", "", f[0]) for f in arcpy.da.SearchCursor(layer, [field])]
     return values
+
+def prs92_wgs84(layers92, layers84, to_gcs_ref, to_georef):
+    for i, layer in enumerate(layers92):
+        arcpy.management.Project(layer, layers84[i], to_gcs_ref, to_georef)
             
 class Toolbox(object):
     def __init__(self):
@@ -516,17 +520,18 @@ class DroneImagePoints(object):
             photoOption = "ALL_PHOTOS" # "ONLY_GEOTAGGED"
             attachmentsOption = "NO_ATTACHMENTS"
 
+
             # Convert PRSS92 to WGS84
             station_point_feature = "station_point_feature"
             pier_point_feature = "pier_point_feature"
             chainage_point_feature = "chainage_point_feature"
+            ref_points_wgs84 = [station_point_feature, pier_point_feature, chainage_point_feature]
+            ref_points_prs92 = [station_point_prs92, pier_point_prs92, chainage_point_prs92]
 
-            # prs92 = arcpy.SpatialReference(3123)
             wgs84 = arcpy.SpatialReference(4326)
             geo_trans = "PRS_1992_To_WGS_1984_1"
-            arcpy.management.Project(station_point_prs92, station_point_feature, wgs84, geo_trans)
-            arcpy.management.Project(pier_point_prs92, pier_point_feature, wgs84, geo_trans)
-            arcpy.management.Project(chainage_point_prs92, chainage_point_feature, wgs84, geo_trans)
+
+            prs92_wgs84(ref_points_prs92, ref_points_wgs84, wgs84, geo_trans)
 
             #--------------------------------------------------------------#
             #         Proprocess files & Create Geotagged Images           #
@@ -552,13 +557,7 @@ class DroneImagePoints(object):
             #--- Copy ONLY top-level images:
             for filename in os.listdir(image_folder):
                 file_path = os.path.join(image_folder, filename)
-                if os.path.isfile(file_path) and filename.lower().endswith(('.jpg', '.JPG', '.jpeg', '.JPEG', 'tiff', 'TIFF', 'PNG', 'png')):
-                    #--- Convert PNG to JPEG, if any (GeoTaggedPhotosToPoints does not support PNG format)
-                    if filename.lower().endswith(('PNG', 'png')):
-                        image = Image.open(file_path)
-                        rgb_image = image.convert('RGB')
-                        rgb_image.save(re.sub('png|PNG', 'jpg', file_path), 'JPEG')
-                        shutil.copy(re.sub('png|PNG', 'jpg', file_path), temp_folder)
+                if os.path.isfile(file_path) and filename.lower().endswith(('.jpg', '.JPG', '.jpeg', '.JPEG', 'tiff', 'TIFF')):
                     shutil.copy(file_path, temp_folder)
 
             #--- Create point features using images
@@ -596,92 +595,49 @@ class DroneImagePoints(object):
             pier_numbers.sort(key=lambda x: int(re.findall(r'\d+', x)[0]))
 
             #--- Add contents to fields (project, CP, station name, pier number, depot, time stamp) based on the file name
-            add_contents_field(photo_points, station_names, proj, project_field, imageName_field, cp_field, keyword_field, timestamp_field, type_field, 'image')          
+            add_contents_field(photo_points, station_names, proj, project_field, imageName_field, cp_field, keyword_field, timestamp_field, type_field, 'image')
 
-            #--------------------------------------------#
-            #         For Non-Geotagged Images           #
-            #--------------------------------------------#
-            # If images are not geotagged, filter out all the geotagged layers.
-            #--- CAUTION: arcpy.management.MakeFeatureLayer direcly edits the layer.
-            nongeo_layer = 'nongeo_images'
-            x_field = 'X'
-            where_clause = f"{x_field} is not Null"
-            arcpy.management.CopyFeatures(photo_points, nongeo_layer)
-            arcpy.management.MakeFeatureLayer(nongeo_layer, nongeo_layer)
-            arcpy.management.SelectLayerByAttribute(nongeo_layer, "NEW_SELECTION", where_clause)
-            arcpy.management.DeleteFeatures(nongeo_layer)
+            #--- Add cooridnates using keyword
+            kwds = [f[0] for f in arcpy.da.SearchCursor(photo_points, [keyword_field])]
 
-            ## Count rows of nongeotagged images
-            result = arcpy.management.GetCount(nongeo_layer)
-            kwds = [f[0] for f in arcpy.da.SearchCursor(nongeo_layer, [keyword_field])]
-            arcpy.AddMessage(f"Nongeo Layer kwd: {kwds}")
 
             row_values_coordinates = []
-            if int(result[0]) > 0:
-                for kwd in kwds:
-                    arcpy.AddMessage(f"Search for {kwd}:")
-                    if kwd in tuple(station_names):
-                        get_coordinates_for_nongeotag_media(station_point_feature, station_name_field, kwd, row_values_coordinates)
-                    elif kwd == "Mabalacat Depot" or kwd == "Banlic Depot":
-                        get_coordinates_for_nongeotag_media(station_point_feature, station_name_field, kwd, row_values_coordinates)
-                    elif kwd in tuple(chainage_labels):
-                        get_coordinates_for_nongeotag_media(chainage_point_feature, chainage_point_field, kwd, row_values_coordinates)
-                    elif kwd in tuple(pier_numbers):
-                        get_coordinates_for_nongeotag_media(pier_point_feature, piern_field, kwd, row_values_coordinates)
 
-                    #-- When no kwd was found:
-                    else:
-                        #--- Pier numbers:
-                        try:
-                            search_kwds = [item for item in pier_numbers if re.search(kwd, item)]
-                            kwd = search_kwds[0]
-                            get_coordinates_for_nongeotag_media(pier_point_feature, piern_field, kwd, row_values_coordinates)
-                        
-                        #--- Chainage:
-                        except:
-                            search_kwds = [item for item in chainage_labels if re.search(kwd, item)]
-                            kwd = search_kwds[0]
-                            get_coordinates_for_nongeotag_media(chainage_point_feature, piern_field, kwd, row_values_coordinates)
+            for kwd in kwds:
+                arcpy.AddMessage(f"Search for {kwd}:")
+                if kwd in tuple(station_names):
+                    get_coordinates_for_nongeotag_media(station_point_feature, station_name_field, kwd, row_values_coordinates)
+                elif kwd == "Mabalacat Depot" or kwd == "Banlic Depot":
+                    get_coordinates_for_nongeotag_media(station_point_feature, station_name_field, kwd, row_values_coordinates)
+                elif kwd in tuple(chainage_labels):
+                    get_coordinates_for_nongeotag_media(chainage_point_feature, chainage_point_field, kwd, row_values_coordinates)
+                elif kwd in tuple(pier_numbers):
+                    get_coordinates_for_nongeotag_media(pier_point_feature, piern_field, kwd, row_values_coordinates)
+
+                #-- When no kwd was found:
+                else:
+                    #--- Pier numbers:
+                    try:
+                        search_kwds = [item for item in pier_numbers if re.search(kwd, item)]
+                        kwd = search_kwds[0]
+                        get_coordinates_for_nongeotag_media(pier_point_feature, piern_field, kwd, row_values_coordinates)
+                    
+                    #--- Chainage:
+                    except:
+                        search_kwds = [item for item in chainage_labels if re.search(kwd, item)]
+                        kwd = search_kwds[0]
+                        get_coordinates_for_nongeotag_media(chainage_point_feature, piern_field, kwd, row_values_coordinates)
 
             #--- Update xy coordinates in nongeo_layer
             arcpy.AddMessage(f"row_values_coordinates: {row_values_coordinates}")
-            update_coordinates_to_nongeotagged_points(nongeo_layer, row_values_coordinates)
+            update_coordinates_to_nongeotagged_points(photo_points, row_values_coordinates)
 
-            #--------------------------------------------#
-            #             For Geotagged Images           #
-            #--------------------------------------------#
-            where_clause = f"{x_field} is not Null"
-            geotag_layer = "geotag_layer"
-
-            photo_points_count = arcpy.management.GetCount(photo_points)
-            arcpy.AddMessage(f"Photo points count: {photo_points_count[0]}")
-
-            arcpy.management.MakeFeatureLayer(photo_points, geotag_layer) # Directly edits photo_points
-            arcpy.management.SelectLayerByAttribute(geotag_layer, "NEW_SELECTION", where_clause)
-            result = arcpy.management.GetCount(geotag_layer)
-            compile_layer = "compile_layer"
-   
-            result_nongeo = arcpy.management.GetCount(nongeo_layer)
-            arcpy.AddMessage(f"Geotag Layer count: {result[0]}, Nongeo Layer count: {result_nongeo[0]}")
-
-            #---------------------------------------------------------------------#
-            #             Compile all geotagged and nongeotagged images           #
-            #---------------------------------------------------------------------#
-            #--- Compile all geotagged and nongeotagged images into one layer, 'compile_layer', if non-geotagged images exist. If not, 'compile_layer' is the same as geotag_layer.
-            if int(result[0]) > 0 and int(result_nongeo[0]) > 0:
-                arcpy.AddMessage("Both geotagged and non-geotagged images exist. Compile them into one layer.")
-                compile_layer = arcpy.management.Append(geotag_layer, nongeo_layer, "NO_TEST")
-            
-            ## only geotag_images:
-            elif int(result[0]) > 0 and int(result_nongeo[0]) == 0:
-                arcpy.management.CopyFeatures(geotag_layer, compile_layer)
-
-            # Sequantial numbers for 'temp' field            
-            add_sequential_numbers(compile_layer, temp_field)
+            #--- Sequantial numbers for 'temp' field            
+            add_sequential_numbers(photo_points, temp_field)
 
             # Generate Near Table
             near_table = 'near_table'
-            arcpy.analysis.GenerateNearTable(compile_layer, compile_layer, near_table, "", "", "", False, 1, "PLANAR", "", "")
+            arcpy.analysis.GenerateNearTable(photo_points, photo_points, near_table, "", "", "", False, 1, "PLANAR", "", "")
             arcpy.management.AddField(near_table, temp_field, "SHORT", "", "", "", temp_field, "NULLABLE", "REQUIRED")
             add_sequential_numbers(near_table, temp_field)
             arcpy.management.AddField(near_table, id_field, "SHORT", "", "", "", id_field, "NULLABLE", "REQUIRED")           # Assign group id
@@ -691,7 +647,7 @@ class DroneImagePoints(object):
             assign_group_id_for_display(near_table, id_field, fid_list, prev_id)
 
             # Join field
-            arcpy.management.JoinField(in_data=compile_layer,
+            arcpy.management.JoinField(in_data=photo_points,
                                     in_field=temp_field, 
                                     join_table=near_table,
                                     join_field=temp_field,
@@ -701,22 +657,22 @@ class DroneImagePoints(object):
             table = pd.read_excel(dbx_link_table)
             todict = table.to_dict()
             dbx_link_dict = {name[1]: link[1] for name, link in zip(todict[imageName_field].items(), todict['dbx_link'].items())}
-            update_path_field(compile_layer, path_field, imageName_field, cp_field, dbx_link_dict)
+            update_path_field(photo_points, path_field, imageName_field, cp_field, dbx_link_dict)
 
             # Truncate target layer
             arcpy.TruncateTable_management(target_layer)
             arcpy.AddMessage("Target layer was successfully truncated")
 
             # Append new point layer to target layer
-            arcpy.management.Append(compile_layer, target_layer, schema_type = 'NO_TEST')
+            arcpy.management.Append(photo_points, target_layer, schema_type = 'NO_TEST')
             arcpy.AddMessage("Target layer was successfully appended")
 
             # Delete all temporary layers
-            arcpy.management.Delete([nongeo_layer, photo_points, geotag_layer])
+            arcpy.management.Delete([photo_points])
 
             #--- Delete temp folder 
-            if photo_points:
-                shutil.rmtree(temp_folder)
+            # if photo_points:
+            #     shutil.rmtree(temp_folder)
 
 
         Medeia_tables()
@@ -816,13 +772,13 @@ class DroneViedoPoints(object):
             station_point_feature = "station_point_feature"
             pier_point_feature = "pier_point_feature"
             chainage_point_feature = "chainage_point_feature"
+            ref_points_wgs84 = [station_point_feature, pier_point_feature, chainage_point_feature]
+            ref_points_prs92 = [station_point_prs92, pier_point_prs92, chainage_point_prs92]
 
             # prs92 = arcpy.SpatialReference(3123)
             wgs84 = arcpy.SpatialReference(4326)
             geo_trans = "PRS_1992_To_WGS_1984_1"
-            arcpy.management.Project(station_point_prs92, station_point_feature, wgs84, geo_trans)
-            arcpy.management.Project(pier_point_prs92, pier_point_feature, wgs84, geo_trans)
-            arcpy.management.Project(chainage_point_prs92, chainage_point_feature, wgs84, geo_trans)
+            prs92_wgs84(ref_points_prs92, ref_points_wgs84, wgs84, geo_trans)
 
             #--- Get station names from station point feature
             station_names = get_values_from_field(station_point_feature, "Station")

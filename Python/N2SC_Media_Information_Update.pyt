@@ -315,9 +315,10 @@ def add_sequential_numbers(layer, temp_field):
             cursor.updateRow(row)
 
 def update_coordinates_to_nongeotagged_points(layer, row_values_coordinates):
-    with arcpy.da.UpdateCursor(layer, ['SHAPE@XY']) as cursor:
+    with arcpy.da.UpdateCursor(layer, ['SHAPE@XY', 'SHAPE@Z']) as cursor:
         for i, row in enumerate(cursor):
             row[0] = row_values_coordinates[i]
+            row[1] = 0
             cursor.updateRow(row)
 
 def get_values_from_field(layer, field_name):
@@ -600,7 +601,6 @@ class DroneImagePoints(object):
             #--- Add cooridnates using keyword
             kwds = [f[0] for f in arcpy.da.SearchCursor(photo_points, [keyword_field])]
 
-
             row_values_coordinates = []
 
             for kwd in kwds:
@@ -794,7 +794,7 @@ class DroneViedoPoints(object):
             geometry_type = "POINT" # Other options: POLYLINE, POLYGON, MULTIPOINT, MULTIPATCH
             spatial_reference = arcpy.SpatialReference(4326) # WGS 1984 spatial reference
             nongeo_video = 'nongeo_video'
-            arcpy.management.CreateFeatureclass(fgdb, nongeo_video, geometry_type, spatial_reference=spatial_reference)
+            arcpy.management.CreateFeatureclass(fgdb, nongeo_video, geometry_type, has_z="ENABLED", spatial_reference=spatial_reference)
 
             main_fields = ['Path', 'Name', 'Type', 'TimeStamp', 'temp', 'Project', 'Keyword', 'CP']
             for field in main_fields:

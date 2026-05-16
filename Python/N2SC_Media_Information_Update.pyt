@@ -326,15 +326,59 @@ def get_values_from_field(layer, field_name):
     values = [re.sub(" ", "", f[0]) for f in arcpy.da.SearchCursor(layer, [field])]
     return values
 
-def prs92_wgs84(layers92, layers84, to_gcs_ref, to_georef):
+def prs92_wgs84(layers92, layers84, to_gcs_ref, geotrans):
     for i, layer in enumerate(layers92):
-        arcpy.management.Project(layer, layers84[i], to_gcs_ref, to_georef)
-            
+        if arcpy.Describe(layer).spatialReference.factoryCode == 4326:
+            layers84[i] = layer
+        else:
+            arcpy.management.Project(layer, layers84[i], to_gcs_ref, geotrans)
+
+def get_reference_names(ref_points, fields):
+    all_names = []
+    for i, point_fc in enumerate(ref_points):
+        names = get_values_from_field(point_fc, fields[i])
+        if fields[i] == 'PierNumber':
+            names.sort(key=lambda x: int(re.findall(r'\d+', x)[0]))
+        all_names.append(names)
+    return all_names
+
+def get_xyz_for_media_files(kwds, ref_points, ref_names, ref_fields, empty_list):
+    for kwd in kwds:
+        arcpy.AddMessage(f"Search for {kwd}:")
+        station_pt, piern_pt, chainage_pt = ref_points
+        station_names, piern_numbers, chainage_labels = ref_names
+        station_field, piern_field, chainage_field = ref_fields
+
+        if kwd in tuple(station_names):
+            get_coordinates_for_nongeotag_media(station_pt, station_field, kwd, empty_list)
+        elif kwd == "Mabalacat Depot" or kwd == "Banlic Depot":
+            get_coordinates_for_nongeotag_media(station_pt, station_field, kwd, empty_list)
+        elif kwd in tuple(piern_numbers):
+            get_coordinates_for_nongeotag_media(piern_pt, piern_field, kwd, empty_list)
+        elif kwd in tuple(chainage_labels):
+            get_coordinates_for_nongeotag_media(chainage_pt, chainage_field, kwd, empty_list)
+        #-- When no kwd was found:
+        else:
+            #--- Pier numbers:
+            try:
+                try:
+                    search_kwds = [item for item in piern_numbers if re.search(kwd, item)]
+                    kwd = search_kwds[0]
+                    get_coordinates_for_nongeotag_media(piern_pt, piern_field, kwd, empty_list)
+                except:
+                    search_kwds = [item for item in chainage_labels if re.search(kwd, item)]
+                    kwd = search_kwds[0]
+                    get_coordinates_for_nongeotag_media(chainage_pt, chainage_field, kwd, empty_list)
+            except:
+                pass
+
+    return empty_list
+    
 class Toolbox(object):
     def __init__(self):
         self.label = "UpdateLandAcquisition"
         self.alias = "UpdateLandAcquisition"
-        self.tools = [FixFileNames, JustMessage1, LowerResolutionImages, DroneImagePoints, DroneViedoPoints]
+        self.tools = [FixFileNames, JustMessage1, LowerResolutionImages, GenerateDronePoints]
 
 
 class LowerResolutionImages(object):
@@ -433,10 +477,10 @@ class JustMessage1(object):
         self.label = "1.2 ----- Get Dropbox Link (Run a separate Python code) -----"
         self.description = "Output is Excel file"
 
-class DroneImagePoints(object):
+class GenerateDronePoints(object):
     def __init__(self):
-        self.label = "1.3. Generate Drone Image Points"
-        self.description = "Generate Drone Image Points"
+        self.label = "1.3. Generate Media Points"
+        self.description = "Generate Media Points"
 
     def getParameterInfo(self):
         proj = arcpy.Parameter(
@@ -449,8 +493,27 @@ class DroneImagePoints(object):
         proj.filter.type = "ValueList"
         proj.filter.list = ['N2', 'SC']
 
-        image_folder = arcpy.Parameter(
-            displayName = "Directory of Drone Images",
+
+        fgdb = arcpy.Parameter(
+            displayName = "File Geodatabase",
+            name = "File Geodatabase",
+            datatype = "DEWorkspace",
+            parameterType = "Required",
+            direction = "Input"
+        )
+
+        media_type = arcpy.Parameter(
+            displayName = "Type of Media (image or video)",
+            name = "Type of Media (image or video)",
+            datatype = "GPString",
+            parameterType = "Required",
+            direction = "Input"
+        )
+        media_type.filter.type = "ValueList"
+        media_type.filter.list = ['image', 'video']
+
+        media_folder = arcpy.Parameter(
+            displayName = "Directory of Drone Files (Images or Videos)",
             name = "Directory of Drone Images",
             datatype = "DEWorkspace",
             parameterType = "Required",
@@ -497,259 +560,7 @@ class DroneImagePoints(object):
             direction = "Input"
         )
 
-        params = [proj, image_folder, dbx_linke_file, pier_point_fc, station_point_fc, chainage_point_fc, target_point_layer]
-        return params
-
-    def updateMessages(self, params):
-        return
-
-    def execute(self, params, messages):
-        proj = params[0].valueAsText
-        image_folder = params[1].valueAsText
-        dbx_link_table = params[2].valueAsText
-        pier_point_prs92 = params[3].valueAsText
-        station_point_prs92 = params[4].valueAsText
-        chainage_point_prs92 = params[5].valueAsText
-        target_layer = params[6].valueAsText
-
-        def Medeia_tables():
-            arcpy.env.overwriteOutput = True
-
-            # Generate geotagged points
-            photo_points = "photo_points"
-            badPhotoist = "photos_noGPS"
-            photoOption = "ALL_PHOTOS" # "ONLY_GEOTAGGED"
-            attachmentsOption = "NO_ATTACHMENTS"
-
-
-            # Convert PRSS92 to WGS84
-            station_point_feature = "station_point_feature"
-            pier_point_feature = "pier_point_feature"
-            chainage_point_feature = "chainage_point_feature"
-            ref_points_wgs84 = [station_point_feature, pier_point_feature, chainage_point_feature]
-            ref_points_prs92 = [station_point_prs92, pier_point_prs92, chainage_point_prs92]
-
-            wgs84 = arcpy.SpatialReference(4326)
-            geo_trans = "PRS_1992_To_WGS_1984_1"
-
-            prs92_wgs84(ref_points_prs92, ref_points_wgs84, wgs84, geo_trans)
-
-            #--------------------------------------------------------------#
-            #         Proprocess files & Create Geotagged Images           #
-            #--------------------------------------------------------------#
-
-            full_path = Path(image_folder)
-            parts = full_path.parts
-            temp_path = str(Path(*parts[:9]))
-            temp_folder = os.path.join(temp_path, 'temp')
-
-            if os.path.exists(temp_folder) and os.path.isdir(temp_folder):
-                try:
-                    shutil.rmtree(temp_folder)
-                    arcpy.AddMessage(f"Folder '{temp_folder}' and all its contents removed successfully.")
-                    os.makedirs(temp_folder)
-                    
-                except OSError as e:
-                    arcpy.AddMessage(f"Error: {temp_folder}: {e.strerror}")
-            else:
-                arcpy.AddMessage(f"Folder '{temp_folder}' does not exist. Create a new temp folder")
-                os.makedirs(temp_folder)
-
-            #--- Copy ONLY top-level images:
-            for filename in os.listdir(image_folder):
-                file_path = os.path.join(image_folder, filename)
-                if os.path.isfile(file_path) and filename.lower().endswith(('.jpg', '.JPG', '.jpeg', '.JPEG', 'tiff', 'TIFF')):
-                    shutil.copy(file_path, temp_folder)
-
-            #--- Create point features using images
-            arcpy.management.GeoTaggedPhotosToPoints(temp_folder, photo_points, badPhotoist, photoOption, attachmentsOption)
-
-            #--- Add main fiedls
-            fields = ['Name', 'Type', 'TimeStamp', 'temp', 'Project', 'Keyword', 'CP']
-            for field in fields:
-                if (field == 'temp') or (field == 'id'):
-                    arcpy.management.AddField(photo_points, field, "SHORT", "", "", "", field, "NULLABLE", "REQUIRED")
-                else:
-                    arcpy.management.AddField(photo_points, field, "TEXT", "", "", "", field, "NULLABLE", "REQUIRED")
-
-            imageName_field= "Name"
-            type_field = "Type"
-            timestamp_field = "TimeStamp"
-            temp_field = "temp"
-            path_field = "Path"
-            project_field = "Project"
-            station_name_field = 'Station'
-            piern_field = 'PierNumber'
-            chainage_point_field = 'KmSpot'
-            keyword_field = 'Keyword'
-            id_field = 'id'
-            cp_field = 'CP'
-        
-            #--- Get station names from station point feature
-            station_names = get_values_from_field(station_point_feature, station_name_field)
-
-            #--- Get chainage labels from chainage point feature
-            chainage_labels = get_values_from_field(chainage_point_feature, 'KmSpot')
-
-            #--- Get pier numbers
-            pier_numbers = get_values_from_field(pier_point_feature, 'PierNumber')
-            pier_numbers.sort(key=lambda x: int(re.findall(r'\d+', x)[0]))
-
-            #--- Add contents to fields (project, CP, station name, pier number, depot, time stamp) based on the file name
-            add_contents_field(photo_points, station_names, proj, project_field, imageName_field, cp_field, keyword_field, timestamp_field, type_field, 'image')
-
-            #--- Add cooridnates using keyword
-            kwds = [f[0] for f in arcpy.da.SearchCursor(photo_points, [keyword_field])]
-
-            row_values_coordinates = []
-
-            for kwd in kwds:
-                arcpy.AddMessage(f"Search for {kwd}:")
-                if kwd in tuple(station_names):
-                    get_coordinates_for_nongeotag_media(station_point_feature, station_name_field, kwd, row_values_coordinates)
-                elif kwd == "Mabalacat Depot" or kwd == "Banlic Depot":
-                    get_coordinates_for_nongeotag_media(station_point_feature, station_name_field, kwd, row_values_coordinates)
-                elif kwd in tuple(chainage_labels):
-                    get_coordinates_for_nongeotag_media(chainage_point_feature, chainage_point_field, kwd, row_values_coordinates)
-                elif kwd in tuple(pier_numbers):
-                    get_coordinates_for_nongeotag_media(pier_point_feature, piern_field, kwd, row_values_coordinates)
-
-                #-- When no kwd was found:
-                else:
-                    #--- Pier numbers:
-                    try:
-                        search_kwds = [item for item in pier_numbers if re.search(kwd, item)]
-                        kwd = search_kwds[0]
-                        get_coordinates_for_nongeotag_media(pier_point_feature, piern_field, kwd, row_values_coordinates)
-                    
-                    #--- Chainage:
-                    except:
-                        search_kwds = [item for item in chainage_labels if re.search(kwd, item)]
-                        kwd = search_kwds[0]
-                        get_coordinates_for_nongeotag_media(chainage_point_feature, piern_field, kwd, row_values_coordinates)
-
-            #--- Update xy coordinates in nongeo_layer
-            arcpy.AddMessage(f"row_values_coordinates: {row_values_coordinates}")
-            update_coordinates_to_nongeotagged_points(photo_points, row_values_coordinates)
-
-            #--- Sequantial numbers for 'temp' field            
-            add_sequential_numbers(photo_points, temp_field)
-
-            # Generate Near Table
-            near_table = 'near_table'
-            arcpy.analysis.GenerateNearTable(photo_points, photo_points, near_table, "", "", "", False, 1, "PLANAR", "", "")
-            arcpy.management.AddField(near_table, temp_field, "SHORT", "", "", "", temp_field, "NULLABLE", "REQUIRED")
-            add_sequential_numbers(near_table, temp_field)
-            arcpy.management.AddField(near_table, id_field, "SHORT", "", "", "", id_field, "NULLABLE", "REQUIRED")           # Assign group id
-
-            fid_list = []
-            prev_id = 1
-            assign_group_id_for_display(near_table, id_field, fid_list, prev_id)
-
-            # Join field
-            arcpy.management.JoinField(in_data=photo_points,
-                                    in_field=temp_field, 
-                                    join_table=near_table,
-                                    join_field=temp_field,
-                                    fields=id_field)
-
-            # Update Path using dropbox usercontent link
-            table = pd.read_excel(dbx_link_table)
-            todict = table.to_dict()
-            dbx_link_dict = {name[1]: link[1] for name, link in zip(todict[imageName_field].items(), todict['dbx_link'].items())}
-            update_path_field(photo_points, path_field, imageName_field, cp_field, dbx_link_dict)
-
-            # Truncate target layer
-            arcpy.TruncateTable_management(target_layer)
-            arcpy.AddMessage("Target layer was successfully truncated")
-
-            # Append new point layer to target layer
-            arcpy.management.Append(photo_points, target_layer, schema_type = 'NO_TEST')
-            arcpy.AddMessage("Target layer was successfully appended")
-
-            # Delete all temporary layers
-            arcpy.management.Delete([photo_points])
-
-            #--- Delete temp folder 
-            # if photo_points:
-            #     shutil.rmtree(temp_folder)
-
-
-        Medeia_tables()
-
-class DroneViedoPoints(object):
-    def __init__(self):
-        self.label = "1.4. Generate Drone Video Footage Points"
-        self.description = "Generate Drone Video Footage Points"
-
-    def getParameterInfo(self):
-        proj = arcpy.Parameter(
-            displayName = "Project Extension: N2 or SC",
-            name = "Project Extension: N2 or SC",
-            datatype = "GPString",
-            parameterType = "Required",
-            direction = "Input"
-        )
-        proj.filter.type = "ValueList"
-        proj.filter.list = ['N2', 'SC']
-
-        fgdb = arcpy.Parameter(
-            displayName = "File Geodatabase",
-            name = "File Geodatabase",
-            datatype = "DEWorkspace",
-            parameterType = "Required",
-            direction = "Input"
-        )
-
-        video_folder = arcpy.Parameter(
-            displayName = "Directory of Video Footage",
-            name = "Directory of Video Footage",
-            datatype = "DEWorkspace",
-            parameterType = "Required",
-            direction = "Input"
-        )
-
-        dbx_linke_file = arcpy.Parameter(
-            displayName = "Dropbox Link Table (Excel)",
-            name = "Dropbox Link Table for Images (Excel)",
-            datatype = "DEFile",
-            parameterType = "Required",
-            direction = "Input"
-        )
-
-        pier_point_fc = arcpy.Parameter(
-            displayName = "Pier Point Feature Layer (prs92)",
-            name = "Pier Point Feature Layer",
-            datatype = "GPFeatureLayer",
-            parameterType = "Required",
-            direction = "Input"
-        )
-
-        station_point_fc = arcpy.Parameter(
-            displayName = "Station Point Feature Layer (prs92)",
-            name = "Station Point Feature Layer",
-            datatype = "GPFeatureLayer",
-            parameterType = "Required",
-            direction = "Input"
-        )
-
-        chainage_point_fc = arcpy.Parameter(
-            displayName = "Chainage Point Feature Layer",
-            name = "Chainage Point Feature Layer",
-            datatype = "GPFeatureLayer",
-            parameterType = "Required",
-            direction = "Input"
-        )
-
-        target_point_layer = arcpy.Parameter(
-            displayName = "Target Video Point Feature Layer (To be updated)",
-            name = "Target Video Point Feature Layer (To be updated)",
-            datatype = "GPFeatureLayer",
-            parameterType = "Required",
-            direction = "Input"
-        )
-
-        params = [proj, fgdb, video_folder, dbx_linke_file, pier_point_fc, station_point_fc, chainage_point_fc, target_point_layer]
+        params = [proj, fgdb, media_type, media_folder, dbx_linke_file, pier_point_fc, station_point_fc, chainage_point_fc, target_point_layer]
         return params
 
     def updateMessages(self, params):
@@ -758,12 +569,13 @@ class DroneViedoPoints(object):
     def execute(self, params, messages):
         proj = params[0].valueAsText
         fgdb = params[1].valueAsText
-        video_folder = params[2].valueAsText
-        dbx_link_table = params[3].valueAsText
-        pier_point_prs92 = params[4].valueAsText
-        station_point_prs92 = params[5].valueAsText
-        chainage_point_prs92 = params[6].valueAsText
-        target_layer = params[7].valueAsText
+        media_type = params[2].valueAsText
+        media_folder = params[3].valueAsText
+        dbx_link_table = params[4].valueAsText
+        pier_point_prs92 = params[5].valueAsText
+        station_point_prs92 = params[6].valueAsText
+        chainage_point_prs92 = params[7].valueAsText
+        target_layer = params[8].valueAsText
 
         def Medeia_tables():
             arcpy.env.overwriteOutput = True
@@ -775,37 +587,12 @@ class DroneViedoPoints(object):
             ref_points_wgs84 = [station_point_feature, pier_point_feature, chainage_point_feature]
             ref_points_prs92 = [station_point_prs92, pier_point_prs92, chainage_point_prs92]
 
-            # prs92 = arcpy.SpatialReference(3123)
             wgs84 = arcpy.SpatialReference(4326)
             geo_trans = "PRS_1992_To_WGS_1984_1"
             prs92_wgs84(ref_points_prs92, ref_points_wgs84, wgs84, geo_trans)
 
-            #--- Get station names from station point feature
-            station_names = get_values_from_field(station_point_feature, "Station")
-
-            #--- Get chainage labels from chainage point feature
-            chainage_labels = get_values_from_field(chainage_point_feature, 'KmSpot')
-
-            #--- Get pier numbers
-            pier_numbers = get_values_from_field(pier_point_feature, 'PierNumber')
-            pier_numbers.sort(key=lambda x: int(re.findall(r'\d+', x)[0]))
-
-            # Create an empty feature class and add fields
-            geometry_type = "POINT" # Other options: POLYLINE, POLYGON, MULTIPOINT, MULTIPATCH
-            spatial_reference = arcpy.SpatialReference(4326) # WGS 1984 spatial reference
-            nongeo_video = 'nongeo_video'
-            arcpy.management.CreateFeatureclass(fgdb, nongeo_video, geometry_type, has_z="ENABLED", spatial_reference=spatial_reference)
-
-            main_fields = ['Path', 'Name', 'Type', 'TimeStamp', 'temp', 'Project', 'Keyword', 'CP']
-            for field in main_fields:
-                if (field == 'temp') or (field == 'id'):
-                    arcpy.management.AddField(nongeo_video, field, "SHORT", "", "", "", field, "NULLABLE", "REQUIRED")
-                else:
-                    arcpy.management.AddField(nongeo_video, field, "TEXT", "", "", "", field, "NULLABLE", "REQUIRED")
-
-            # Add video contents from the folder
-            videoName_field= "Name"
-            type_field = "Type"
+            #--- Fields
+            name_field= "Name"
             timestamp_field = "TimeStamp"
             temp_field = "temp"
             path_field = "Path"
@@ -816,91 +603,89 @@ class DroneViedoPoints(object):
             keyword_field = 'Keyword'
             id_field = 'id'
             cp_field = 'CP'
+            ref_fields = [station_name_field, piern_field, chainage_point_field]
 
-            # item_table = pd.DataFrame(columns=main_fields)
-            items = [item for item in os.listdir(video_folder) if item.endswith('.mp4')]
+            #--- Lists of reference names            
+            ref_names = get_reference_names(ref_points_wgs84, ref_fields)
+
+            #--- Create an empty feature class and add fields
+            spatial_reference = arcpy.SpatialReference(4326) # WGS 1984 spatial reference
+            media_point = 'media_point'
+            arcpy.management.CreateFeatureclass(fgdb, media_point, "POINT", has_z="ENABLED", spatial_reference=spatial_reference)
+
+            main_fields = ['Path', 'Name', 'Type', 'TimeStamp', 'temp', 'Project', 'Keyword', 'CP']
+            for field in main_fields:
+                if (field == 'temp') or (field == 'id'):
+                    arcpy.management.AddField(media_point, field, "SHORT", "", "", "", field, "NULLABLE", "REQUIRED")
+                else:
+                    arcpy.management.AddField(media_point, field, "TEXT", "", "", "", field, "NULLABLE", "REQUIRED")
+
+
+            #--- Add contents from the folder
+            items = [item for item in os.listdir(media_folder) if item.endswith(('.jpg', '.JPG', '.jpeg', '.JPEG', 'tiff', 'TIFF', 'mp4'))]
 
             row_values = []
             for i, item in enumerate(items):
-                row_values.append((None, item, "video", None, i+1, None, None, None))
+                row_values.append((None, item, media_type, None, i+1, None, None, None))
                 
             # Insert rows
-            with arcpy.da.InsertCursor(nongeo_video, main_fields) as cursor:
+            with arcpy.da.InsertCursor(media_point, main_fields) as cursor:
                 for row in row_values:
                     cursor.insertRow(row)
 
-            #--- Add contents to fields (project, CP, station name, pier number, depot, time stamp) based on the file name
-            add_contents_field(nongeo_video, station_names, proj, project_field, videoName_field, cp_field, keyword_field, timestamp_field)          
+            # Add contents to fields (project, CP, station name, pier number, depot, time stamp) based on the file name
+            add_contents_field(media_point, ref_names[0], proj, project_field, name_field, cp_field, keyword_field, timestamp_field)          
 
-            ## Add xy coordinates based on station names and pier numbers:
-            kwds = [f[0] for f in arcpy.da.SearchCursor(nongeo_video, [keyword_field])]
-            row_values_coordinates = []
+            #--- Add xy coordinates based on reference names:
+            kwds = [f[0] for f in arcpy.da.SearchCursor(media_point, [keyword_field])]
+            xyz_values = []            
+            xyz_values = get_xyz_for_media_files(kwds, ref_points_wgs84, ref_names, ref_fields, [])
 
-            for kwd in kwds:
-                arcpy.AddMessage(f"Search for {kwd}:")
-                if kwd in tuple(station_names):
-                    get_coordinates_for_nongeotag_media(station_point_feature, station_name_field, kwd, row_values_coordinates)
-                elif kwd == "Mabalacat Depot" or kwd == "Banlic Depot":
-                    get_coordinates_for_nongeotag_media(station_point_feature, station_name_field, kwd, row_values_coordinates)
-                elif kwd in tuple(chainage_labels):
-                    get_coordinates_for_nongeotag_media(chainage_point_feature, chainage_point_field, kwd, row_values_coordinates)
-                elif kwd in tuple(pier_numbers):
-                    get_coordinates_for_nongeotag_media(pier_point_feature, piern_field, kwd, row_values_coordinates)
-        
-                #-- When no kwd was found:
-                else:
-                    #--- Pier numbers:
-                    try:
-                        search_kwds = [item for item in pier_numbers if re.search(kwd, item)]
-                        kwd = search_kwds[0]
-                        get_coordinates_for_nongeotag_media(pier_point_feature, piern_field, kwd, row_values_coordinates)
-                    
-                    #--- Chainage:
-                    except:
-                        search_kwds = [item for item in chainage_labels if re.search(kwd, item)]
-                        kwd = search_kwds[0]
-                        get_coordinates_for_nongeotag_media(chainage_point_feature, piern_field, kwd, row_values_coordinates)
-                
             #--- Update xy coordinates in nongeo_layer
-            arcpy.AddMessage(row_values_coordinates)
-            update_coordinates_to_nongeotagged_points(nongeo_video, row_values_coordinates)
+            arcpy.AddMessage(xyz_values)
+            update_coordinates_to_nongeotagged_points(media_point, xyz_values)
 
-            # Generate Near Table and assign unique numbers to 'id' field
+            #--- Generate Near Table and assign unique numbers to 'id' field
             near_table = 'near_table'
-            arcpy.analysis.GenerateNearTable(nongeo_video, nongeo_video, near_table, "", "", "", False, 1, "PLANAR", "", "")
-            arcpy.management.AddField(near_table, temp_field, "SHORT", "", "", "", temp_field, "NULLABLE", "REQUIRED")
+            search_radius = '' # '50 Meters'
+            location = 'NO_LOCATION'
+            angle = 'NO_ANGLE'
+            closest = 'CLOSEST'
+            closest_count = 1
+            near_table = 'near_table'
+            arcpy.analysis.GenerateNearTable(media_point, media_point, near_table, search_radius, location, angle, closest, closest_count)
+            
+            for field in [temp_field, id_field]:
+                arcpy.management.AddField(near_table, field, "SHORT", "", "", "", field, "NULLABLE", "REQUIRED")
             add_sequential_numbers(near_table, temp_field)
-            arcpy.management.AddField(near_table, id_field, "SHORT", "", "", "", id_field, "NULLABLE", "REQUIRED")
 
             # Assign group id
             fid_list = []
             prev_id = 1
             assign_group_id_for_display(near_table, id_field, fid_list, prev_id)
 
-            ## Join 'id' to nongeo_video layer
-            # Join field
-            arcpy.management.JoinField(in_data=nongeo_video,
+            #--- Join 'id' to media_point layer
+            arcpy.management.JoinField(in_data=media_point,
                                     in_field=temp_field, 
                                     join_table=near_table,
                                     join_field=temp_field,
                                     fields=id_field)
             
-            # Update Path using dropbox usercontent link
+            #--- Update Path using dropbox usercontent link
             table = pd.read_excel(dbx_link_table)
             todict = table.to_dict()
-            dbx_link_dict = {name[1]: link[1] for name, link in zip(todict[videoName_field].items(), todict['dbx_link'].items())}
-            update_path_field(nongeo_video, path_field, videoName_field, cp_field, dbx_link_dict)
+            dbx_link_dict = {name[1]: link[1] for name, link in zip(todict[name_field].items(), todict['dbx_link'].items())}
+            update_path_field(media_point, path_field, name_field, cp_field, dbx_link_dict)
             
-            # Truncate target layer
+            #--- Truncate target layer
             arcpy.TruncateTable_management(target_layer)
             arcpy.AddMessage("Target layer was successfully truncated")
 
-            # Append new point layer to target layer
-            arcpy.management.Append(nongeo_video, target_layer, schema_type = 'NO_TEST')
+            #--- Append new point layer to target layer
+            arcpy.management.Append(media_point, target_layer, schema_type = 'NO_TEST')
             arcpy.AddMessage("Target layer was successfully appended")
 
-            # Delete all temporary layers
+            #--- Delete all temporary layers
             arcpy.management.Delete([station_point_feature, pier_point_feature])
-
 
         Medeia_tables()

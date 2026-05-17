@@ -108,6 +108,32 @@ def replace_strings_in_dataframe(table, field, search_replace_arrays):
         table[field] = table[field].apply(lambda x: re.sub(search, search_replace_arrays[search], str(x)))
     return table
 
+def replace_strings(string, search_replace_arrays):
+    """
+    Replace strings
+    string: string or text subject to replacement
+    search_replace_arrays: list of dictionary containing (search_string, replace_string)
+    Example: {
+    search_replace_arrays = {
+        r'\s+': '',
+        r'CPN': 'N-',
+        r'[,/].*' : '' # This will remove anything after ',' or '/' in the string
+    }
+    """
+    compile = []
+    for search in search_replace_arrays:
+        try:
+            keyword = re.search(search, string).group(0)
+            new_name = re.sub(keyword, search_replace_arrays[search], string)
+            compile.append(new_name)
+        except:
+            pass
+
+    if compile:
+        return compile[0]
+    else:
+        return string
+    
 def extract_pier_numbers(pier_num_field, gist=None, civilt=None, piertrackt=None):
     if gist is not None:
         piers = gist[pier_num_field].values
@@ -312,7 +338,44 @@ class summaryStatistics():
     
         s_table = calculate_differene_before_after()
         return s_table
+
+def return_matching_value(string, search_replace_arrays, return_value=False, default=None):
+    """
+    Find strings and return matching values from search array
+    string: string or text subject to replacement
+    search_replace_arrays: list of dictionary containing (search_string, replace_string)
+    Example: {
+    1. when return_value = True
+    search_replace_arrays = {
+        r'\s+': '',
+        r'CPN': 'N-',
+        r'[,/].*' : '' # This will remove anything after ',' or '/' in the string
+    }
+
+    2. when return_value = False
+    search_array = {r'[S]0\d+?[abcABC]|[S]0\d+', r'S0.*'}
     
+    return_value (boolean): defaultis False. if false, it only returns keyword
+    default: if nothing is found, return None
+    """
+    compile = []
+    for search in search_replace_arrays:
+        try:
+            keyword = re.search(search, string).group(0)
+            if return_value:
+                if keyword:
+                    compile.append(search_replace_arrays[search])
+            else:
+                if keyword:
+                    compile.append(keyword)
+        except:
+            pass
+
+    if compile:
+        return compile[0]
+    else:
+        return default
+        
 class Toolbox(object):
     def __init__(self):
         self.label = "UpdateSCViaduct"
@@ -327,7 +390,7 @@ class Toolbox(object):
                       JustMessage3,
                       GenerateStatisticsBetweenTwoTables,
                       ViaductBIMUpdateMessage,
-                      CreateBIMtoGeodatabase, CreateBuildingLayers, AppendBatchesBIM, AddFieldsToBuildingLayerStation, EditBuildingLayerStation, DomainSettingStationStructure]
+                      CreateBIMtoGeodatabase, CreateBuildingLayers, AppendBatchesBIM, AddEditFieldsToBuildingLayerStation, EditBuildingLayerStation, DomainSettingStationStructure]
 
 class JustMessage1(object):
     def __init__(self):
@@ -1901,31 +1964,31 @@ class CreateBuildingLayers(object):
         self.label = "A-3. (Message ONLY) Make Building Layers using Feature Dataset"
         self.description = "Make Building Layers using Feature Dataset"
 
-class AddFieldsToBuildingLayerStation(object):          
+class AddEditFieldsToBuildingLayerStation(object):          
     def __init__(self):
         self.label = "A-4. Add Fields to New Viaduct Layers"
         self.description = "Add Fields to New Viaduct Layers"
 
     def getParameterInfo(self):
-        cp_update = arcpy.Parameter(
-            displayName = "Target Contract Package",
-            name = "Target Contract Package",
-            datatype = "GPString",
-            parameterType = "Required",
-            direction = "Input",
-            # multiValue = True
-        )
-        cp_update.filter.type = "ValueList"
-        cp_update.filter.list = [
-            "S-01",
-            "S-02",
-            "S-03a",
-            "S-03b",
-            "S-03c",
-            "S-04",
-            "S-05",
-            "S-06"
-        ]
+        # cp_update = arcpy.Parameter(
+        #     displayName = "Target Contract Package",
+        #     name = "Target Contract Package",
+        #     datatype = "GPString",
+        #     parameterType = "Required",
+        #     direction = "Input",
+        #     # multiValue = True
+        # )
+        # cp_update.filter.type = "ValueList"
+        # cp_update.filter.list = [
+        #     "S-01",
+        #     "S-02",
+        #     "S-03a",
+        #     "S-03b",
+        #     "S-03c",
+        #     "S-04",
+        #     "S-05",
+        #     "S-06"
+        # ]
     
         input_layers = arcpy.Parameter(
             displayName = "Select Sublayers Layers (e.g., StructuralColumns)",
@@ -1936,137 +1999,150 @@ class AddFieldsToBuildingLayerStation(object):
             multiValue = True
         )
 
-        params = [cp_update, input_layers]
+        params = [input_layers]
         return params
 
     def updateMessage(self, params):
         return
     
     def execute(self, params, messages):
-        cp_update = params[0].valueAsText
-        input_layers = params[1].valueAsText
+        # cp_update = params[0].valueAsText
+        input_layers = params[0].valueAsText
         arcpy.env.overwriteOutput = True
 
         layers = list(input_layers.split(";"))
 
+        description_field = 't00__Description'
+        docname_field = 'DocName'
+        types_field = 'Types'
+        cp_field = 'CP'
+        piern_field = 'PierNumber'
+        category_field = 'Category'
+        status_field = 'Status'
+        start_actual_field = 'start_actual'
+        finish_plan_field = 'finish_plan'
+        finish_actual_field = 'finish_actual'
+
+        progress_dates_array = {
+            't03__Actual_Start_Date': start_actual_field,
+            't02__Planned_Completion_Date': finish_plan_field,
+            't04__Actual_Completion_Date': finish_actual_field
+        }
+
         # 1. Add fields
-        add_fields = ['Types', 'CP', 'Status', 'PierNumber']
+        add_fields = [types_field, cp_field, status_field, piern_field, start_actual_field, finish_plan_field, finish_actual_field]
 
         arcpy.AddMessage("Add Fields start...")
         for layer in layers:
+            field_list = [f.name for f in arcpy.ListFields(layer)]
             for field in add_fields:
-                if field in ('CP', 'PierNumber'):
-                    arcpy.management.AddField(layer, field, "TEXT", "", "", "", field, "NULLABLE", "")
-                else:
-                    arcpy.management.AddField(layer, field, "SHORT", "", "", "", field, "NULLABLE", "")
-
-        # 2. Initial set for Status
-        arcpy.AddMessage("Convert 'Status' = 1.")
-        for layer in layers:
-            with arcpy.da.UpdateCursor(layer, ['Status']) as cursor:
-                for row in cursor:
-                    row[0] = 1
-                    cursor.updateRow(row)
-
+                if field not in field_list:
+                    if field in (cp_field, piern_field):
+                        arcpy.management.AddField(layer, field, "TEXT", "", "", "", field, "NULLABLE", "")
+                    elif field in (start_actual_field, finish_plan_field, finish_actual_field):
+                        arcpy.management.AddField(layer, field, "DATE", "", "", "", field, "NULLABLE", "")
+                    else:
+                        arcpy.management.AddField(layer, field, "SHORT", "", "", "", field, "NULLABLE", "")
+            
         # 3. Types of categories
-        if cp_update == 'S-01':
-            for layer in layers:
-                if os.path.basename(layer) == 'Decks':
-                    with arcpy.da.UpdateCursor(layer, ['t00__Description', 'Types']) as cursor:
-                        for row in cursor:
-                            if row[0] is not None:
-                                row[1] = 5
-                            else:
-                                row[1] = 0
-                            cursor.updateRow(row)
-
-                elif os.path.basename(layer) == 'StructuralFoundation':
-                    with arcpy.da.UpdateCursor(layer, ['t00__Description', 'Types', 'Category']) as cursor:
-                        for row in cursor:
-                            if row[0] is not None:
-                                if ('Bored Pile' in row[0]) or ('Bore Pile' in row[0]):
-                                    row[1] = 1
-                                elif 'Pilecap' in row[0]:
-                                    row[1] = 2
-                                else:
-                                    row[1] = 0
-                            else:
-                                row[1] = 0
-                            cursor.updateRow(row)
-
-                elif os.path.basename(layer) == 'Piers':
-                    with arcpy.da.UpdateCursor(layer, ['Types', 'Family', 'Category', 'FamilyType']) as cursor:
-                        for row in cursor:
-                            if (row[1] is not None) or (row[2] is not None):
-                                if 'Pier Head' in row[1]:
-                                    row[0] = 4
-                                elif 'Pier' in row[1]:
-                                    row[0] = 3
-                                elif ('Pier Walls' in row[2]) and ('Noise Barrier' in row[3]):
-                                    row[0] = 8
-                                else:
-                                    row[0] = 0
-                            else:
-                                row[0] = 0
-                            cursor.updateRow(row)
-                else:
-                    with arcpy.da.UpdateCursor(layer, ['Types']) as cursor:
-                        for row in cursor:
-                            row[0] = 0
-                            cursor.updateRow(row)
-
-        elif cp_update == 'S-06':
-            for layer in layers:
-                arcpy.AddMessage(layer)
-                if os.path.basename(layer) == 'Bearings':
-                    with arcpy.da.UpdateCursor(layer, ['Types']) as cursor:
-                        for row in cursor:
-                            row[0] = 0
-                            cursor.updateRow(row)
-                else:
-                    with arcpy.da.UpdateCursor(layer, ['t00__Description', 'Category', 'Types']) as cursor:
-                        for row in cursor:
-                            if row[0] is not None:
-                                if 'Bored Pile' in row[0]:
-                                    row[2] = 1
-                                elif 'Pile Cap' in row[0]:
-                                    row[2] = 2
-                                elif ('Pier Column' in row[0]) or ('Pier Colum' in row[0]):
-                                    row[2] = 3
-                                elif 'Pier Head' in row[0]:
-                                    row[2] = 4
-                                elif ('Viaduct' in row[0]) or ('BR' in row[0]):
-                                    row[2] = 5
-                                elif ('At Grade' in row[0]) or ('Abutment' in row[0]):
-                                    row[2] = 7
-                                else:
-                                    row[2] = 0
-                            elif row[1] is not None:
-                                if 'Pier Wall' in row[1]:
-                                    row[2] = 8
-                                else:
-                                    row[2] = 0
-                            else:
-                                row[2] = 0
-                            cursor.updateRow(row)
+        search_array = {
+            r'Bored Pile|Bore Pile|BoredPile|BorePile': 1,
+            r'PileCap|Pile Cap|Pilecap': 2,
+            r'Pier Head|PierHead': 3,
+            r'Pier|Pier Column|PierColumn': 4,
+            r'VIA|Viaduct|VIADUCT|BR': 5,
+            r'At Grade|AtGrade|Abutment': 7,
+            r'Pier Wall|PierWall|Pier Walls|PierWalls': 8
+        }
+        for layer in layers:
+            field_list = [f.name for f in arcpy.ListFields(layer)]
+            if description_field in field_list:
+                with arcpy.da.UpdateCursor(layer, [description_field, types_field, category_field]) as cursor:
+                    for row in cursor:
+                        if row[0]:
+                            row[1] = return_matching_value(row[0], search_array, return_value=True, default=0)
+                        else:
+                            row[1] = 0
+                        cursor.updateRow(row)
+            else:
+                arcpy.AddMessage(f"{layer} does not have {description_field} field. Please check.")
 
         # 4. CP
+        search_array = {
+            r'[S]0\d+?[abcABC]|[S]0\d+'
+        }
         for layer in layers:
-            with arcpy.da.UpdateCursor(layer, ['DocName', 'CP']) as cursor:
+            with arcpy.da.UpdateCursor(layer, [docname_field, cp_field]) as cursor:
                 for row in cursor:
-
-                    try:
-                        cp_all = re.search(r'[S]0\d+?[abcABC]|[S]0\d+',row[0]).group()
-                    except AttributeError:
-                        cp_all = re.search(r'[S]0\d+?[abcABC]|[S]0\d+',row[0])
+                    cp_all = return_matching_value(row[0], search_array, return_value=False, default=None)
                     cp_name = re.sub(r'0','-0',str(cp_all))
-
                     cp_name = re.sub('A','a',cp_name)
                     cp_name = re.sub('B','b',cp_name)
                     cp_name = re.sub('C','c',cp_name)
 
                     row[1] = cp_name
                     cursor.updateRow(row)
+
+        # 5. Pier Number
+        search_array = {
+            r"PR[-_]?\d+|P[-_]?\d+[-]\d+|P[-_]?\d+[NS]?[SB]?|P[-_]?\d+[-]?[AB]?|BUE[-_]?P\d+[NS]?|DAT[-_]?\d+[NS]?|MT[-_]?\d+-\d+|MT[-_]?\d+-[ABUT]|SCT[-_]?P\d+[NS]?|STR[-_]?[Pp]\d+[NS]?"
+        }
+        for layer in layers:
+            field_list = [f.name for f in arcpy.ListFields(layer)]
+            if description_field in field_list:
+                with arcpy.da.UpdateCursor(layer, [description_field, piern_field]) as cursor:
+                    for i, row in enumerate(cursor):
+                        if row[0]:
+                            pier_n = return_matching_value(row[0], search_array, return_value=False, default=None)
+                            if pier_n is not None:
+                                piern = re.sub("P", "P-", pier_n)
+                                piern = re.sub("--","-", piern)
+                                piern = re.sub("_","", piern)
+                                piern = re.sub("^P-R", "PR", pier_n)
+                                row[1] = piern.upper()
+                            else:
+                                arcpy.AddMessage(f"No pier number was found in {description_field} at the {i+1}th row of {layer}.")
+                                row[1] = None
+                        else:
+                            row[1] = None
+                        cursor.updateRow(row)
+            else:
+               arcpy.AddMessage(f"{layer} does not have {description_field} field. Please check.")
+
+        # Dates
+        for field in progress_dates_array:
+            for layer in layers:
+                field_list = [f.name for f in arcpy.ListFields(layer)]
+                if field in field_list:
+                    try:
+                        with arcpy.da.UpdateCursor(layer, [field, progress_dates_array[field]]) as cursor:
+                            for row in cursor:
+                                if row[0]:
+                                    date_obj = datetime.strptime(row[0], "%m/%d/%Y")
+                                    row[1] = date_obj
+                                else:
+                                    row[1] = None
+                                cursor.updateRow(row)
+                    except Exception as e:
+                        arcpy.AddError(f"Excecution failed: {e}")
+                else:
+                    arcpy.AddMessage(f"{layer} does not have {field}. Please check.")
+
+        # Update status
+        for layer in layers:
+            field_list = [f.name for f in arcpy.ListFields(layer)]
+            if all(field in field_list for field in [start_actual_field, finish_plan_field, finish_actual_field]):
+                with arcpy.da.UpdateCursor(layer, [status_field, start_actual_field, finish_plan_field, finish_actual_field]) as cursor:
+                    for row in cursor:
+                        if row[3]:
+                            row[0] = 4
+                        elif row[1] and finish_actual_field is None:
+                            row[0] = 2
+                        else:
+                            row[1] = 1
+                        cursor.updateRow(row)
+            else:
+                arcpy.AddMessage(f"Status for {layer} was not updated, as {layer} is missing one of these dates.")
 
 class EditBuildingLayerStation(object):
     def __init__(self):
@@ -2146,17 +2222,10 @@ class EditBuildingLayerStation(object):
             """
             return set(sublist).issubset(set(mainlist))
 
-        # define fields
-        status_field = 'Status'
 
         del_layers = list(delete_bim.split(";"))
         new_layers = list(new_bim.split(";"))
-        # new_cps = list(cp_update.split(";"))
-
         arcpy.AddMessage(F"cps: {cp_update}")
-
-        # Convert station names to station domain numbers
-        # cp_selected = tuple([cp for cp in new_cps])
 
         # 1. Check names are matched between deleted layers and new layers
         del_basenames = []
@@ -2193,60 +2262,10 @@ class EditBuildingLayerStation(object):
 
                 # Check if all selected CPs are included in both target layer and new layer
                 if are_all_items_included([cp_update], target_cp_list) and are_all_items_included([cp_update], new_cp_list):
-                    arcpy.AddMessage("Both target layer and new layer have the selected CP(s), so proceed.")
-
-                    # 2. Update 'Status' field in new_layer using 'xx_Status or xx_status' field from Revit
-                    # empty cell (null): 1. To be Constructed, 
-                    # 'Ongoing': 2. Ongoing
-                    # 'Completed': 4. Completed
-                    # 2. Extract fields
-                    bim_fields = [e.name for e in arcpy.ListFields(new_layer)]
-
-                    ## 3. Search field name excluding 'Project_'
-                    try:
-                        bim_status_field = [re.search(r'^(?!.*Project)(.*?)_Status$|(?!.*Project)(.*?)_status$', e).group() for e in bim_fields if re.search(r'^(?!.*Project)(.*?)_Status$|(?!.*Project)(.*?)_status$', e) is not None]
-                    except AttributeError:
-                        bim_status_field = [re.search(r'^(?!.*Project)(.*?)_Status$|(?!.*Project)(.*?)_status$', e) for e in bim_fields if re.search(r'^(?!.*Project)(.*?)_Status$|(?!.*Project)(.*?)_status$', e) is not None]
-
-                    arcpy.AddMessage(f"The name of status field in BIM models: {bim_status_field}")
-
-                    # 4. Update 'Status' field in new_layer
-                    if len(bim_status_field) == 1: # Update only When status field exists in the BIM model (input)
-                        if cp_update == 'S-01':
-                            with arcpy.da.UpdateCursor(new_layer, [bim_status_field, status_field]) as cursor:
-                                for row in cursor:
-                                    if row[0] == 'Ongoing':
-                                        row[1] = 2
-                                    elif row[0] == 'Completed':
-                                        row[1] = 4
-                                    elif row[0] is None:
-                                        row[1] = 1
-                                    cursor.updateRow(row)
-                        
-                        elif cp_update == 'S-06':
-                            with arcpy.da.UpdateCursor(new_layer, [bim_status_field, status_field]) as cursor:
-                                for row in cursor:
-                                    if row[0] == 'In-Progress':
-                                        row[1] = 1
-                                    elif row[0] == 'Complete':
-                                        row[1] = 4
-                                    elif row[0] is None:
-                                        row[1] = 1
-                                    cursor.updateRow(row)
+ 
 
                     # 5. Replace target layer with new observations
-                    # Select layer by attribute
-                    # if len(cp_selected) == 1:
-                    #     where_clause = "CP = '{}'".format(cp_selected[0])
-                    # else:
-                    #     where_clause = "CP IN {}".format(cp_selected)
-
-                    # arcpy.AddMessage(where_clause)
-
-                    # 5. Replace target layer with new observations
-                    ### Note if multiple revit models exist, We cannot just replace
-                    ### all the rows in the target layer with inputs. 
-                    ### We need to identify rows to be updated using DocName in the input (new) layer.
+                    #-- Note if multiple revit models exist, We need to identify rows to be updated using DocName in the input (new) layer.
                     docNumbers = []
                     with arcpy.da.SearchCursor(new_layer, ["DocName"]) as cursor:
                         for row in cursor:

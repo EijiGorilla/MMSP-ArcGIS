@@ -14,6 +14,19 @@ def unique(lists):
     for x in unique_list:
         collect.append(x)
     return(collect)
+        
+def are_all_items_included(sublist, mainlist):
+    """
+    Checks if all items in 'sublist' are present in 'mainlist'.
+
+    Args:
+        sublist: The list of items to check for inclusion.
+        mainlist: The list to check against.
+
+    Returns:
+        True if all items in sublist are in mainlist, False otherwise.
+    """
+    return set(sublist).issubset(set(mainlist))
 
 def match_elements(list_a, list_b):
     matched = []
@@ -2201,27 +2214,6 @@ class EditBuildingLayerStation(object):
 
         arcpy.env.gpuId = None 
         arcpy.env.overwriteOutput = True
-
-        def unique(lists):
-            collect = []
-            unique_list = pd.Series(lists).drop_duplicates().tolist()
-            for x in unique_list:
-                collect.append(x)
-            return(collect)
-        
-        def are_all_items_included(sublist, mainlist):
-            """
-            Checks if all items in 'sublist' are present in 'mainlist'.
-
-            Args:
-                sublist: The list of items to check for inclusion.
-                mainlist: The list to check against.
-
-            Returns:
-                True if all items in sublist are in mainlist, False otherwise.
-            """
-            return set(sublist).issubset(set(mainlist))
-
 
         del_layers = list(delete_bim.split(";"))
         new_layers = list(new_bim.split(";"))

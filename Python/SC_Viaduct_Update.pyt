@@ -2062,18 +2062,20 @@ class AddEditFieldsToBuildingLayerStation(object):
             r'Bored Pile|Bore Pile|BoredPile|BorePile': 1,
             r'PileCap|Pile Cap|Pilecap': 2,
             r'Pier Head|PierHead': 3,
-            r'Pier|Pier Column|PierColumn': 4,
+            r'^Pier$|Pier Column|PierColumn': 4,
             r'VIA|Viaduct|VIADUCT|BR': 5,
             r'At Grade|AtGrade|Abutment': 7,
-            r'Pier Wall|PierWall|Pier Walls|PierWalls': 8
+            r'Pier Wall|PierWall|Pier Walls|PierWalls': 8,
+            
         }
         for layer in layers:
             field_list = [f.name for f in arcpy.ListFields(layer)]
             if description_field in field_list:
                 with arcpy.da.UpdateCursor(layer, [description_field, types_field, category_field]) as cursor:
                     for row in cursor:
-                        if row[0]:
+                        if row[0] or row[2]:
                             row[1] = return_matching_value(row[0], search_array, return_value=True, default=0)
+                            row[1] = return_matching_value(row[2], search_array, return_value=True, default=0)
                         else:
                             row[1] = 0
                         cursor.updateRow(row)
@@ -2152,7 +2154,7 @@ class AddEditFieldsToBuildingLayerStation(object):
                         elif row[1] and finish_actual_field is None:
                             row[0] = 2
                         else:
-                            row[1] = 1
+                            row[0] = 1
                         cursor.updateRow(row)
             else:
                 arcpy.AddMessage(f"Status for {layer} was not updated, as {layer} is missing one of these dates.")

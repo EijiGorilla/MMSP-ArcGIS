@@ -981,7 +981,7 @@ class UpdatePierWorkableTrackerML(object):
             #--- Find column index of each field and keep columns until 'Remarks' field ---#
             workability_col = find_word_location(civil_t, "Workability")[1]['colidx']
             remarks_col = find_word_location(civil_t, "Remarks")[0]['colidx']+1
-            civil_t = civil_t.iloc[:, np.r_[0,1,workability_col:remarks_col]].loc[2:, ].reset_index(drop=True)
+            civil_t = civil_t.iloc[:, np.r_[0,1,workability_col:remarks_col]].loc[3:, ].reset_index(drop=True)
             civil_t.columns = columns
 
             arcpy.AddMessage(civil_t.head(20))
@@ -1073,6 +1073,7 @@ class UpdatePierWorkableTrackerML(object):
             # 4. Piers with obstructing Lot or Structure IDs in Land.1 or Structure.1 field do not have '1' in Land or Structure field.
 
             civil_t[remarks_field] = np.nan
+            civil_t[remarks_field] = civil_t[remarks_field].astype(str)
             error_descriptions =   {
                     # 'case1': 'Workable or completed piers should not have obstructions in one or more columns.',
                     'case2': 'Non-workable piers should have at least one obstruction in columns.',
@@ -1295,9 +1296,9 @@ class UpdatePierWorkablePolygonLayer(object):
                                 row[1] = 1
                             cursor.updateRow(row)
 
-            #--- Update fields to 'Workable for empty pile caps' ---#
-            # Until here, all the empty cells in workable fields are for workable pile caps.
-            # But only when 'AllWorkabile' is not None.
+            #--- Update fields to 'Workable' for empty pile caps' ---#
+            # Up to this point, if other fields are empty while AllWorkable is either Workable, Non-workable, or Completed, other fields = Workable
+            # AllWorkable = 0, 1, or 2; other fields = None => other fields = 0 (Workable)
             for col in workable_cols[1:]:
                 with arcpy.da.UpdateCursor(gis_workable_layer, [pier_number_field, workable_cols[0], col]) as cursor:
                     for row in cursor:

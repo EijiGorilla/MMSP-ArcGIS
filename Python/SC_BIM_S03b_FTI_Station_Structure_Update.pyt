@@ -218,7 +218,7 @@ class AddFieldsToBuildingLayerStation(object):
 
         
         # Add 'UG' or 'ATG'
-        ug_n = ['000001', '000002', '000021', '000031', '000041']
+        ug_n = ['000001', '000002', '000006', '000021', '000031', '000041']
         ag_n = ['000011']
 
         # For all layers

@@ -57,7 +57,8 @@ class EnviMonitoringUpdateTool(object):
 
         # 1. Import the Envi monitoring master list table
         out_name = "monitor_table"
-        tableGDB = arcpy.TableToTable_conversion(inTable, workspace, out_name)
+        #tableGDB = arcpy.TableToTable_conversion(inTable, workspace, out_name)
+        tableGDB = arcpy.conversion.ExportTable(inTable, out_name)
         
         # 2. Convert coordinate notation from DMS2 to DD2 (generate a point feature layer)
         # set parameter values

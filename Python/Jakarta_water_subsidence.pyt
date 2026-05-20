@@ -176,15 +176,23 @@ class InterQuartileRange(object):
             direction = "Input"
         )
 
-        input_table = arcpy.Parameter(
+        input_table_csv = arcpy.Parameter(
             displayName = "Re-formatted CSV table (SAR points)",
             name = "Re-formatted CSV table (SAR points)",
             datatype = "DEFile",
-            parameterType = "Required",
+            parameterType = "Optional",
             direction = "Input",
         )
 
-        params = [directory, input_table]
+        input_table_fc = arcpy.Parameter(
+            displayName = "Feature Layer (SAR points)",
+            name = "Feature Layer (SAR points)",
+            datatype = "GPFeatureLayer",
+            parameterType = "Optional",
+            direction = "Input",
+        )
+
+        params = [directory, input_table_csv, input_table_fc]
         return params
     
     def updateMessages(self, params):
@@ -193,24 +201,44 @@ class InterQuartileRange(object):
     def execute(self, params, messages):
         directory = params[0].valueAsText
         input_table = params[1].valueAsText
+        table_fc = params[2].valueAsText
 
-        x = pd.read_csv(input_table, header=0)
+        try:
+            x = pd.read_csv(input_table, header=0)
 
-        # Calculate interquartile range (Q1 and Q3) for updating visualVariables
-        ## 20-80 may be better instead of 25 and 75
-        fields = x.columns[x.columns.str.contains(r'^X',regex=True)]
-        table = pd.DataFrame(columns=['dates', 'min', 'Q1','Q3', 'max'])
-        for field in fields:
-            values = x[field]
-            q1 = np.percentile(values, 25)
-            q3 = np.percentile(values, 75)
-            minv = values.min()
-            maxv = values.max()
-            row_to_append = pd.DataFrame([{'dates':field, 'min':minv, 'Q1':q1, 'Q3':q3, 'max':maxv}])
-            table = pd.concat([table, row_to_append])
+            # Calculate interquartile range (Q1 and Q3) for updating visualVariables
+            ## 20-80 may be better instead of 25 and 75
+            fields = x.columns[x.columns.str.contains(r'^X',regex=True)]
+            table = pd.DataFrame(columns=['dates', 'min', 'Q2.5', 'Q1','Q3', 'Q97.5', 'max'])
+            for field in fields:
+                values = x[field]
+                q025 = np.percentile(values, 2.5)
+                q1 = np.percentile(values, 25)
+                q3 = np.percentile(values, 75)
+                q0975 = np.percentile(values, 97.5)
+                minv = values.min()
+                maxv = values.max()
+                row_to_append = pd.DataFrame([{'dates':field, 'min':minv, 'Q2.5': q025, 'Q1':q1, 'Q3':q3, 'Q97.5': q0975, 'max':maxv}])
+                table = pd.concat([table, row_to_append])
+            basename = os.path.splitext(os.path.basename(input_table))[0]
 
-        
-        basename = os.path.splitext(os.path.basename(input_table))[0]
+        except:
+            fields = [e.name for e in arcpy.ListFields(table_fc) if e.name.startswith("X")]
+            table = pd.DataFrame(columns=['dates', 'min', 'Q2.5', 'Q1','Q3', 'Q97.5', 'max'])
+            for field in fields:
+                arcpy.AddMessage(f"Field Name: {field}")
+                values = [row[0] for row in arcpy.da.SearchCursor(table_fc, [field])]
+                values = np.array(values)
+                q025 = np.percentile(values, 2.5)
+                q1 = np.percentile(values, 25)
+                q3 = np.percentile(values, 75)
+                q0975 = np.percentile(values, 97.5)
+                minv = values.min()
+                maxv = values.max()
+                row_to_append = pd.DataFrame([{'dates':field, 'min':minv, 'Q2.5': q025, 'Q1':q1, 'Q3':q3, 'Q97.5': q0975, 'max':maxv}])
+                table = pd.concat([table, row_to_append])
+                basename = os.path.splitext(os.path.basename(table_fc))[0]
+
         iq_name = 'IQR'
         output_basename = basename + "_" + iq_name
         to_csv_file = os.path.join(directory, output_basename + ".csv")

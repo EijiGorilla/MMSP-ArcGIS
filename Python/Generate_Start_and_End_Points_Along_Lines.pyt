@@ -65,7 +65,7 @@ class PointsAlongLines(object):
             tempFiles.append(out_fc)
 
         # Merge all
-        outputLayer = "N2SC_CP_BreakPoints"
+        outputLayer = "N1_CP_Breakpoints"
         arcpy.AddMessage(tempFiles)
         arcpy.management.Merge(tempFiles, outputLayer, "", "ADD_SOURCE_INFO")
 

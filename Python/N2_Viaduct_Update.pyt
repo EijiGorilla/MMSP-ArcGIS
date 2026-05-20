@@ -641,7 +641,7 @@ class CreateWorkablePierLayer(object):
         pilecaps_layer = 'pilecaps_layer'
         arcpy.management.MakeFeatureLayer(via_layer, pilecaps_layer, '"Type" = 2')
 
-        # Use pier head for monopiles: P-159C, P-159NB/SB, P-160C, P-160NB/SB        
+        # Use bored pile for monopiles: P-159C, P-159NB/SB, P-160C, P-160NB/SB        
         monopile_query = f"({pier_number_field} LIKE '%P-159%' OR {pier_number_field} LIKE '%P-160%') AND {type_field} = 1"
         monopile_layer = 'monopile_layer'
         arcpy.management.MakeFeatureLayer(via_layer, monopile_layer, monopile_query)

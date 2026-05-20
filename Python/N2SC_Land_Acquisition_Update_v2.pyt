@@ -167,7 +167,7 @@ def extract_ids_for_assign_obstruction(proj, table, field, field2=None):
         ids = unique(ids_flat)
         ids = remove_empty_strings(ids)
     else:
-        ids = table.index[table[field] == 1]
+        ids = table.index[(table[field] == 1) & (table[field2].notna())]
         ids_flat = flatten_extend(table.loc[ids, field2].str.split(","))
         ids = unique(ids_flat)
         ids = remove_empty_strings(ids)
@@ -379,10 +379,10 @@ class CompileRAPtables(object):
 
             latest_ml = toString(latest_ml, [lotid_field])
             latest_ml['x' + yyyymm_latest] = latest_ml[status_field]
-            latest_ml['x' + yyyymm_latest + '_HOA'] = latest_ml[handedOverArea_field] # HOA: Handed-Over Area
-            latest_ml['x' + yyyymm_latest + '_TAA'] = latest_ml[affectedArea_field] # TAA: Affected Area
-            latest_ml['x' + yyyymm_latest + '_HO'] = latest_ml[handedover_field] # HO: Handed Over
             latest_ml[note_field] = ""
+
+            for param in zip(['_HOA','_TAA','_HO'], [handedOverArea_field, affectedArea_field, handedover_field]):
+                latest_ml['x' + yyyymm_latest + param[0]] = latest_ml[param[1]]
 
             # compiled_ml = pd.DataFrame()
             for file in rap_files[:-1]:
@@ -619,7 +619,7 @@ class UpdateLot(object):
                 else:
                     municipal_col_index = column_indices[city_field]
                     to_numeric_fields = numeric_fields_common
-
+                 
                 rap_table = rap_table.rename(columns={column_names[municipal_col_index]: renamed_city})
                 rap_table_origin = rap_table_origin.rename(columns={column_names[municipal_col_index]: renamed_city})
                 non_match_col = non_match_elements(to_numeric_fields, column_names)
@@ -899,17 +899,17 @@ class UpdateISF(object):
             to_excel_file = os.path.join(gis_dir, export_file_name + ".xlsx")
             rap_table.to_excel(to_excel_file, index=False)
 
-            #*****************************************************************************************
-            # Create summary statistics between rap_table and updated GIS table to confirm matching #
-            #*****************************************************************************************
-            ## Conver StatusRC = 0 -> NA          
+            #------------------------------------------------------------------------------#
+            #   Create summary statistics between original rap_table and updated rap_table #
+            #------------------------------------------------------------------------------#
+            # Conver StatusRC = 0 -> NA          
             id = rap_table_stats.index[rap_table_stats[nlo_status_field] == 0]
             rap_table_stats.loc[id, nlo_status_field] = np.nan
 
             s_statusla = summaryStatistics(rap_table_stats, rap_table, "count", nlo_status_field, [municipality_field, nlo_status_field])
             statusla_stats = s_statusla.process_data_before_after()
 
-            ### Export summary statistics table
+            # Export summary statistics table
             file_name_stats = 'CHECK-' + proj + '_ISF_Summary_Statistics_Rap_and_GIS_ML.xlsx'
             to_excel_file0 = os.path.join(gis_dir, file_name_stats)
 
@@ -1002,9 +1002,9 @@ class UpdateStructure(object):
 
         def N2SC_Structure_Update():
           
-            ####################################################
-            # Update Excel Master List Tables
-            ####################################################
+            #--------------------------------------#
+            #    Update Excel Master List Tables   #
+            #--------------------------------------#
             rap_table_stats = pd.read_excel(rap_struc_ms)
             rap_table = pd.read_excel(rap_struc_ms)
             rap_relo_table = pd.read_excel(rap_relo_ms)
@@ -1014,9 +1014,6 @@ class UpdateStructure(object):
             joinField = 'StrucID'
             cp_field = 'CP'
             municipality_field = 'Municipality'
-            sc1_contsubm = 'ContSubm'
-            sc1_subcon = 'Subcon'
-            sc1_basic_plan = 'BasicPlan'
             handover_field = 'HandOver'
             structure_status_field = 'StatusStruc'
             structure_use_field = 'StructureUse'
@@ -1095,21 +1092,22 @@ class UpdateStructure(object):
 
                 arcpy.AddMessage("The {} master list for structure was successfully exported.".format(proj))
 
-                ##############################################################################
-                # Create summary statistics between original rap_table and updated rap_table
-                ### StatusLA = 0 -> NA          
+                #------------------------------------------------------------------------------#
+                #   Create summary statistics between original rap_table and updated rap_table #
+                #------------------------------------------------------------------------------#
+                # StatusLA = 0 -> NA          
                 id = rap_table_stats.index[rap_table_stats[structure_status_field] == 0]
                 rap_table_stats.loc[id, structure_status_field] = np.nan
 
-                ## Count status for each municipality
+                # Count status for each municipality
                 s_statusla = summaryStatistics(rap_table_stats, rap_table, "count", structure_status_field, [municipality_field, structure_status_field])
                 status_stats = s_statusla.process_data_before_after()
 
-                ## Count handedover structures for each municipality
+                # Count handedover structures for each municipality
                 s_handedover = summaryStatistics(rap_table_stats, rap_table, "count", handover_field, [municipality_field, handover_field])
                 handedover_stats = s_handedover.process_data_before_after()
  
-                ## Export summary statistics table
+                # Export summary statistics table
                 file_name_stats = 'CHECK-' + proj + '_Structure_Summary_Statistics_Rap_and_GIS_ML.xlsx'
                 to_excel_file0 = os.path.join(gis_dir, file_name_stats)
 
@@ -1464,9 +1462,7 @@ class AddObstructionToStructureN2(object):
             arcpy.AddMessage('Structure')
 
             ## Add missing CPs to compiled table
-            compile_cps = unique(compile_struc[cp_field])
-            gis_cps = unique(gis_struc_table[cp_field])
-            miss_cp = tuple(non_match_elements(gis_cps, compile_cps))
+            miss_cp = tuple(non_match_elements(unique(gis_struc_table[cp_field]), unique(compile_struc[cp_field])))
             gis_struc_misst = gis_struc_table.query(f"{cp_field} in {miss_cp}")
             gis_struc_misst[obstruc_field] = 'No'
             compile_struc = pd.concat([compile_struc, gis_struc_misst])
@@ -1482,9 +1478,7 @@ class AddObstructionToStructureN2(object):
             arcpy.AddMessage('NLO')
 
             ## Add missing CPs to compiled table
-            compile_cps = unique(compile_nlo[cp_field])
-            gis_cps = unique(gis_nlo_table[cp_field])
-            miss_cp = tuple(non_match_elements(gis_cps, compile_cps))
+            miss_cp = tuple(non_match_elements(unique(gis_nlo_table[cp_field]), unique(compile_nlo[cp_field])))
             gis_nlo_misst = gis_nlo_table.query(f"{cp_field} in {miss_cp}")
             gis_nlo_misst[obstruc_field] = 'No'
             compile_nlo = pd.concat([compile_nlo, gis_nlo_misst])
@@ -1635,9 +1629,7 @@ class AddObstructionToLotSC(object):
             #--------------------------------------------------------------#
             ##  Overwrite existing GIS_Lot_ML with summary statistics      ##
             #--------------------------------------------------------------#
-            compile_cps = unique(compile_land[cp_field])
-            gis_cps = unique(gis_lot_table[cp_field])
-            miss_cp = tuple(non_match_elements(gis_cps, compile_cps))
+            miss_cp = tuple(non_match_elements(unique(gis_lot_table[cp_field]), unique(compile_land[cp_field])))
             arcpy.AddMessage(miss_cp)
             if len(miss_cp) > 0:
                 gis_lot_misst = gis_lot_table.query(f"{cp_field} in {miss_cp}")
@@ -1759,7 +1751,7 @@ class AddObstructionToStructureSC(object):
                 gis_struc_t = gis_struc_table.query(f"{cp_field} == '{cp}'").reset_index(drop=True)
                 gis_nlo_t = gis_nlo_table.query(f"{cp_field} == '{cp}'").reset_index(drop=True)
                 pier_t = pier_wtracker.query(f"{cp_field} == '{cp}'").reset_index(drop=True)
-                pier_t[struc_obstruc_field] =pier_t[struc_obstruc_field].astype(str)
+                # pier_t[struc_obstruc_field] =pier_t[struc_obstruc_field].astype(str)
 
                 #--------------------------------------------------------------#
                 ##  Identify Obstruction (Yes' or 'No') to GIS master list    ##
@@ -1772,6 +1764,7 @@ class AddObstructionToStructureSC(object):
 
                 ### Add these obstructing StrucIDs to GIS Structure master list
                 gis_struc_t[obstruc_field] = np.nan
+                gis_struc_t[obstruc_field] = gis_struc_t[obstruc_field].astype(str)
                 gis_struc_t.loc[:, obstruc_field] = 'No'
 
                 ids = gis_struc_t.index[gis_struc_t[struc_id_field].isin(x_struc_ids)]
@@ -1786,6 +1779,7 @@ class AddObstructionToStructureSC(object):
                 #### 2.1. Add these obstructing StrucIDs to GIS ISF master list
                 #### Note that regardless of NLO' status, all the NLOs falling under obstructing structures must be visualized.
                 gis_nlo_t[obstruc_field] = np.nan
+                gis_nlo_t[obstruc_field] = gis_nlo_t[obstruc_field].astype(str)
                 gis_nlo_t.loc[:, obstruc_field] = 'No'
 
                 ids = gis_nlo_t.index[gis_nlo_t[struc_id_field].isin(x_struc_ids)]
@@ -1799,13 +1793,13 @@ class AddObstructionToStructureSC(object):
                 gis_nlo_ids = unique(gis_nlo_t.loc[ids, struc_id_field])    
                 unmatched_struc_ids = non_match_elements(gis_nlo_ids, gis_struc_ids)
 
-                arcpy.AddMessage(f"Any obstructing StrucIDs in the NLO ML that do not exist in the structure ML for {cp}?")
+                arcpy.AddMessage(f"{cp}: any obstructing StrucIDs in the NLO ML that do not exist in the structure ML?")
                 if len(unmatched_struc_ids) > 0:
-                    arcpy.AddMessage('Yes, you have the following unmatched obstructing StrucIDs between these master list tables.')
                     arcpy.AddMessage(unmatched_struc_ids)
-                    arcpy.AddMessage('Please ensure that these unmatched StrucIDs share the same information on CP.')
+                    arcpy.AddMessage("---------------------------------------------------------------------------------------")
                 else:
                     arcpy.AddMessage('No, everything is fine.')
+                    arcpy.AddMessage("---------------------------------------------------------------------------------------")
 
                 ## Compile for cps
                 compile_struc = pd.concat([compile_struc, gis_struc_t])
@@ -1823,20 +1817,15 @@ class AddObstructionToStructureSC(object):
            
             # Structure
             ## Add missing CPs to compiled table
-            compile_cps = unique(compile_struc[cp_field])
-            gis_cps = unique(gis_struc_table[cp_field])
-            miss_cp = tuple(non_match_elements(gis_cps, compile_cps))
+            miss_cp = tuple(non_match_elements(unique(gis_struc_table[cp_field]), unique(compile_struc[cp_field])))
             if len(miss_cp) > 0:
                 gis_struc_misst = gis_struc_table.query(f"{cp_field} in {miss_cp}")
                 compile_struc = pd.concat([compile_struc, gis_struc_misst])
 
             compile_struc.to_excel(os.path.join(gis_rap_dir, os.path.basename(gis_struc_ms)), index=False) ## gis_struc
            
-            #### NLO
-            compile_cps = unique(compile_nlo[cp_field])
-            gis_cps = unique(gis_nlo_table[cp_field])
-            miss_cp = tuple(non_match_elements(gis_cps, compile_cps))
-            arcpy.AddMessage(miss_cp)
+            # NLO
+            miss_cp = tuple(non_match_elements(unique(gis_nlo_table[cp_field]), unique(compile_nlo[cp_field])))
             if len(miss_cp) > 0:
                 gis_nlo_misst = gis_nlo_table.query(f"{cp_field} in {miss_cp}")
                 # gis_nlo_misst[obstruc_field] = 'No'
@@ -1844,7 +1833,7 @@ class AddObstructionToStructureSC(object):
            
             compile_nlo.to_excel(os.path.join(gis_rap_dir, os.path.basename(gis_nlo_ms)), index=False) ## gis_isf
 
-            ## Export summary statistics table
+            # Export summary statistics table
             sum_struc_compile.to_excel(os.path.join(gis_via_dir, '99-SC_Workable_Pier_obstructing_structure_summaryStats.xlsx'), sheet_name='Land', index=False)
 
         Obstruction_Structure_ML_Update()
@@ -2104,61 +2093,59 @@ class UpdateStructureGIS(object):
             ## 3.1. Convert Excel tables to feature table
             struc_ml = arcpy.conversion.ExportTable(mlStruct, 'structure_ml')
                 
-            ##########################################################################
-            ##### STAGE 1: Update Existing Structure Layer ######
-            ###########################################################################
-            ## 3.2. Gain all fields except 'StrucID'
+            #---------------------------------------------------------#
+            #         STAGE 1: Update Existing Structure Layer        #
+            #---------------------------------------------------------#
+            # Gain all fields except 'StrucID'
             struc_ml_fields = [f.name for f in arcpy.ListFields(struc_ml)]
             struc_ml_transfer_fields = [e for e in struc_ml_fields if e not in (join_field, 'strucID','OBJECTID')]
             
-            ## 3.3. Extract a Field from MasterList and Feature Layer to be used to join two tables               
-            ## 3.4 Join
+            # Extract a Field from MasterList and Feature Layer to be used to join two tables               
+            ## Join
             arcpy.management.JoinField(in_data=Struc_Temp, in_field=join_field, join_table=struc_ml, join_field=join_field, fields=struc_ml_transfer_fields)
 
-            # 4. Trucnate
+            # Trucnate
             arcpy.management.TruncateTable(inStruc)
 
-            # 5. Append
+            # Append
             schemaType = "NO_TEST"
             fieldMappings = ""
             subtype = ""
             arcpy.management.Append(Struc_Temp, inStruc, schemaType, fieldMappings, subtype)
 
-            ##########################################################################
-            ##### STAGE 2: Update Existing Structure (Occupancy) & Structure (ISF) ######
-            ###########################################################################
-            ## Copy original feature layer           
+            #---------------------------------------------------------------------------------#
+            #         STAGE 2: Update Existing Structure (Occupancy) & Structure (ISF)        #
+            #---------------------------------------------------------------------------------#      
             # STAGE: 2-1. Create Structure (point) for Occupany
-            ## 2-1.1. Feature to Point for Occupany
+            ## Feature to Point for Occupany
             outFeatureClassPointStruc = 'Struc_pt_occupancy_temp'
             pointStruc = arcpy.management.FeatureToPoint(inStruc, outFeatureClassPointStruc, "CENTROID")
             
-            ## 2-1.2. Add XY Coordinates
+            ## Add XY Coordinates
             arcpy.management.AddXY(pointStruc)
             
-            ## 2-1.3. Truncate original point structure layer (Occupancy)
+            ## Truncate original point structure layer (Occupancy)
             arcpy.management.TruncateTable(inOccup)
 
-            ## 2-1.4. Append to the original FL
+            ## Append to the original FL
             arcpy.management.Append(pointStruc, inOccup, schema_type = 'NO_TEST')
 
-            # STAGE: 2-2. Create and Update ISF Feture Layer
-            ## 2-2.1. Convert ISF (Relocation excel) to Feature table
-            ##MasterListISF = arcpy.TableToTable_conversion(mlISF, workspace, 'MasterListISF')
+            # Create and Update ISF Feture Layer
+            ## Convert ISF (Relocation excel) to Feature table
             MasterListISF = arcpy.conversion.ExportTable(mlISF, 'MasterListISF')
 
-            ## 2-2.2. Gain all fields except 'StrucId'
+            ## Gain all fields except 'StrucId'
             inputFieldISF = [f.name for f in arcpy.ListFields(MasterListISF)]
             joinFieldISF = [e for e in inputFieldISF if e not in ('StrucId', 'strucID','OBJECTID')]
 
-            ## 3.3. Extract a Field from MasterList and Feature Layer to be used to join two tables
+            ## Extract a Field from MasterList and Feature Layer to be used to join two tables
             tISF = [f.name for f in arcpy.ListFields(inOccup)] # Note 'inputLayerOccupOrigin' must be used, not ISF
             in_fieldISF= ' '.join(map(str, [f for f in tISF if f in (join_field,'strucID')]))
 
             uISF = [f.name for f in arcpy.ListFields(MasterListISF)]
             join_fieldISF = ' '.join(map(str, [f for f in uISF if f in (join_field, 'strucID')]))
 
-            ## Join
+            # Join
             xCoords = "POINT_X"
             yCoords = "POINT_Y"
             zCoords = "POINT_Z"
@@ -2166,35 +2153,35 @@ class UpdateStructureGIS(object):
             # Join only 'POINT_X' and 'POINT_Y' in the 'inputLayerOccupOrigin' to 'MasterListISF'
             arcpy.management.JoinField(in_data=MasterListISF, in_field=join_fieldISF, join_table=inOccup, join_field=in_fieldISF, fields=[xCoords, yCoords, zCoords])
 
-            ## 2-2.3. XY Table to Points (FL)
+            # XY Table to Points (FL)
             out_feature_class = "Status_for_Relocation_ISF_temp"
             sr = arcpy.SpatialReference(3123)
             outLayerISF = arcpy.management.XYTableToPoint(MasterListISF, out_feature_class, xCoords, yCoords, zCoords, sr)
 
-            ### Delete 'POINT_X', 'POINT_Y', 'POINT_Z'; otherwise, it gives error for the next batch
+            # Delete 'POINT_X', 'POINT_Y', 'POINT_Z'; otherwise, it gives error for the next batch
             dropXYZ = [xCoords, yCoords, zCoords]
             arcpy.management.DeleteField(outLayerISF, dropXYZ)
             
-            ## Check if StrucIDs match between ISF excel ML and GIS point feature layer
+            # Check if StrucIDs match between ISF excel ML and GIS point feature layer
             arcpy.AddMessage(".\n")
             try:
                 check_field_match(outLayerISF, MasterListISF, join_field)
             except:
                 pass
 
-            ## 2-2.5. Truncate original ISF point FL
+            # Truncate original ISF point FL
             arcpy.management.TruncateTable(inISF)
 
-            ## 2-2.6. Append to the Original ISF
+            # Append to the Original ISF
             arcpy.management.Append(outLayerISF, inISF, schema_type = 'NO_TEST')
 
             # Delete the copied feature layer
             deleteTempLayers = [Struc_Temp, struc_ml, pointStruc, outLayerISF, MasterListISF] 
             arcpy.management.Delete(deleteTempLayers)
 
-            #########################################################
-            ### Export updated GIS Layers to Excel Sheet (used for summary stats and missing IDs)
-            ##########################################################
+            #----------------------------------------------------#
+            #       Export updated GIS Layers to Excel Sheet     #
+            #----------------------------------------------------#
             # Structure
             file_name_structure = project + "_" + "GIS_Structure_Portal.xlsx"
             arcpy.conversion.TableToExcel(inStruc, os.path.join(gis_dir, file_name_structure))

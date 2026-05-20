@@ -50,6 +50,12 @@ B. Update construction status in existing building layers.
 ## append the new observations to the existing (i.e., specialityEquipment sublayer in the geodatabase). 
 
 """
+def unique(lists):
+    collect = []
+    unique_list = pd.Series(lists).drop_duplicates().tolist()
+    for x in unique_list:
+        collect.append(x)
+    return(collect)
 
 class Toolbox(object):
     def __init__(self):
@@ -102,6 +108,7 @@ class CreateBIMtoGeodatabase(object):
         input_revit = params[1].valueAsText
         export_name = params[2].valueAsText
 
+        arcpy.env.gpuId = None 
         arcpy.env.overwriteOutput = True
 
         revit_tables = list(input_revit.split(';'))
@@ -985,11 +992,28 @@ class EditDepotCivilWorks(object):
                                 row[1] = 1
                             cursor.updateRow(row)
 
+                docNumbers = []
+                with arcpy.da.SearchCursor(new_layer, ["DocName"]) as cursor:
+                    for row in cursor:
+                        if row[0]:
+                            docNumbers.append(row[0])
+                
+                ## Get a unique list of docnames
+                docNumberUnique = unique(docNumbers)
+                numbers = tuple([e for e in docNumberUnique])
+                docName_field = 'DocName'
+
+                if (len(docNumberUnique) == 1):
+                    where_clause = f"{docName_field} = '{numbers[0]}'"
+                else:
+                    where_clause = f"{docName_field} IN {numbers}"
+                arcpy.management.SelectLayerByAttribute(target_layer, 'NEW_SELECTION', where_clause)
+
                 # Truncate
                 arcpy.management.DeleteRows(target_layer)
                 
                 # Append
-                arcpy.management.Append(new_layer, target_layer, schema_type = 'NO_TEST')
+                arcpy.management.Append(new_layer, target_layer, schema_type = 'NO_TEST', expression = where_clause)
 
         else:
             arcpy.AddError("Matching Errors.. Select corresponding building sublayers for input and target.")

@@ -219,7 +219,7 @@ def add_contents_field(point_feature, station_names, proj, project_field, name_f
         for row in cursor:
             if row[0]:
                 try:
-                    fileName = row[0].split(".mp4")[0]
+                    fileName = re.split(r'\.mp4|\.m4v', row[0])[0]
                     pier_number = re.search(r"P[-_]?\d+[-]\d+|P[-_]?\d+[NS]?[SB]?|P[-_]?\d+[-]?[AB]?|BUE[-_]?P\d+[NS]?|DAT[-_]?\d+[NS]?|MT[-_]?\d+-\d+|MT[-_]?\d+-[ABUT]|SCT[-_]?P\d+[NS]?|STR[-_]?[Pp]\d+[NS]?",fileName.upper()).group()
                     # pier_number = re.search(r"[Pp][-_]?\d+[NS]?", row[0].upper()).group()
 
@@ -467,7 +467,7 @@ class FixFileNames(object):
             for proj in ["N2", "SC"]:
                 npath = os.path.join(local_main_dir, proj, media)
                 for filename in os.listdir(npath):
-                    if filename.lower().endswith(('.jpg', '.JPG', '.jpeg', '.JPEG', 'tiff', 'TIFF', 'PNG', 'png', 'mp4')):
+                    if filename.lower().endswith(('.jpg', '.JPG', '.jpeg', '.JPEG', 'tiff', 'TIFF', 'PNG', 'png', 'mp4', 'm4v')):
                         new_filename = replace_strings(filename, search_array)
                         os.rename(os.path.join(npath, filename), os.path.join(npath, new_filename))
                         arcpy.AddMessage(f"Renamed: {filename} -> {new_filename}")
@@ -622,7 +622,7 @@ class GenerateDronePoints(object):
 
 
             #--- Add contents from the folder
-            items = [item for item in os.listdir(media_folder) if item.endswith(('.jpg', '.JPG', '.jpeg', '.JPEG', 'tiff', 'TIFF', 'mp4'))]
+            items = [item for item in os.listdir(media_folder) if item.endswith(('.jpg', '.JPG', '.jpeg', '.JPEG', 'tiff', 'TIFF', 'mp4', 'm4v'))]
 
             row_values = []
             for i, item in enumerate(items):

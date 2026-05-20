@@ -981,7 +981,8 @@ class UpdatePierWorkableTrackerML(object):
             #--- Find column index of each field and keep columns until 'Remarks' field ---#
             workability_col = find_word_location(civil_t, "Workability")[1]['colidx']
             remarks_col = find_word_location(civil_t, "Remarks")[0]['colidx']+1
-            civil_t = civil_t.iloc[:, np.r_[0,1,workability_col:remarks_col]].loc[3:, ].reset_index(drop=True)
+            row1 = find_word_location(civil_t, "CP")[0]['index'] + 1
+            civil_t = civil_t.iloc[:, np.r_[0,1,workability_col:remarks_col]].loc[row1:, ].reset_index(drop=True)
             civil_t.columns = columns
 
             arcpy.AddMessage(civil_t.head(20))

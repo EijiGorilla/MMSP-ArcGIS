@@ -113,6 +113,7 @@ def first_row_fill_empty(table, fields, data, datatype):
                 table.loc[0, field] = pd.to_datetime(data)
     return table
 
+#--- Fill and Remove dummy date in the first row
 def first_row_delete_dummy_fc(fc, fields, datatype):
     """
     Arg: Delete dummy data from the first in selected fields.
@@ -128,6 +129,7 @@ def first_row_delete_dummy_fc(fc, fields, datatype):
                             if row[0] == -99.0:
                                 row[0] = None
                         cursor.updateRow(row)
+                    break
             elif datatype == 'date':
                 with arcpy.da.UpdateCursor(fc, [field]) as cursor:
                     for row in cursor:
@@ -138,6 +140,7 @@ def first_row_delete_dummy_fc(fc, fields, datatype):
                             else:
                                 row[0] = row[0]
                         cursor.updateRow(row)
+                    break
     except:
         arcpy.AddMessage(f"failed to delete dummy data in the first of selected fields..")
         arcpy.AddError('error...')
@@ -202,6 +205,37 @@ def summary_by_field(table, stats_type, stats_field, groupby_fields):
         values = [f[i] for f in table]
         arrays[f"{field}"] = values
     return arrays
+
+def add_obstruction(table, id_field, obstField, search_ids):
+    """
+    Add obstruction to a excel table: 'Yes' or 'No'
+    table: excel mater list table (land or structure ML)
+    field: obstruction field
+    id_field: LotID or structureID
+    """
+    table[obstField] = np.nan
+    table[obstField] = table[obstField].astype(str)
+    table.loc[:, obstField] = 'No'
+
+    ids = table.query(f"{id_field}.isin({search_ids})").index
+    y_lot_ids = table.loc[ids, id_field].values
+    table.loc[ids, obstField] = 'Yes'
+    
+    return [table, y_lot_ids]
+
+def extract_obstructing_ids(table, qField, qValue, id_field, search_ids):
+    """
+    Extract obstructing IDs
+    table: excel master list table in pandas
+    qField: query field
+    qValue: query value
+    id_field: ID field
+    search_ids: search IDs
+    """
+    idx = table.query(f"{qField} == '{qValue}' & {id_field}.isin({search_ids})").index
+    IDs = table.loc[idx, id_field].values
+
+    return IDs
 
 class summaryStatistics():
     # Make sure to use a list for groupby_field
@@ -419,38 +453,7 @@ class CompileRAPtables(object):
                         # Merge to the latest
                         latest_ml = pd.merge(left=latest_ml, right=table, how='left', left_on=lotid_field, right_on=lotid_field)
                     
-                    else:
-                        # when lotID is not matched, there are two scenarios:
-                        ## 1. Unmatched LotIDs arise from the same lot:
-                        ## 1.1. The lotID was subdivided before but merged into one lot.
-                        ### E.g., Input table: 003A, 003B, Target table: 003
-
-                        ## 1.2. The lotID has been subdivided but was one lot.
-                        ### E.g., Input table: 003, Target table: 003A, 003B
-                        arcpy.AddMessage(input_lotids)
-                        arcpy.AddMessage(target_lotids)
-                        input_non_match_ids = list(np.setdiff1d(input_lotids, target_lotids))
-                        target_non_match_ids = list(np.setdiff1d(target_lotids, input_lotids))
-
-                        # Case 1: lot was subdivided in the past.
-                        arcpy.AddMessage(f"Input non-match ids: {input_non_match_ids}")
-                        arcpy.AddMessage(f"Target non-match ids: {target_non_match_ids}")
-
-                        for i, lot in enumerate(target_non_match_ids):
-                            # arcpy.AddMessage(f"target lot: {lot}")
-                            items = [item for item in input_non_match_ids if item.startswith("".join([i for i in lot if i.isdigit()]))]
-                            # arcpy.AddMessage(f"items: {items}")
-
-                            if items:
-                                id = latest_ml.query(f"{lotid_field} == '{lot}'").index
-                                add_items = ','.join(np.array(items).flatten())
-                                existing = latest_ml.loc[id, note_field].values[0]
-                                if existing:
-                                    new_items = existing + "; " + add_items + " (" + yyyymm + ")"
-                                    latest_ml.loc[id, note_field] = new_items
-                                else:
-                                    latest_ml.loc[id, note_field] = add_items + " (" + yyyymm + ")"
-                        
+                    else:                        
                         # Keep only 'LotID', 'StatusLA', 'AffectedArea', 'HandedOverArea', 'HandedOver'
                         table = table0[keep_fields]
 
@@ -461,8 +464,6 @@ class CompileRAPtables(object):
                         table = table.rename(columns={status_field: f"x{yyyymm}", affectedArea_field: f"x{yyyymm}_TAA", handedOverArea_field: f"x{yyyymm}_HOA", handedover_field: f"x{yyyymm}_HO"})
 
                         #--- Merge pre-processed historical ML to the latest ML
-                        arcpy.AddMessage(table.head())
-                        arcpy.AddMessage(latest_ml.head())
                         latest_ml = pd.merge(left=latest_ml, right=table, how='left', left_on='LotID', right_on='LotID')
                     
                     #--- 'StatusLA' = 0 => None ---#
@@ -1238,24 +1239,17 @@ class AddObstructionToLotN2(object):
 
                 ### Add these obstructing LotIDs to GIS Structure master list
                 # First, reset 'obstruction' field
-                gis_lot_t[obstruc_field] = np.nan
-                gis_lot_t.loc[:, obstruc_field] = 'No'
-
-                ids = gis_lot_t.query(f"{lot_id_field}.isin({x_lot_ids})").index
-                y_lot_ids = gis_lot_t.loc[ids, lot_id_field].values
-                gis_lot_t.loc[ids, obstruc_field] = 'Yes'
+                obstruction_list = add_obstruction(gis_lot_t, lot_id_field, obstruc_field, x_lot_ids)
+                gis_lot_t = obstruction_list[0]
 
                 # Extract obstructing LotIDs from the GIS Attribute table (GIS_portal)
-                idcp = gis_lot_portal_t.query(f"{cp_field} == '{cp}'").index
-                ids_portal = gis_lot_portal_t.loc[idcp, ].index[gis_lot_portal_t.loc[idcp, lot_id_field].isin(x_lot_ids)]
-                y_lot_portal_ids = gis_lot_portal_t.loc[ids_portal, lot_id_field].values
-
-                ## compile for cps
+                y_lot_portal_ids = extract_obstructing_ids(gis_lot_portal_t, cp_field, cp, lot_id_field, x_lot_ids)
                 compile_land = pd.concat([compile_land, gis_lot_t])
 
                 #--------------------------------------------------------------#
                 ##                    Summary Statistics                      ##
                 #--------------------------------------------------------------#
+                y_lot_ids = obstruction_list[1]
                 summary_table = summary_statistics_count_ids(proj, cp, x_lot_ids, y_lot_ids, y_lot_portal_ids)
                 sum_lot_compile = pd.concat([sum_lot_compile, summary_table[0]], ignore_index=False)
 
@@ -1401,34 +1395,22 @@ class AddObstructionToStructureN2(object):
                 ## B. Identify Obstruction (Yes' or 'No') to GIS master list ###
                 #--------------------------------------------------------------#
                 ## Note that Civil table may have duplicated LotIDs or Structure IDs, as some pile caps are obstructed by the same lots or structures.
-
                 x_struc_ids = extract_ids_for_assign_obstruction(proj, pier_wtracker_t, struc1_field)
 
-                ### Add these obstructing StrucIDs to GIS Structure master list
-                #### First, reset 'obstruction' field
-                gis_struc_t[obstruc_field] = np.nan
-                gis_struc_t.loc[:, obstruc_field] = 'No'
+                # Add these obstructing StrucIDs to GIS Structure master list
+                obstruction_list = add_obstruction(gis_struc_t, struc_id_field, obstruc_field, x_struc_ids)
+                gis_struc_t = obstruction_list[0]
 
-                ids = gis_struc_t.query(f"{struc_id_field}.isin({x_struc_ids})").index
-                y_struc_ids = gis_struc_t.loc[ids, struc_id_field].values
-                gis_struc_t.loc[ids, obstruc_field] = 'Yes'
+                # Extract obstructing StrucIDs from the GIS Attribute table (GIS_portal)
+                y_struc_portal_ids = extract_obstructing_ids(gis_struc_portal_t, cp_field, cp, struc_id_field, x_struc_ids) 
 
-                # #### Extract obstructing LotIDs from the GIS Attribute table (GIS_portal)
-                idcp = gis_struc_portal_t.query(f"{cp_field} == '{cp}'").index
-                ids_portal = gis_struc_portal_t.loc[idcp, ].query(f"{struc_id_field}.isin({x_struc_ids})").index
-                # ids_portal = gis_struc_portal_t.loc[idcp, ].index[gis_struc_portal_t.loc[idcp, struc_id_field].isin(x_struc_ids)]
-                y_struc_portal_ids = gis_struc_portal_t.loc[ids_portal, struc_id_field].values
+                #--- 2. NLO
+                # Add these obstructing StrucIDs to GIS ISF master list
+                # Note that regardless of NLO' status, all the NLOs falling under obstructing structures must be visualized.
+                obstruction_list_nlo = add_obstruction(gis_nlo_t, struc_id_field, obstruc_field, x_struc_ids)
+                gis_nlo_t = obstruction_list_nlo[0]
 
-                ### 2. NLO
-                #### Add these obstructing StrucIDs to GIS ISF master list
-                #### Note that regardless of NLO' status, all the NLOs falling under obstructing structures must be visualized.
-                gis_nlo_t[obstruc_field] = np.nan
-                gis_nlo_t.loc[:, obstruc_field] = 'No'
-
-                ids = gis_nlo_t.query(f"{struc_id_field}.isin({x_struc_ids})").index
-                gis_nlo_t.loc[ids, obstruc_field] = 'Yes'
-
-                ### 3. Check obstructing StrucIDS between NLO and Structure GIS master list
+                # Check obstructing StrucIDS between NLO and Structure GIS master list
                 ids = gis_struc_t.query(f"{obstruc_field} == 'Yes'").index
                 gis_struc_ids = gis_struc_t.loc[ids, struc_id_field].values
 
@@ -1450,6 +1432,7 @@ class AddObstructionToStructureN2(object):
                 #--------------------------------------------------------------#
                 ##                    Summary Statistics                      ##
                 #--------------------------------------------------------------#
+                y_struc_ids = obstruction_list[1]
                 summary_table = summary_statistics_count_ids(proj, cp, x_struc_ids, y_struc_ids, y_struc_portal_ids)
                 sum_struc_compile = pd.concat([sum_struc_compile, summary_table[0]], ignore_index=False)
 
@@ -1592,7 +1575,6 @@ class AddObstructionToLotSC(object):
             for cp in cps:
                 gis_lot_t = gis_lot_table.query(f"{cp_field} == '{cp}'").reset_index(drop=True)
                 pier_t = pier_wtracker.query(f"{cp_field} == '{cp}'").reset_index(drop=True)
-                pier_t[land_obstrucid_field] =pier_t[land_obstrucid_field].astype(str)
                 
                 #--------------------------------------------------------------#
                 ## B. Identify Obstruction (Yes' or 'No') to GIS master list ###
@@ -1602,27 +1584,19 @@ class AddObstructionToLotSC(object):
 
                 # Land
                 x_lot_ids = extract_ids_for_assign_obstruction(proj, pier_t, land_obstruc_field, land_obstrucid_field)
-                arcpy.AddMessage(x_lot_ids)
 
                 ## Add these obstructing LotIDs to GIS Structure master list
-                gis_lot_t[obstruc_field] = np.nan
-                gis_lot_t.loc[:, obstruc_field] = 'No'
+                obstruction_list = add_obstruction(gis_lot_t, lot_id_field, obstruc_field, x_lot_ids)
+                gis_lot_t = obstruction_list[0]
 
-                ids = gis_lot_t.index[gis_lot_t[lot_id_field].isin(x_lot_ids)]
-                y_lot_ids = gis_lot_t.loc[ids, lot_id_field].values
-                gis_lot_t.loc[ids, obstruc_field] = 'Yes'
-
-                # #### Extract obstructing LotIDs from the GIS Attribute table (GIS_portal)
-                idcp = gis_lot_portal_t.index[gis_lot_portal_t[cp_field] == cp]
-                ids_portal = gis_lot_portal_t.loc[idcp, ].index[gis_lot_portal_t.loc[idcp, lot_id_field].isin(x_lot_ids)]
-                y_lot_portal_ids = gis_lot_portal_t.loc[ids_portal, lot_id_field].values
-
-                ## compile for cps
+                #--- Extract obstructing LotIDs from the GIS Attribute table (GIS_portal)
+                y_lot_portal_ids = extract_obstructing_ids(gis_lot_portal_t, cp_field, cp, lot_id_field, x_lot_ids)
                 compile_land = pd.concat([compile_land, gis_lot_t])
 
                 #--------------------------------------------------------------#
                 ##                    Summary Statistics                      ##
                 #--------------------------------------------------------------#
+                y_lot_ids = obstruction_list[1]
                 summary_table = summary_statistics_count_ids(proj, cp, x_lot_ids, y_lot_ids, y_lot_portal_ids)
                 sum_lot_compile = pd.concat([sum_lot_compile, summary_table[0]], ignore_index=False)
 
@@ -1630,7 +1604,7 @@ class AddObstructionToLotSC(object):
             ##  Overwrite existing GIS_Lot_ML with summary statistics      ##
             #--------------------------------------------------------------#
             miss_cp = tuple(non_match_elements(unique(gis_lot_table[cp_field]), unique(compile_land[cp_field])))
-            arcpy.AddMessage(miss_cp)
+
             if len(miss_cp) > 0:
                 gis_lot_misst = gis_lot_table.query(f"{cp_field} in {miss_cp}")
                 compile_land = pd.concat([compile_land, gis_lot_misst])
@@ -1759,32 +1733,22 @@ class AddObstructionToStructureSC(object):
                 # Note that Civil table may have duplicated LotIDs or Structure IDs, as some pile caps
                 # are obstructed by the same lots or structures.
 
-                # Structure and ISF
+                #--- Structure and ISF
                 x_struc_ids = extract_ids_for_assign_obstruction(proj, pier_t, struc_obstruc_field, struc_obstrucid_field)
 
-                ### Add these obstructing StrucIDs to GIS Structure master list
-                gis_struc_t[obstruc_field] = np.nan
-                gis_struc_t[obstruc_field] = gis_struc_t[obstruc_field].astype(str)
-                gis_struc_t.loc[:, obstruc_field] = 'No'
+                # Add these obstructing StrucIDs to GIS Structure master list
+                obstruction_list = add_obstruction(gis_struc_t, struc_id_field, obstruc_field, x_struc_ids)
+                gis_struc_t = obstruction_list[0]
 
-                ids = gis_struc_t.index[gis_struc_t[struc_id_field].isin(x_struc_ids)]
-                y_struc_ids = gis_struc_t.loc[ids, struc_id_field].values
-                gis_struc_t.loc[ids, obstruc_field] = 'Yes'
+                # Extract obstructing StrucIDs from the GIS Attribute table (GIS_portal)
+                y_struc_portal_ids = extract_obstructing_ids(gis_struc_portal_t, cp_field, cp, struc_id_field, x_struc_ids) 
 
-                #### Extract obstructing StrucIDs from the GIS Attribute table (GIS_portal)
-                ids_portal = gis_struc_portal_t.index[gis_struc_portal_t[struc_id_field].isin(x_struc_ids)]
-                y_struc_portal_ids = gis_struc_portal_t.loc[ids_portal,struc_id_field].values
-
-                ### 2. NLO
-                #### 2.1. Add these obstructing StrucIDs to GIS ISF master list
-                #### Note that regardless of NLO' status, all the NLOs falling under obstructing structures must be visualized.
-                gis_nlo_t[obstruc_field] = np.nan
-                gis_nlo_t[obstruc_field] = gis_nlo_t[obstruc_field].astype(str)
-                gis_nlo_t.loc[:, obstruc_field] = 'No'
-
-                ids = gis_nlo_t.index[gis_nlo_t[struc_id_field].isin(x_struc_ids)]
-                gis_nlo_t.loc[ids, obstruc_field] = 'Yes'
-
+                #--- 2. NLO
+                # Add these obstructing StrucIDs to GIS ISF master list
+                # Note that regardless of NLO' status, all the NLOs falling under obstructing structures must be visualized.
+                obstruction_list_nlo = add_obstruction(gis_nlo_t, struc_id_field, obstruc_field, x_struc_ids)
+                gis_nlo_t = obstruction_list_nlo[0]
+             
                 #### 2.2. Check obstructing StrucIDS between NLO and Structure GIS master list
                 ids = gis_struc_t.index[gis_struc_t[obstruc_field] == 'Yes']
                 gis_struc_ids = gis_struc_t.loc[ids, struc_id_field].values
@@ -1808,6 +1772,7 @@ class AddObstructionToStructureSC(object):
                 #--------------------------------------------------------------#
                 ##                    Summary Statistics                      ##
                 #--------------------------------------------------------------#
+                y_struc_ids = obstruction_list[1]
                 summary_table = summary_statistics_count_ids(proj, cp, x_struc_ids, y_struc_ids, y_struc_portal_ids)
                 sum_struc_compile = pd.concat([sum_struc_compile, summary_table[0]], ignore_index=False)
 
@@ -1897,73 +1862,59 @@ class UpdateLotGIS(object):
         target_feature = params[2].valueAsText
         mlLot = params[3].valueAsText
 
-        to_date_fields = ['HandOverDate', 'HandedOverDate']
-
-        #--- Extract fields where dummy numbers are removed
-        temp_fields = [f.name for f in arcpy.ListFields(mlLot) if f.name.endswith(('TAA', 'HOA', 'HO'))]
-
         arcpy.env.overwriteOutput = True
 
-        #--- Remove temporary date added
-        first_row_delete_dummy_fc(mlLot, to_date_fields, 'date')
-        first_row_delete_dummy_fc(mlLot, temp_fields, 'float' )
+        join_field = "LotID"
+        #-----------------------------------------#
+        #          Update FGDB                    #
+        #-----------------------------------------#
+        # Copy SDE
+        portal_copy = "portal_copy"
+        arcpy.management.CopyFeatures(target_feature, portal_copy)
 
-        # Join fields to attribute table
-        # 2. Delete Field
-        gis_fields = [f.name for f in arcpy.ListFields(target_feature)]
-            
-        ## 2.1. Identify fields to be dropped
-        gis_drop_fields_check = [e for e in gis_fields if e not in ('LotId', 'LotID','created_user', 'created_date', 'last_edited_user', 'last_edited_date', 'Shape','Shape_Length','Shape_Area','Shape.STArea()','Shape.STLength()','OBJECTID','GlobalID')]
-            
-        ## 2.2. Extract existing fields
-        arcpy.AddMessage("Stage 1: Extract existing fields was success")
-            
-        ## 2.3. Check if there are fields to be dropped
-        gis_drop_fields = [f for f in gis_fields if f in tuple(gis_drop_fields_check)]
-            
-        arcpy.AddMessage("Stage 1: Checking for Fields to be dropped was success")
-        arcpy.AddMessage(gis_drop_fields)
-            
-        ## 2.4 Drop
-        if len(gis_drop_fields) == 0:
-            arcpy.AddMessage("There is no field that can be dropped from the feature layer")
-        else:
-            arcpy.management.DeleteField(target_feature, gis_drop_fields)
+        # Keepy only 'LotID'
+        arcpy.management.DeleteField(portal_copy, [join_field], "KEEP_FIELDS")
 
+        # Join fields
+        # Check matching
+        lotid_copy = unique_values(portal_copy, join_field)
+        lotid_ml = unique_values(mlLot, join_field)
 
-        # arcpy.AddMessage("Deleted Fields from Polygon: ", [e.name for e in arcpy.ListFields(target_feature)])     
-        arcpy.AddMessage("Stage 1: Dropping Fields was success")
-        arcpy.AddMessage("Section 2 of Stage 1 was successfully implemented")
-
-        # 3. Join Field
-        ## 3.1. Convert Excel tables to feature table
-        lot_ml = arcpy.conversion.ExportTable(mlLot, 'lot_ml')
-
-        # Check if LotID match between ML and GIS
-        lotid_field = 'LotID'
-        lotid_gis = unique_values(target_feature, lotid_field)
-        lotid_ml = unique_values(lot_ml, lotid_field)
-        
-        lotid_miss_gis = [e for e in lotid_gis if e not in lotid_ml]
-        lotid_miss_ml = [e for e in lotid_ml if e not in lotid_gis]
+        lotid_miss_gis = [e for e in lotid_copy if e not in lotid_ml]
+        lotid_miss_ml = [e for e in lotid_ml if e not in lotid_copy]
 
         if lotid_miss_ml or lotid_miss_gis:
             arcpy.AddMessage('The following Lot IDs do not match between ML and GIS.')
             arcpy.AddMessage('Missing LotIDs in GIS table: {}'.format(lotid_miss_gis))
             arcpy.AddMessage('Missing LotIDs in ML Excel table: {}'.format(lotid_miss_ml))
-        
-        arcpy.AddMessage("Section 3 was successfully implemented (checking matched LotIDs)")
+        transfer_fields = [f.name for f in arcpy.ListFields(mlLot) if f.name not in ('ObjectID', 'OBJECTID', join_field)]
+        arcpy.management.JoinField(portal_copy, join_field, mlLot, join_field, transfer_fields)
 
-        ## 3.2. Get Join Field from MasterList gdb table: Gain all fields except 'Id'
-        lot_ml_fields = [f.name for f in arcpy.ListFields(lot_ml)]
-        lot_ml_transfer_fields = [e for e in lot_ml_fields if e not in ('LotId', lotid_field,'OBJECTID')]
-            
-        ## 3.3. Extract a join field from both tables
-        gis_join_field = ' '.join(map(str, [f for f in gis_fields if f in ('LotId', lotid_field)]))                      
-        lot_ml_join_field =' '.join(map(str, [f for f in lot_ml_fields if f in ('LotId', lotid_field)]))
-            
-        ## 3.4 Join fields 
-        arcpy.management.JoinField(in_data=target_feature, in_field=gis_join_field, join_table=lot_ml, join_field=lot_ml_join_field, fields=lot_ml_transfer_fields)
+        #--- Extract fields where dummy numbers are removed
+        portal_copy_fields = [f.name for f in arcpy.ListFields(portal_copy) if f.name.startswith('x')]
+
+        #--- Remove dummy numbers
+        arcpy.AddMessage(f"Remove dummy numbers in the 1st row.")
+        first_row_delete_dummy_fc(portal_copy, portal_copy_fields, 'float' )
+
+        #--- Identify fields added to SDE
+        portal_fields = [f.name for f in arcpy.ListFields(target_feature) if f.name.startswith('x')]
+        addFields = [item for item in portal_copy_fields if item not in portal_fields]
+        arcpy.AddMessage(f"Fields to add: {addFields}")
+
+        #--- Add fields to SDE
+        if len(addFields) > 0:
+            arcpy.AddMessage(f"Add missing fields to target feature.")
+            for field in addFields:
+                arcpy.AddMessage(f"Add '{field}'")
+                arcpy.management.AddField(target_feature, field, "DOUBLE", "", "", "", field, "NULLABLE")
+
+        #--- Truncate target feature (SDE)
+        arcpy.AddMessage(f"Truncate target feature.")
+        arcpy.TruncateTable_management(target_feature)
+
+        arcpy.AddMessage(f"Append to target feature.")
+        arcpy.management.Append(portal_copy, target_feature, schema_type = 'NO_TEST')
 
         # # Export
         file_name = project + "_" + "GIS_Land_Portal.xlsx"
@@ -2068,9 +2019,8 @@ class UpdateStructureGIS(object):
 
             arcpy.AddMessage('Missing Ids in target table: {}'.format(target_table_miss))
             arcpy.AddMessage('Missing Ids in input table: {}'.format(input_table_miss))
- 
 
-        arcpy.env.overwriteOutput = True
+        arcpy.env.overwriteOutput = True     
 
         # 1. Copy Original Feature Layers
         join_field = 'StrucID'

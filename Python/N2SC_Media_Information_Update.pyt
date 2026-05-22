@@ -174,7 +174,7 @@ def lower_Resolution_Images(image_folder, output_path):
                 output_file = os.path.join(output_path, basename)
                 lower_image_quality(image_path, output_file, 10) 
 
-def add_contents_field(point_feature, station_names, proj, project_field, name_field, cp_field, keyword_field, timestamp_field, type_field = None, type_value = None):
+def add_contents_field(point_feature, station_names, proj, project_field, name_field, cp_field, keyword_field, timestamp_field, type_field = None, type_value = None, query_field = None):
     #--- Add type: image or video
     if type_field:
         with arcpy.da.UpdateCursor(point_feature, [name_field, type_field]) as cursor:
@@ -203,7 +203,7 @@ def add_contents_field(point_feature, station_names, proj, project_field, name_f
                 cursor.updateRow(row)
 
     #--- Add station name:
-    with arcpy.da.UpdateCursor(point_feature, [name_field, keyword_field]) as cursor:
+    with arcpy.da.UpdateCursor(point_feature, [name_field, keyword_field, query_field]) as cursor:
         for row in cursor:
             if row[0]:
                 # check and get index from station point layer when station name from photolayer exists
@@ -211,11 +211,12 @@ def add_contents_field(point_feature, station_names, proj, project_field, name_f
                 if idx:
                     idx = idx[0][0]
                     row[1] = station_names[idx]
+                    row[2] = 'station'
                     arcpy.AddMessage(f"Statio names: {station_names[idx]}")
             cursor.updateRow(row)
 
     #--- Add pier numbers:
-    with arcpy.da.UpdateCursor(point_feature, [name_field, keyword_field]) as cursor:
+    with arcpy.da.UpdateCursor(point_feature, [name_field, keyword_field, query_field]) as cursor:
         for row in cursor:
             if row[0]:
                 try:
@@ -227,30 +228,33 @@ def add_contents_field(point_feature, station_names, proj, project_field, name_f
                     piern = re.sub("--","-", piern)
                     piern = re.sub("_","", piern)
                     row[1] = piern.upper()
+                    row[2] = 'pier'
                     arcpy.AddMessage(f"Pier Number: {piern.upper()}")
                 except:
                     pass
                 cursor.updateRow(row)
 
     #--- Add chainage label:
-    with arcpy.da.UpdateCursor(point_feature, [name_field, keyword_field]) as cursor:
+    with arcpy.da.UpdateCursor(point_feature, [name_field, keyword_field, query_field]) as cursor:
         for row in cursor:
             if row[0]:
                 try:
                     chainage = re.search(r'_((\d+)\+(\d+))_', row[0]).group(1)
                     row[1] = chainage.upper()
+                    row[2] = 'chainage'
                     arcpy.AddMessage(f"Chainage: {chainage.upper()}")
                 except:
                     pass
                 cursor.updateRow(row)
 
     #--- Add Depot:
-    with arcpy.da.UpdateCursor(point_feature, [name_field, project_field, keyword_field]) as cursor:
+    with arcpy.da.UpdateCursor(point_feature, [name_field, project_field, keyword_field, query_field]) as cursor:
         for row in cursor:
             if row[0]:
                 try:
                     depot = re.search(r"DEPOT", row[0].upper()).group()
                     if depot:
+                        row[3] = 'depot'
                         if row[1] == "N2":
                             row[2] = "Mabalacat Depot"
                             arcpy.AddMessage(f"Depot name: 'Mabalacat Depot'")
@@ -603,6 +607,7 @@ class GenerateDronePoints(object):
             keyword_field = 'Keyword'
             id_field = 'id'
             cp_field = 'CP'
+            query_field = 'Query'
             ref_fields = [station_name_field, piern_field, chainage_point_field]
 
             #--- Lists of reference names            
@@ -613,7 +618,7 @@ class GenerateDronePoints(object):
             media_point = 'media_point'
             arcpy.management.CreateFeatureclass(fgdb, media_point, "POINT", has_z="ENABLED", spatial_reference=spatial_reference)
 
-            main_fields = ['Path', 'Name', 'Type', 'TimeStamp', 'temp', 'Project', 'Keyword', 'CP']
+            main_fields = ['Path', 'Name', 'Type', 'TimeStamp', 'temp', 'Project', 'Keyword', 'CP', 'Query']
             for field in main_fields:
                 if (field == 'temp') or (field == 'id'):
                     arcpy.management.AddField(media_point, field, "SHORT", "", "", "", field, "NULLABLE", "REQUIRED")
@@ -626,7 +631,7 @@ class GenerateDronePoints(object):
 
             row_values = []
             for i, item in enumerate(items):
-                row_values.append((None, item, media_type, None, i+1, None, None, None))
+                row_values.append((None, item, media_type, None, i+1, None, None, None, None))
                 
             # Insert rows
             with arcpy.da.InsertCursor(media_point, main_fields) as cursor:
@@ -634,7 +639,7 @@ class GenerateDronePoints(object):
                     cursor.insertRow(row)
 
             # Add contents to fields (project, CP, station name, pier number, depot, time stamp) based on the file name
-            add_contents_field(media_point, ref_names[0], proj, project_field, name_field, cp_field, keyword_field, timestamp_field)          
+            add_contents_field(media_point, ref_names[0], proj, project_field, name_field, cp_field, keyword_field, timestamp_field, query_field='Query')          
 
             #--- Add xy coordinates based on reference names:
             kwds = [f[0] for f in arcpy.da.SearchCursor(media_point, [keyword_field])]

@@ -6,6 +6,7 @@ from datetime import date, datetime
 import re
 import string
 import numpy as np
+from pandas.api.types import is_numeric_dtype
 
 #----------------------------------------------#
 def unique(lists):
@@ -144,6 +145,7 @@ def summary_statistics_count_piers(cp, ids1, ids2, columns, ids3=None):
 def convert_to_nan(table, ids, fields):
     for field in fields:
         table.loc[ids, field] = np.nan
+
     return table
 
 #--- Custom class for generating a summary statistics table ---#
@@ -900,11 +902,7 @@ class UpdatePierWorkableTrackerML(object):
             final_table.loc[ids, status_field] = 4
 
             ## 'Workability' = 'Completed', the other fields = np.nan
-            ids = final_table.query(f"{workability_field} == 'Completed' and ({land_field} == 1 or {struc_field} == 1 or {util_obstruc_field} == 1 or {nlo_obstruc_field} == 1 or {others_field} == 1 )").index            
-            final_table = convert_to_nan(final_table, ids, [land_field, land1_field, struc_field, struc1_field, util_obstruc_field, nlo_obstruc_field, others_field])
-
-            ## 'Workability', the other fields = np.nan
-            ids = final_table.query(f"{workability_field} == 'Workable' and ({land_field} == 1 or {struc_field} == 1 or {util_obstruc_field} == 1 or {nlo_obstruc_field} == 1 or {others_field} == 1 )").index
+            ids = final_table.query(f"({workability_field} == 'Completed' or {workability_field} == 'Workable') and ({land_field} == 1 or {struc_field} == 1 or {util_obstruc_field} == 1 or {nlo_obstruc_field} == 1 or {others_field} == 1 )").index            
             final_table = convert_to_nan(final_table, ids, [land_field, land1_field, struc_field, struc1_field, util_obstruc_field, nlo_obstruc_field, others_field])
 
             #--------------------------------------------------------#
@@ -917,6 +915,7 @@ class UpdatePierWorkableTrackerML(object):
             # 4. Piers with obstructing Lot or Structure IDs in Land.1 or Structure.1 field do not have '1' in Land or Structure field.
 
             final_table[remarks_field] = np.nan
+            final_table[remarks_field] = final_table[remarks_field].astype(str)
             error_descriptions =   {
                     # 'case1': 'Workable or completed piers should not have obstructions in one or more columns.',
                     'case2': 'Non-workable piers should have at least one obstruction in columns.',

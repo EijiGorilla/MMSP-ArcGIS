@@ -1,3 +1,6 @@
+from fileinput import filename
+import math
+
 from pandas.plotting import table
 
 import arcpy
@@ -24,8 +27,10 @@ def unique_values(table, field):  ##uses list comprehension
     with arcpy.da.SearchCursor(table, [field]) as cursor:
         return sorted({row[0] for row in cursor if row[0] is not None})
 
-## 3. Return non-matched values between two lists
 def non_match_elements(list_a, list_b):
+    """
+    Return non-matched values between two lists
+    """
     non_match = []
     for i in list_a:
         if i not in list_b:
@@ -35,11 +40,6 @@ def non_match_elements(list_a, list_b):
 def first_letter_capital(table, column_names): # column_names are list
     for name in column_names:
         table[name] = table[name].str.title()
-    return table
-
-def rename_city_to_municipality(table, renamed_city):
-    col = table.columns[table.columns.str.contains('|'.join(['City','city', 'Muni']))]
-    table = table.rename(columns={str(col[0]): renamed_city})
     return table
 
 def replace_strings_table(table, field, array):
@@ -60,16 +60,6 @@ def toString(table, to_string_fields):
         table[field] = table[field].astype(str)
         table[field] = table[field].replace(r'\s+', '', regex=True)
     return table
-
-def find_duplicates_ordered(arr):
-    seen = set()
-    duplicates = set()
-    for item in arr:
-        if item in seen:
-            duplicates.add(item) # Use a set to avoid adding the same duplicate multiple times
-        else:
-            seen.add(item)
-    return list(duplicates)
 
 def remove_underline_hyphen_from_numeric_field(table, fields_list):
     for field in fields_list:
@@ -217,11 +207,11 @@ def add_obstruction(table, id_field, obstField, search_ids):
     table[obstField] = table[obstField].astype(str)
     table.loc[:, obstField] = 'No'
 
-    ids = table.query(f"{id_field}.isin({search_ids})").index
-    y_lot_ids = table.loc[ids, id_field].values
-    table.loc[ids, obstField] = 'Yes'
+    indices = table.query(f"{id_field}.isin({search_ids})").index
+    IDs = table.loc[indices, id_field].values
+    table.loc[indices, obstField] = 'Yes'
     
-    return [table, y_lot_ids]
+    return table, IDs
 
 def extract_obstructing_ids(table, qField, qValue, id_field, search_ids):
     """
@@ -236,6 +226,102 @@ def extract_obstructing_ids(table, qField, qValue, id_field, search_ids):
     IDs = table.loc[idx, id_field].values
 
     return IDs
+
+
+def merge_table_to_masterTable(input_table, target_table, id_field, rename_array, dummy_subject_fiels,  add_dummy_value=False):
+    """
+    Add four fields from each historical ML to reference ML: 1. 'StatusLA' (e.g., x20240101), 2. 'AffectedArea' (e.g., x20240101_TAA), 3. 'HandedOverArea' (e.g., x20240101_HOA), and 4. 'HandedOver' (e.g., x20240101_HO).
+    input_table: historical ML table to merge
+    target_table: reference ML table to be merged
+    id_field: ID field for merging (e.g., LotID)
+    rename_array: a dictionary for renaming fields in input_table (e.g., {status_field: f'x{yyyymm}', affectedArea_field: f'x{yyyymm}_TAA', handedOverArea_field: f'x{yyyymm}_HOA', handedover_field: f'x{yyyymm}_HO'})
+    dummy_subject_fiels: a list of subject fields to add dummy value when the first row is empty.
+    add_dummy_value: a boolean value to determine whether to add dummy value in the first row when the first row is empty.
+    """
+
+    if add_dummy_value:
+        table = first_row_fill_empty(input_table, dummy_subject_fiels, -99.0, "float")
+    table = input_table.rename(columns=rename_array)
+    
+    #--- Merge pre-processed historical ML to the latest ML
+    merged_table = pd.merge(left=target_table, right=table, how='left', left_on=id_field, right_on=id_field)
+
+    return merged_table
+
+def preprocess_table_with_yyyymmdd(filepath, id_field, status_field):
+    """
+    Preprocess the table and extract yyyymmdd from the file name.
+    filepath: path to the Excel file
+    id_field: ID field for merging (e.g., LotID)
+    status_field: status field to be renamed (e.g., StatusLA)
+    dumy_subject_fiels: a list of subject fields to add dummy value when the first row is empty.
+
+    Caution: ensure that the table's file name starts with yyyymmdd (e.g., 20240101_RAP_MasterList.xlsx) to extract yyyymmdd correctly.
+    """
+    yyyymmdd = os.path.basename(filepath)[:8]
+    table = pd.read_excel(filepath)
+    table = toString(table, [id_field])
+
+    #--- Status = 0 => None ---#
+    try:
+        table.loc[table.query(f"{status_field} == 0").index, status_field] = None
+    except:
+        pass
+
+    return table, yyyymmdd
+
+def find_duplicates_ordered(arr):
+    seen = set()
+    duplicates = set()
+    for item in arr:
+        if item in seen:
+            duplicates.add(item) # Use a set to avoid adding the same duplicate multiple times
+        else:
+            seen.add(item)
+    dups = [x for x in duplicates if not math.isnan(x)]
+    return list(dups)
+
+def generate_check_lotid_match(input_table, target_table, id_field):
+    """
+    Generate lotIds and duplicated lotIds in input and target tables for checking if lotIds are matched between two tables.
+    input_table: historical ML to merge.
+    target_table: latest ML to be merged.
+    id_field: ID field for merging (e.g., LotID)
+    """
+    input_ids = input_table[id_field].values
+    target_ids = target_table[id_field].values
+    input_dup = find_duplicates_ordered(input_ids)
+    target_dup = find_duplicates_ordered(target_ids)
+
+    return input_dup, target_dup
+
+def export_excel(table, export_dir, file_name):
+    export_file = os.path.join(export_dir, file_name)
+    table.to_excel(export_file, index=False)
+
+def rename_columns_title(table, col_names, col_indices, search_text, replace_col):
+    search_col = [col for col in col_names if re.search(search_text, col)][0]
+    search_col_index = col_indices[search_col]
+    if re.search(search_text, col_names[search_col_index]):
+        table = table.rename(columns={col_names[search_col_index]: replace_col})
+    return table
+
+
+def convert_columns_to_numeric(proj, table, numericFields, column_names, endorsed_field=None):
+    if proj == 'N2':
+        to_numeric_fields = numericFields + [endorsed_field]
+    else:
+        to_numeric_fields = numericFields
+
+    # Remove non-matching fields for numeric conversion
+    non_match_col = non_match_elements(to_numeric_fields, column_names)
+    [to_numeric_fields.remove(non_match_col[0]) if non_match_col else arcpy.AddMessage('no need to remove field from the list for numeric conversion')]
+
+    for field in to_numeric_fields:
+        table[field] = table[field].replace(r'\s+|[^\w\s$]','',regex=True)
+        table[field] = pd.to_numeric(table[field])
+
+    return table
 
 class summaryStatistics():
     # Make sure to use a list for groupby_field
@@ -396,101 +482,68 @@ class CompileRAPtables(object):
             handedOverArea_field = 'HandedOverArea'
             handedOverDate_field = 'HandedOverDate'
             affectedArea_field = 'AffectedArea'
-            totalarea_field = 'TotalArea'
             note_field = 'note'
 
             keep_fields = [lotid_field, status_field, affectedArea_field, handedOverArea_field, handedover_field]
+            hist_fields = [affectedArea_field, handedOverArea_field, handedover_field]
             
             # Read and compile a list of RAP ML files from each directory:
             rap_dirs = [dir for dir in os.listdir(rap_ml_dir) if dir.startswith('20') and os.path.isdir(os.path.join(rap_ml_dir, dir))]# extract ONLY folder starting with '20..'
             rap_files_dirs = [os.path.join(rap_ml_dir, file) for file in rap_dirs] # rap_ml_dir = "'C:\\Users\\oc3512\\Dropbox\\01-Railway\\02-NSCR-Ex\\01-N2\\02-Pre-Construction\\01-Environment\\01-LAR\\99-MasterList\\00-N2_RAP_Compiled"
             rap_files = [os.path.join(dir, file) for dir in rap_files_dirs for file in os.listdir(dir) if file.endswith('.xlsx')]
         
-            # Each ML is merged with the latest ML
-            yyyymm_latest = os.path.basename(rap_files[-1])[:8]
-            latest_ml = pd.read_excel(rap_files[-1])
-            latest_ml = remove_underline_hyphen_from_numeric_field(latest_ml, [affectedArea_field, totalarea_field, handedover_field])
+            # Each ML is merged with the latest ML            
+            ref_t, yyyymmdd_ref = preprocess_table_with_yyyymmdd(rap_files[-1], lotid_field, status_field)
+            ref_t = remove_underline_hyphen_from_numeric_field(ref_t, hist_fields)
+            ref_t[note_field] = ""
 
-            latest_ml = toString(latest_ml, [lotid_field])
-            latest_ml['x' + yyyymm_latest] = latest_ml[status_field]
-            latest_ml[note_field] = ""
+            # Get column names and index
+            col_names = ref_t.columns
+            col_indices = {name: i for i, name in enumerate(col_names)}
+            
+            for file in rap_files:
+                arcpy.AddMessage(f"Check input table: {os.path.basename(file)}")
+                t0, yyyymmdd = preprocess_table_with_yyyymmdd(file, lotid_field, status_field)
+                t0 = remove_underline_hyphen_from_numeric_field(t0, hist_fields)
+       
+                # Check if lotIds are matched with the latest ML                  
+                input_dup, target_dup = generate_check_lotid_match(t0, ref_t, lotid_field)
 
-            for param in zip(['_HOA','_TAA','_HO'], [handedOverArea_field, affectedArea_field, handedover_field]):
-                latest_ml['x' + yyyymm_latest + param[0]] = latest_ml[param[1]]
-
-            # compiled_ml = pd.DataFrame()
-            for file in rap_files[:-1]:
-                arcpy.AddMessage(f"Check input table: {file}")
-                table0 = pd.read_excel(file)
-                table0 = remove_underline_hyphen_from_numeric_field(table0, [affectedArea_field, totalarea_field, handedover_field])
-                table0 = toString(table0, [lotid_field])
-                yyyymm = os.path.basename(file)[:8]
-
-                # Check if lotIds are matched with the latest ML
-                input_lotids = table0[lotid_field].values
-                target_lotids = latest_ml[lotid_field].values
-
-                # Check duplicated LotID, if found, exit the loop.
-                input_duplicated = find_duplicates_ordered(input_lotids)
-                target_duplicated = find_duplicates_ordered(target_lotids)
-
-                arcpy.AddMessage(f"Input duplicated: {input_duplicated}")
-                arcpy.AddMessage(f"Target duplicated: {target_duplicated}")
-
-                if (not input_duplicated) and (not target_duplicated):
-                    ## when no duplication, proceed:
-                    # Check LotIDs are matched between input and target tables.
-                    if np.array_equal(input_lotids, target_lotids):
-                        # Keep only 'LotID', 'StatusLA', 'AffectedArea', 'HandedOverArea', 'HandedOver'
-                        table = table0[keep_fields]
-
-                        #--- LotID to string
-                        table[lotid_field] = table[lotid_field].astype(str)
-
-                        # Rename columns
-                        table = table.rename(columns={status_field: f"x{yyyymm}", affectedArea_field: f"x{yyyymm}_TAA", handedOverArea_field: f"x{yyyymm}_HOA", handedover_field: f"x{yyyymm}_HO"})
-
-                        # Merge to the latest
-                        latest_ml = pd.merge(left=latest_ml, right=table, how='left', left_on=lotid_field, right_on=lotid_field)
+                if (not input_dup) and (not target_dup):
+                    rename_array = {
+                        status_field: f'x{yyyymmdd}',
+                        affectedArea_field: f'x{yyyymmdd}_TAA',
+                        handedOverArea_field: f'x{yyyymmdd}_HOA',
+                        handedover_field: f'x{yyyymmdd}_HO'
+                    }
                     
-                    else:                        
-                        # Keep only 'LotID', 'StatusLA', 'AffectedArea', 'HandedOverArea', 'HandedOver'
-                        table = table0[keep_fields]
-
-                        #--- Entery dummy number for following fields (-99) in TAA, HOA, and HO
-                        table = first_row_fill_empty(table, [affectedArea_field, handedOverArea_field, handedover_field], -99.0, "float")
-
-                        #--- Rename columns
-                        table = table.rename(columns={status_field: f"x{yyyymm}", affectedArea_field: f"x{yyyymm}_TAA", handedOverArea_field: f"x{yyyymm}_HOA", handedover_field: f"x{yyyymm}_HO"})
-
-                        #--- Merge pre-processed historical ML to the latest ML
-                        latest_ml = pd.merge(left=latest_ml, right=table, how='left', left_on='LotID', right_on='LotID')
-                    
-                    #--- 'StatusLA' = 0 => None ---#
-                    cols = latest_ml.filter(regex='\\d+$', axis=1).columns
-                    for col in cols:
-                        idx = latest_ml.query(f"{col} == 0").index
-                        if len(idx) > 0:
-                            latest_ml.loc[idx, col] = None
-                    idx = latest_ml.query(f"{status_field} == 0").index
-                    latest_ml.loc[idx, status_field] = None
+                    # Keep only 'LotID', 'StatusLA', 'AffectedArea', 'HandedOverArea', 'HandedOver'
+                    t1 = t0[keep_fields]
+                    ref_t = merge_table_to_masterTable(t1, ref_t, lotid_field, rename_array,
+                                                             hist_fields,
+                                                             add_dummy_value=True)
 
                     #--- HandedOverDate ---#
-                    ## remove "-", "_"
-                    latest_ml[handedOverDate_field] = latest_ml[handedOverDate_field].replace(r'^[-_]','',regex=True)
+                    # remove "-", "_"
+                    ref_t[handedOverDate_field] = ref_t[handedOverDate_field].replace(r'^[-_]','',regex=True)
 
-                    #--- Rename a field to 'Municipality'
-                    latest_ml = rename_city_to_municipality(latest_ml, renamed_city)
+                    #--- Rename a field to 'Municipality'                    
+                    ref_t = rename_columns_title(ref_t, col_names, col_indices, 'City|Municipal', renamed_city)
 
                     #--- Save the compiled master list ---#
-                    latest_ml[note_field] = latest_ml.pop(note_field)
-                    yyyymmdd_latest = os.path.basename(rap_files[-1])[:8]
-                    export_file_name = str(yyyymmdd_latest) + "_" + proj + '_Compiled_RAP_Master_List' + '.xlsx'
-                    export_file_path = os.path.join(rap_ml_dir, export_file_name)
-                    latest_ml.to_excel(export_file_path, index=False)
+                    ref_t[note_field] = ref_t.pop(note_field)
+
+                    arcpy.AddMessage(ref_t.columns.tolist())
+
                 else:
+                    arcpy.AddMessage(f"Input duplicated: {input_dup}")
+                    arcpy.AddMessage(f"Target duplicated: {target_dup}")
                     arcpy.AddError('There are duplicated Ids in RAP table shown above. The Process stopped. Please correct the duplicated rows.')
                     break
+
+            #--- export the compiled master list ---#
+            filename = f"{str(yyyymmdd_ref)}_{proj}_Compiled_RAP_MasterList.xlsx"
+            export_excel(ref_t, rap_ml_dir, filename)
 
         N2SC_Compile_RAP_tables()
 
@@ -565,7 +618,6 @@ class UpdateLot(object):
         lastupdate = params[5].valueAsText
 
         arcpy.env.overwriteOutput = True
-        #arcpy.env.addOutputsToMap = True
 
         def N2SC_Land_Update():
 
@@ -604,43 +656,30 @@ class UpdateLot(object):
             except Exception:
                 arcpy.AddMessage('You did not choose to create a backup file of {0} master list.'.format(proj + '_Land_Status'))
 
-            # Check duplicated LotID
+            #--- Check duplicated LotID
             duplicated_Ids = rap_table[rap_table.duplicated([joinField]) == True][joinField]
 
             if len(duplicated_Ids) == 0:
-                ## Create column indices
-                column_names = rap_table.columns
-                city_field = [field for field in column_names if re.search('City|Municipal', field)][0]
-                column_indices = {name: i for i, name in enumerate(column_names)}
+                #--- Create column indices
+                col_names = rap_table.columns
+                col_indices = {name: i for i, name in enumerate(col_names)}
 
-                ## Rename Municipality
-                if proj == 'N2':
-                    municipal_col_index = column_indices[city_field]
-                    to_numeric_fields = numeric_fields_common + [endorsed_field]
-                else:
-                    municipal_col_index = column_indices[city_field]
-                    to_numeric_fields = numeric_fields_common
-                 
-                rap_table = rap_table.rename(columns={column_names[municipal_col_index]: renamed_city})
-                rap_table_origin = rap_table_origin.rename(columns={column_names[municipal_col_index]: renamed_city})
-                non_match_col = non_match_elements(to_numeric_fields, column_names)
-                [to_numeric_fields.remove(non_match_col[0]) if non_match_col else arcpy.AddMessage('no need to remove field from the list for numeric conversion')]
+                #--- Rename Municipality
+                rap_table = rename_columns_title(rap_table, col_names, col_indices, 'City|Municipal', renamed_city)
+                rap_table_origin = rename_columns_title(rap_table_origin, col_names, col_indices, 'City|Municipal', renamed_city)
 
-                ## Convert to numeric 
-                for field in to_numeric_fields:
-                    # you need to keep [] a set of characters in regex; otherwise, error.
-                    rap_table[field] = rap_table[field].replace(r'\s+|[^\w\s$]','',regex=True)
-                    rap_table[field] = pd.to_numeric(rap_table[field])
+                #--- Convert column to numeric                
+                rap_table = convert_columns_to_numeric(proj, rap_table, numeric_fields_common, col_names, endorsed_field)
+                rap_table_origin = convert_columns_to_numeric(proj, rap_table_origin, numeric_fields_common, col_names, endorsed_field)
 
-                    rap_table_origin[field] = rap_table_origin[field].replace(r'\s+|[^\w\s$]','',regex=True)
-                    rap_table_origin[field] = pd.to_numeric(rap_table_origin[field])
-                    
-                ## Conver to string
+                #--- Conver fields to string
                 rap_table = toString(rap_table, to_string_fields)
                 rap_table_origin = toString(rap_table_origin, to_string_fields)
+
+
                 gis_table[joinField] = gis_table[joinField].astype(str)
 
-                ## Reformat CP
+                #--- Reformat CP
                 if proj == 'N2':
                     rap_table[package_field] = rap_table[package_field].str.replace(r'N','N-',regex=True)
                 else:
@@ -652,19 +691,18 @@ class UpdateLot(object):
                     }
                     rap_table = replace_strings_table(rap_table, package_field, arrays)
 
-                    rap_table = convert_lotids_to_correct_cp(rap_table, joinField, '10155|10156|10158-5', package_field, "S-01")
-                    rap_table = convert_lotids_to_correct_cp(rap_table, joinField, '60136-A', package_field, "S-04")
-                    rap_table = convert_lotids_to_correct_cp(rap_table, joinField, '^100003$|^100004$|^100005$|^100010$', package_field, "S-06")
+                    for ids, pkg in zip(['10155|10156|10158-5', '60136-A', '^100003$|^100004$|^100005$|^100010$'], ["S-01", "S-04", "S-06"]):
+                        rap_table = convert_lotids_to_correct_cp(rap_table, joinField, ids, package_field, pkg)
                 
                 #--- Get the first CP (e.g., N-03,N-02 => N-03)
                 rap_table[package_field] = rap_table[package_field].apply(lambda x: re.sub(r',.*','',x))
                 
-                # Convert to date   
+                #--- Convert to date   
                 to_date_fields = [handover_date_field, handedover_date_field]
                 for field in to_date_fields:
                     rap_table[field] = pd.to_datetime(rap_table[field],errors='coerce').dt.date
             
-                ## Convert to uppercase letters for LandUse
+                #--- Convert to uppercase letters for LandUse
                 if proj == 'N2':
                     try:
                         rap_table = first_letter_capital(rap_table, [land_use_field])
@@ -673,35 +711,24 @@ class UpdateLot(object):
                     except:
                         pass
 
-                # Add scale from old master list
+                #--- Add scale from old master list
                 rap_table = rap_table.drop(scale_field,axis=1)
                 lot_gis_scale = gis_table[[scale_field, joinField]]
                 rap_table = pd.merge(left=rap_table, right=lot_gis_scale, how='left', left_on=joinField, right_on=joinField, validate="one_to_one")
 
-                # Fix StatusLA
-                ## StatusLA =0 -> StatusLA = empty
-                rap_table.loc[rap_table.query(f'{statusla_field} == 0').index, statusla_field] = None
-
-                ## 4. if the first row is empty, temporarily add the first row for 'HandedOverDate' and 'HandOverDate'
+                #--- Add dummy dates for date fields with empty values in the first row
                 rap_table = first_row_fill_empty(rap_table, to_date_fields, '1990-01-01', 'date')
-                # for field in to_date_fields:
-                #     date_item = rap_table[field].iloc[:1].item()
-                #     if date_item is None or pd.isnull(date_item):
-                #         rap_table.loc[0, field] = pd.to_datetime('1990-01-01')
 
-                ## 5. is.na(HandedOverArea) -> HandedOverArea = 0
+                #--- Replace NaN values in HandedOverArea with 0
                 rap_table.loc[rap_table.query(f'{handedover_area_field}.isna() or {handedover_area_field}.isna()').index, handedover_area_field] = 0
 
                 #--- Calculate percent handed-over
                 rap_table[percent_handedover_area_field] = round((rap_table[handedover_area_field] / rap_table[affected_area_field])*100,0)
-
-                #---
                 
                 # Export
-                export_file_name = os.path.splitext(os.path.basename(gis_lot_ms))[0]
-                to_excel_file = os.path.join(gis_dir, export_file_name + ".xlsx")
-                rap_table.to_excel(to_excel_file, index=False)
-
+                export_file_name = f"{os.path.splitext(os.path.basename(gis_lot_ms))[0]}.xlsx"
+                export_excel(rap_table, gis_dir, export_file_name)
+    
                 arcpy.AddMessage("The master list was successfully exported.")
 
                 #*****************************************************************************************
@@ -728,7 +755,7 @@ class UpdateLot(object):
                 affectedarea_stats = s_affectedarea.process_data_before_after()
 
                 ### 3.0. Export summary statistics table
-                file_name_stats = 'CHECK-' + proj + '_LA_Summary_Statistics_Rap_and_GIS_ML.xlsx'
+                file_name_stats = f"CHECK-{proj}_LA_Summary_Statistics_Rap_and_GIS_ML.xlsx"
                 to_excel_file0 = os.path.join(gis_dir, file_name_stats)
 
                 with pd.ExcelWriter(to_excel_file0) as writer:
@@ -834,32 +861,23 @@ class UpdateISF(object):
             except Exception:
                 arcpy.AddMessage('You did not choose to create a backup file of {0} master list.'.format('ISF_Relocation_Status'))
             
-            # Rename 'City' to Municipality
-            try:
-                rap_table = rename_city_to_municipality(rap_table, municipality_field)
-                rap_table = first_letter_capital(rap_table, [municipality_field])
+            #--- Rename 'City' to Municipality and Barangay
+            col_names = rap_table.columns
+            col_indices = {name: i for i, name in enumerate(col_names)}
 
-                # For Summary Stats
-                rap_table = rename_city_to_municipality(rap_table, municipality_field)
+            try:
+                for search_text, replace_col in zip(['City|Municipal', 'Bara|bara'], [municipality_field, barangay_field]):
+                    rap_table = rename_columns_title(rap_table, col_names, col_indices, search_text, replace_col)
+                    rap_table_stats = rename_columns_title(rap_table_stats, col_names, col_indices, search_text, replace_col)
+                
+
+                rap_table = first_letter_capital(rap_table, [municipality_field])
                 rap_table_stats = first_letter_capital(rap_table_stats, [municipality_field])
             except:
                 pass
 
-            # Rename Barangay
-            try:
-                renamed_col = rap_table.columns[rap_table.columns.str.contains('|'.join(['Bara','bara']))]
-                rap_table = rap_table.rename(columns={str(renamed_col[0]): barangay_field})
-                #first_letter_capital(rap_table, [renamed_brgy])
-
-                # For summary stats
-                renamed_col = rap_table_stats.columns[rap_table_stats.columns.str.contains('|'.join(['Bara','bara']))]
-                rap_table_stats = rap_table_stats.rename(columns={str(renamed_col[0]): barangay_field})
-            except:
-                pass
-
             # force dtypes as string
-            to_string_fields = [municipality_field, barangay_field, structure_id_field, package_field]
-            for field in to_string_fields:
+            for field in [municipality_field, barangay_field, structure_id_field, package_field]:
                 rap_table[field] = rap_table[field].astype(str)
                 rap_table_stats[field] = rap_table_stats[field].astype(str)
 
@@ -881,24 +899,14 @@ class UpdateISF(object):
             # Conver join field (StrucID) to upper case
             rap_table[structure_id_field] = rap_table[structure_id_field].str.upper()
 
-            # Convert to numeric
+            #--- Convert to numeric
             to_numeric_fields = [nlo_status_field, "TypeRC", "HandOver"]
-            cols = rap_table.columns
-            non_match_col = non_match_elements(to_numeric_fields, cols)
-            [to_numeric_fields.remove(non_match_col[0]) if non_match_col else print('no need to remove field from the list for numeric conversion')]
-
-            for field in to_numeric_fields:
-                rap_table[field] = rap_table[field].replace(r'\s+|[^\w\s]', '', regex=True)
-                rap_table[field] = pd.to_numeric(rap_table[field])
-
-                # For Summary stats
-                rap_table_stats[field] = rap_table_stats[field].replace(r'\s+|[^\w\s]', '', regex=True)
-                rap_table_stats[field] = pd.to_numeric(rap_table_stats[field])
-
+            rap_table = convert_columns_to_numeric(proj, rap_table, to_numeric_fields, col_names, endorsed_field=None)
+            rap_table_stats = convert_columns_to_numeric(proj, rap_table_stats, to_numeric_fields, col_names, endorsed_field=None)
+            
             # Export
-            export_file_name = os.path.splitext(os.path.basename(gis_isf_ms))[0]
-            to_excel_file = os.path.join(gis_dir, export_file_name + ".xlsx")
-            rap_table.to_excel(to_excel_file, index=False)
+            export_file_name = f"{os.path.splitext(os.path.basename(gis_isf_ms))[0]}.xlsx"
+            export_excel(rap_table, gis_dir, export_file_name)
 
             #------------------------------------------------------------------------------#
             #   Create summary statistics between original rap_table and updated rap_table #
@@ -911,10 +919,8 @@ class UpdateISF(object):
             statusla_stats = s_statusla.process_data_before_after()
 
             # Export summary statistics table
-            file_name_stats = 'CHECK-' + proj + '_ISF_Summary_Statistics_Rap_and_GIS_ML.xlsx'
-            to_excel_file0 = os.path.join(gis_dir, file_name_stats)
-
-            statusla_stats.to_excel(to_excel_file0, index=False)
+            file_name_stats = f"CHECK-{proj}_ISF_Summary_Statistics_Rap_and_GIS_ML.xlsx"
+            export_excel(statusla_stats, gis_dir, file_name_stats)
 
         N2SC_ISF_Update()
 
@@ -1015,6 +1021,7 @@ class UpdateStructure(object):
             joinField = 'StrucID'
             cp_field = 'CP'
             municipality_field = 'Municipality'
+            barangay_field = 'Barangay'
             handover_field = 'HandOver'
             structure_status_field = 'StatusStruc'
             structure_use_field = 'StructureUse'
@@ -1030,15 +1037,17 @@ class UpdateStructure(object):
             duplicated_Ids = rap_table[rap_table.duplicated([joinField]) == True][joinField]
 
             if len(duplicated_Ids) == 0:
-                # Common query and definitions
-                search_names_city = ['City/Municipality', 'City', 'Munici']
+                #--- Rename 'City' to Municipality and Barangay
+                col_names = rap_table.columns
+                col_indices = {name: i for i, name in enumerate(col_names)}
 
-                # Rename column names
-                colname_change = rap_table.columns[rap_table.columns.str.contains('|'.join(search_names_city))]
-                rap_table = rap_table.rename(columns={str(colname_change[0]): municipality_field})
+                for search_text, replace_col in zip(['City/Municipality|City|Municipal', 'Bara|bara'], [municipality_field, barangay_field]):
+                    rap_table = rename_columns_title(rap_table, col_names, col_indices, search_text, replace_col)
+                    rap_table_stats = rename_columns_title(rap_table_stats, col_names, col_indices, search_text, replace_col)
+                
                 rap_table = first_letter_capital(rap_table, [municipality_field])
-                rap_table_stats = rap_table_stats.rename(columns={str(colname_change[0]): municipality_field})
                 rap_table_stats = first_letter_capital(rap_table_stats, [municipality_field])
+
 
                 # Conver to string
                 common_fields = [joinField, cp_field]
@@ -1087,10 +1096,9 @@ class UpdateStructure(object):
                 rap_table = pd.merge(left=rap_table, right=df, how='left', left_on=joinField, right_on=joinField)
             
                 # Export
-                export_file_name = os.path.splitext(os.path.basename(gis_struc_ms))[0]
-                to_excel_file = os.path.join(gis_dir, export_file_name + ".xlsx")
-                rap_table.to_excel(to_excel_file, index=False)
-
+                export_file_name = f"{os.path.splitext(os.path.basename(gis_struc_ms))[0]}.xlsx"
+                export_excel(rap_table, gis_dir, export_file_name)
+ 
                 arcpy.AddMessage("The {} master list for structure was successfully exported.".format(proj))
 
                 #------------------------------------------------------------------------------#
@@ -1109,7 +1117,7 @@ class UpdateStructure(object):
                 handedover_stats = s_handedover.process_data_before_after()
  
                 # Export summary statistics table
-                file_name_stats = 'CHECK-' + proj + '_Structure_Summary_Statistics_Rap_and_GIS_ML.xlsx'
+                file_name_stats = f"CHECK-{proj}_Structure_Summary_Statistics_Rap_and_GIS_ML.xlsx"
                 to_excel_file0 = os.path.join(gis_dir, file_name_stats)
 
                 with pd.ExcelWriter(to_excel_file0) as writer:
@@ -1239,8 +1247,7 @@ class AddObstructionToLotN2(object):
 
                 ### Add these obstructing LotIDs to GIS Structure master list
                 # First, reset 'obstruction' field
-                obstruction_list = add_obstruction(gis_lot_t, lot_id_field, obstruc_field, x_lot_ids)
-                gis_lot_t = obstruction_list[0]
+                gis_lot_t, y_lot_ids = add_obstruction(gis_lot_t, lot_id_field, obstruc_field, x_lot_ids)
 
                 # Extract obstructing LotIDs from the GIS Attribute table (GIS_portal)
                 y_lot_portal_ids = extract_obstructing_ids(gis_lot_portal_t, cp_field, cp, lot_id_field, x_lot_ids)
@@ -1249,7 +1256,6 @@ class AddObstructionToLotN2(object):
                 #--------------------------------------------------------------#
                 ##                    Summary Statistics                      ##
                 #--------------------------------------------------------------#
-                y_lot_ids = obstruction_list[1]
                 summary_table = summary_statistics_count_ids(proj, cp, x_lot_ids, y_lot_ids, y_lot_portal_ids)
                 sum_lot_compile = pd.concat([sum_lot_compile, summary_table[0]], ignore_index=False)
 
@@ -1398,8 +1404,7 @@ class AddObstructionToStructureN2(object):
                 x_struc_ids = extract_ids_for_assign_obstruction(proj, pier_wtracker_t, struc1_field)
 
                 # Add these obstructing StrucIDs to GIS Structure master list
-                obstruction_list = add_obstruction(gis_struc_t, struc_id_field, obstruc_field, x_struc_ids)
-                gis_struc_t = obstruction_list[0]
+                gis_struc_t, y_struc_ids = add_obstruction(gis_struc_t, struc_id_field, obstruc_field, x_struc_ids)
 
                 # Extract obstructing StrucIDs from the GIS Attribute table (GIS_portal)
                 y_struc_portal_ids = extract_obstructing_ids(gis_struc_portal_t, cp_field, cp, struc_id_field, x_struc_ids) 
@@ -1407,9 +1412,8 @@ class AddObstructionToStructureN2(object):
                 #--- 2. NLO
                 # Add these obstructing StrucIDs to GIS ISF master list
                 # Note that regardless of NLO' status, all the NLOs falling under obstructing structures must be visualized.
-                obstruction_list_nlo = add_obstruction(gis_nlo_t, struc_id_field, obstruc_field, x_struc_ids)
-                gis_nlo_t = obstruction_list_nlo[0]
-
+                gis_nlo_t, _ = add_obstruction(gis_nlo_t, struc_id_field, obstruc_field, x_struc_ids)
+ 
                 # Check obstructing StrucIDS between NLO and Structure GIS master list
                 ids = gis_struc_t.query(f"{obstruc_field} == 'Yes'").index
                 gis_struc_ids = gis_struc_t.loc[ids, struc_id_field].values
@@ -1432,7 +1436,6 @@ class AddObstructionToStructureN2(object):
                 #--------------------------------------------------------------#
                 ##                    Summary Statistics                      ##
                 #--------------------------------------------------------------#
-                y_struc_ids = obstruction_list[1]
                 summary_table = summary_statistics_count_ids(proj, cp, x_struc_ids, y_struc_ids, y_struc_portal_ids)
                 sum_struc_compile = pd.concat([sum_struc_compile, summary_table[0]], ignore_index=False)
 
@@ -1586,8 +1589,7 @@ class AddObstructionToLotSC(object):
                 x_lot_ids = extract_ids_for_assign_obstruction(proj, pier_t, land_obstruc_field, land_obstrucid_field)
 
                 ## Add these obstructing LotIDs to GIS Structure master list
-                obstruction_list = add_obstruction(gis_lot_t, lot_id_field, obstruc_field, x_lot_ids)
-                gis_lot_t = obstruction_list[0]
+                gis_lot_t, y_lot_ids = add_obstruction(gis_lot_t, lot_id_field, obstruc_field, x_lot_ids)
 
                 #--- Extract obstructing LotIDs from the GIS Attribute table (GIS_portal)
                 y_lot_portal_ids = extract_obstructing_ids(gis_lot_portal_t, cp_field, cp, lot_id_field, x_lot_ids)
@@ -1596,7 +1598,6 @@ class AddObstructionToLotSC(object):
                 #--------------------------------------------------------------#
                 ##                    Summary Statistics                      ##
                 #--------------------------------------------------------------#
-                y_lot_ids = obstruction_list[1]
                 summary_table = summary_statistics_count_ids(proj, cp, x_lot_ids, y_lot_ids, y_lot_portal_ids)
                 sum_lot_compile = pd.concat([sum_lot_compile, summary_table[0]], ignore_index=False)
 
@@ -1737,8 +1738,7 @@ class AddObstructionToStructureSC(object):
                 x_struc_ids = extract_ids_for_assign_obstruction(proj, pier_t, struc_obstruc_field, struc_obstrucid_field)
 
                 # Add these obstructing StrucIDs to GIS Structure master list
-                obstruction_list = add_obstruction(gis_struc_t, struc_id_field, obstruc_field, x_struc_ids)
-                gis_struc_t = obstruction_list[0]
+                gis_struc_t, y_struc_ids = add_obstruction(gis_struc_t, struc_id_field, obstruc_field, x_struc_ids)
 
                 # Extract obstructing StrucIDs from the GIS Attribute table (GIS_portal)
                 y_struc_portal_ids = extract_obstructing_ids(gis_struc_portal_t, cp_field, cp, struc_id_field, x_struc_ids) 
@@ -1746,8 +1746,7 @@ class AddObstructionToStructureSC(object):
                 #--- 2. NLO
                 # Add these obstructing StrucIDs to GIS ISF master list
                 # Note that regardless of NLO' status, all the NLOs falling under obstructing structures must be visualized.
-                obstruction_list_nlo = add_obstruction(gis_nlo_t, struc_id_field, obstruc_field, x_struc_ids)
-                gis_nlo_t = obstruction_list_nlo[0]
+                gis_nlo_t, _ = add_obstruction(gis_nlo_t, struc_id_field, obstruc_field, x_struc_ids)
              
                 #### 2.2. Check obstructing StrucIDS between NLO and Structure GIS master list
                 ids = gis_struc_t.index[gis_struc_t[obstruc_field] == 'Yes']
@@ -1772,7 +1771,6 @@ class AddObstructionToStructureSC(object):
                 #--------------------------------------------------------------#
                 ##                    Summary Statistics                      ##
                 #--------------------------------------------------------------#
-                y_struc_ids = obstruction_list[1]
                 summary_table = summary_statistics_count_ids(proj, cp, x_struc_ids, y_struc_ids, y_struc_portal_ids)
                 sum_struc_compile = pd.concat([sum_struc_compile, summary_table[0]], ignore_index=False)
 

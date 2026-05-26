@@ -51,6 +51,29 @@ def find_duplicates_ordered(arr):
     non_na = [x for x in list(duplicates) if x == x] # this removes nan
     return non_na
 
+def find_word_location(df, search_word):
+    """
+    Finds the index and column of a specific word in a Pandas DataFrame.
+
+    Args:
+        df (pd.DataFrame): The DataFrame to search.
+        search_word (str): The word to search for.
+
+    Returns:
+        list: A list of dictionaries, where each dictionary represents a location
+            of the word in the DataFrame. Each dictionary has 'index' and 'column' keys.
+            Returns an empty list if the word is not found.
+    """
+    locations = []
+    col_idx = {name: i for i, name in enumerate(df)}
+    for col in df.columns:
+        for idx, value in df[col].items():
+            if isinstance(value, str) and search_word in value.title():
+                locations.append({'index': idx, 'column': col, 'colidx': col_idx[col]})
+            elif isinstance(value, str) and search_word in value:
+                locations.append({'index': idx, 'column': col, 'colidx': col_idx[col]})       
+    return locations
+
 def add_status(table, start_field, finish_field, status_field):
     table[status_field] = 1
 
@@ -275,33 +298,44 @@ class CompileViaductMasterList(object):
             type_field = 'Type'
             startdate_field = 'Start'
             finishdate_field = 'Finish'
+
             viaduct_types = ['BoredPile', 'PileCap', 'PierColumn', 'PierHead', 'Precast']
+            viaduct_types_val = [1, 2, 3, 4, 5]
+            via_type_index = {name: viaduct_types_val[i] for i, name in enumerate(viaduct_types)}
 
             compile_table = pd.DataFrame(columns=[cp_field, type_field, pierno_field, pileno_field, status_field, startdate_field, finishdate_field])
             
             for i, type in enumerate(viaduct_types):
-                x = pd.read_excel(civil_ml, sheet_name = type)
+                x = pd.read_excel(civil_ml, sheet_name = type, skiprows=2)
 
+                #-- column indices
+                cols = x.columns
+                col_indices = {name: i for i, name in enumerate(cols)}
+                x = x.iloc[:, 0:col_indices['Comment']+1]
+
+                x[type_field] = str(via_type_index[type])
                 #--- Bored Pile ---#
-                if i == 0:
-                    x[type_field] = str(i + 1)
-
+                if type == 'BoredPile':
                     # Multiple piles
                     ids = x.query(f"{pileno_field}.notna()").index
                     x.loc[ids, pierno_id] = x.loc[ids, pierno_field] + "-" + x.loc[ids, pileno_field] + "-" + x.loc[ids, type_field]
 
-                    # Mono Pile (P-159, P-160)
+                    # Monot Pile (P-159NB/SB, P-160NB/SB)
                     ids = x.query(f"{pileno_field}.isna()").index 
                     x.loc[ids, pierno_id] = x.loc[ids, pierno_field] + "-" + x.loc[ids, type_field]
 
                     # Add 'Status'
                     x = add_status(x, startdate_field, finishdate_field, status_field)
                     compile_table = pd.concat([compile_table, x])
-
+                    
                 else:
-                    x[type_field] = str(i + 1)
                     x[pierno_id] = x[pierno_field] + "-" + x[type_field]
                     x = add_status(x, startdate_field, finishdate_field, status_field)
+
+                    # Add Type = 0 for P-661 and P-662 for PierHead (N-02)
+                    if type == 'PierHead':
+                        idx = x.query(f"{pierno_field} in ['P-661', 'P-662']").index
+                        x.loc[idx, type_field] = '0'
                     compile_table = pd.concat([compile_table, x])
 
             #--- Conver type_field to integer ---#

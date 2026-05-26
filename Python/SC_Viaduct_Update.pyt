@@ -979,7 +979,7 @@ class UpdatePierWorkableTrackerML(object):
                        remarks_field]
             
             #--- Find column index of each field and keep columns until 'Remarks' field ---#
-            workability_col = find_word_location(civil_t, "Workability")[1]['colidx']
+            workability_col = find_word_location(civil_t, "PIER WORKABILITY\n(Pile Cap)")[0]['colidx']
             remarks_col = find_word_location(civil_t, "Remarks")[0]['colidx']+1
             row1 = find_word_location(civil_t, "CP")[0]['index'] + 1
             civil_t = civil_t.iloc[:, np.r_[0,1,workability_col:remarks_col]].loc[row1:, ].reset_index(drop=True)

@@ -2061,12 +2061,12 @@ class AddEditFieldsToBuildingLayerStation(object):
             
         # 3. Types of categories
         search_array = {
-            r'Bored Pile|Bore Pile|BoredPile|BorePile': 1,
+            r'Bored Pile|Bore Pile|BoredPile|BorePile|BORED PILE': 1,
             r'PileCap|Pile Cap|Pilecap': 2,
             r'Pier Head|PierHead': 3,
             r'^Pier$|Pier Column|PierColumn': 4,
-            r'VIA|Viaduct|VIADUCT|BR': 5,
-            r'At Grade|AtGrade|Abutment': 7,
+            r'^VIA-PCS$|VIA|Viaduct|VIADUCT|BR': 5,
+            r'At Grade|AtGrade|Abutment|(ATG)': 7,
             r'Pier Wall|PierWall|Pier Walls|PierWalls': 8,
             
         }

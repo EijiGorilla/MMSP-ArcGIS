@@ -153,38 +153,6 @@ def identify_missing_ids_fc(ids1, ids2):
     noids = noids_ids2 + noids_id1
     return noids
 
-### Pier Workability
-def extract_ids_for_assign_obstruction(proj, table, field, field2=None):
-    if proj == 'N2':
-        table = table.dropna(subset=[field]).reset_index(drop=True)
-        table[field] = table[field].astype(str)
-        table[field] = table[field].str.lstrip(',')
-        ids_flat = flatten_extend(table[field].str.split(','))          
-        ids = unique(ids_flat)
-        ids = remove_empty_strings(ids)
-    else:
-        ids = table.index[(table[field] == 1) & (table[field2].notna())]
-        ids_flat = flatten_extend(table.loc[ids, field2].str.split(","))
-        ids = unique(ids_flat)
-        ids = remove_empty_strings(ids)
-    return ids
-
-def summary_statistics_count_ids(proj, cp, rap_ids, gisml_ids, gisportal_ids):
-    noids_rap_vs_gisml = ",".join(non_match_elements(rap_ids, gisml_ids))
-    noids_rap_vs_gisportal = ",".join(non_match_elements(rap_ids, gisportal_ids))
-    rap_vs_gisml = len(rap_ids) - len(gisml_ids)
-    rap_vs_gisportal = len(rap_ids) - len(gisportal_ids)
-    params = [cp, len(rap_ids), len(gisml_ids), len(gisportal_ids), rap_vs_gisml, rap_vs_gisportal, noids_rap_vs_gisml, noids_rap_vs_gisportal]
-    columns = ['cp', 'rap', 'gis_ml', 'gis_portal', 'rap_vs_gisml', 'rap_vs_gisportal', 'noIDs_rap_vs_gisml', 'noIDs_rap_vs_gisportal']
-    table = pd.DataFrame(columns=columns)
-    for i in range(0, len(columns)):
-        table.loc[0, columns[i]] = params[i]
-    
-    # Add remarks
-    if len(noids_rap_vs_gisml) > 0:
-        table['remark'] = f"**{noids_rap_vs_gisml} were manually assigned 'Yes' in the Obstruction field of GIS_{proj}_ML.xlsx."
-    return [table, noids_rap_vs_gisml]
-
 ### Custom class for generating a summary statistics table
 def summary_by_field(table, stats_type, stats_field, groupby_fields):
     count_name = 'temp'
@@ -198,37 +166,6 @@ def summary_by_field(table, stats_type, stats_field, groupby_fields):
         values = [f[i] for f in table]
         arrays[f"{field}"] = values
     return arrays
-
-def add_obstruction(table, id_field, obstField, search_ids):
-    """
-    Add obstruction to a excel table: 'Yes' or 'No'
-    table: excel mater list table (land or structure ML)
-    field: obstruction field
-    id_field: LotID or structureID
-    """
-    table[obstField] = np.nan
-    table[obstField] = table[obstField].astype(str)
-    table.loc[:, obstField] = 'No'
-
-    indices = table.query(f"{id_field}.isin({search_ids})").index
-    IDs = table.loc[indices, id_field].values
-    table.loc[indices, obstField] = 'Yes'
-    
-    return table, IDs
-
-def extract_obstructing_ids(table, qField, qValue, id_field, search_ids):
-    """
-    Extract obstructing IDs
-    table: excel master list table in pandas
-    qField: query field
-    qValue: query value
-    id_field: ID field
-    search_ids: search IDs
-    """
-    idx = table.query(f"{qField} == '{qValue}' & {id_field}.isin({search_ids})").index
-    IDs = table.loc[idx, id_field].values
-
-    return IDs
 
 
 def merge_table_to_masterTable(input_table, target_table, id_field, rename_array, dummy_subject_fiels,  add_dummy_value=False):
@@ -392,6 +329,91 @@ def preprocess_rap_table(proj,
     table[cp_field] = table[cp_field].apply(lambda x: re.sub(r',.*','',x))
 
     return table
+
+#-----------------------#
+#    Pier Workability   #
+#-----------------------#
+def extract_ids_for_assign_obstruction(table, field, field2=None):
+    ids = table.index[(table[field] == 1) & (table[field2].notna())]
+    ids_flat = flatten_extend(table.loc[ids, field2].str.split(","))
+    ids = unique(ids_flat)
+    ids = remove_empty_strings(ids)
+    return ids
+
+def summary_statistics_count_ids(proj, cp, rap_ids, gisml_ids, gisportal_ids):
+    noids_rap_vs_gisml = ",".join(non_match_elements(rap_ids, gisml_ids))
+    noids_rap_vs_gisportal = ",".join(non_match_elements(rap_ids, gisportal_ids))
+    rap_vs_gisml = len(rap_ids) - len(gisml_ids)
+    rap_vs_gisportal = len(rap_ids) - len(gisportal_ids)
+    params = [cp, len(rap_ids), len(gisml_ids), len(gisportal_ids), rap_vs_gisml, rap_vs_gisportal, noids_rap_vs_gisml, noids_rap_vs_gisportal]
+    columns = ['cp', 'rap', 'gis_ml', 'gis_portal', 'rap_vs_gisml', 'rap_vs_gisportal', 'noIDs_rap_vs_gisml', 'noIDs_rap_vs_gisportal']
+    table = pd.DataFrame(columns=columns)
+    for i in range(0, len(columns)):
+        table.loc[0, columns[i]] = params[i]
+    
+    # Add remarks
+    if len(noids_rap_vs_gisml) > 0:
+        table['remark'] = f"**{noids_rap_vs_gisml} were manually assigned 'Yes' in the Obstruction field of GIS_{proj}_ML.xlsx."
+    return [table, noids_rap_vs_gisml]
+
+def add_obstruction(table, id_field, obstField, search_ids):
+    """
+    Add obstruction to a excel table: 'Yes' or 'No'
+    table: excel mater list table (land or structure ML)
+    field: obstruction field
+    id_field: LotID or structureID
+    """
+    table[obstField] = np.nan
+    table[obstField] = table[obstField].astype(str)
+    table.loc[:, obstField] = 'No'
+
+    indices = table.query(f"{id_field}.isin({search_ids})").index
+    IDs = table.loc[indices, id_field].values
+    table.loc[indices, obstField] = 'Yes'
+    
+    return table, IDs
+
+def extract_obstructing_ids(table, id_field, search_ids):
+    """
+    Extract obstructing IDs
+    table: excel master list table in pandas
+    id_field: ID field
+    search_ids: search IDs
+    """
+    idx = table.query(f"{id_field}.isin({search_ids})").index
+    IDs = table.loc[idx, id_field].values
+
+    return IDs
+
+def add_obstruction_and_extract_ids(
+        target_table, 
+        target_portal_table, 
+        input_table,
+        id_field, 
+        obs_field, 
+        obs_type_field, 
+        obs_type1_field):
+    """
+    Add Obstruction ('Yes' or 'No') to GIS master list and extract obstructing IDs from both GIS master list and GIS portal table.
+    proj: project extension (e.g., 'N2' or 'SC')
+    target_table: GIS master list table to be updated with obstruction (land or structure ML)
+    target_portal_table: GIS portal table to be checked for extracting obstructing IDs (GIS attribute table)
+    input_table: RAP table to be checked for extracting obstructing IDs (land or structure RAP table)
+    id_field: ID field (e.g., LotID or StrucID)
+    obs_field: obstruction field to be added in the target_table (e.g., 'Obstruction')
+    obs_type_field: obstruction type field in the input_table (e.g., 'Land')
+    obs_type1_field: field containing obstructing IDs associated with id_field (e.g., 'Land1')
+    """
+    #--- pier workability tracker
+    tracker_obs_ids = extract_ids_for_assign_obstruction(input_table, obs_type_field, obs_type1_field)
+
+    #--- Add obstructing IDs to target table & return extracted IDs from GIS master list
+    gis_table, gis_obs_ids = add_obstruction(target_table, id_field, obs_field, tracker_obs_ids)
+
+    #--- Return obstructing IDs from GIS Portal table
+    gis_portal_obs_ids = extract_obstructing_ids(target_portal_table, id_field, tracker_obs_ids)
+
+    return gis_table, tracker_obs_ids, gis_obs_ids, gis_portal_obs_ids
 
 class summaryStatistics():
     # Make sure to use a list for groupby_field
@@ -801,7 +823,7 @@ class UpdateISF(object):
         )
 
         gis_isf_ms = arcpy.Parameter(
-            displayName = "GIS ISF Relocation Status ML (Excel)",
+            displayName = "GIS ISF Relocation Status ML (Excel) - only for backup",
             name = "GIS ISF Relocation Status ML (Excel)",
             datatype = "DEFile",
             parameterType = "Required",
@@ -904,7 +926,7 @@ class UpdateStructure(object):
         )
 
         gis_struc_ms = arcpy.Parameter(
-            displayName = "GIS Structure Status ML (Excel)",
+            displayName = "GIS Structure Status ML (Excel) - only for backup",
             name = "GIS Structure Status ML (Excel)",
             datatype = "DEFile",
             parameterType = "Required",
@@ -1126,29 +1148,29 @@ class AddObstructionToLotN2(object):
 
             cps = ['N-01','N-02','N-03']
             for cp in cps:
-                gis_lot_t = gis_lot_table.query(f"{cp_field} == '{cp}'").reset_index(drop=True)
-                pier_wtracker_t = pier_wtracker.query(f"{cp_field} == '{cp}'").reset_index(drop=True)
-
+                gis_t = gis_lot_table.query(f"{cp_field} == '{cp}'").reset_index(drop=True)
+                pier_t = pier_wtracker.query(f"{cp_field} == '{cp}'").reset_index(drop=True)
+                gis_portal_t = gis_lot_portal_t.query(f"{cp_field} == '{cp}'").reset_index(drop=True)
+                
                 #--------------------------------------------------------------#
                 ## B. Identify Obstruction (Yes' or 'No') to GIS master list ###
                 #--------------------------------------------------------------#
-                ## Note that Civil table may have duplicated LotIDs or Structure IDs, as some pile caps are obstructed by the same lots or structures.
-
-                ## Land
-                x_lot_ids = extract_ids_for_assign_obstruction(proj, pier_wtracker_t, land1_field)
-
-                ### Add these obstructing LotIDs to GIS Structure master list
-                # First, reset 'obstruction' field
-                gis_lot_t, y_lot_ids = add_obstruction(gis_lot_t, lot_id_field, obstruc_field, x_lot_ids)
-
-                # Extract obstructing LotIDs from the GIS Attribute table (GIS_portal)
-                y_lot_portal_ids = extract_obstructing_ids(gis_lot_portal_t, cp_field, cp, lot_id_field, x_lot_ids)
-                compile_land = pd.concat([compile_land, gis_lot_t])
+                gis_t, tracker_obs_ids, gis_obs_ids, gis_portal_obs_ids = add_obstruction_and_extract_ids( 
+                                                                                                    gis_t, 
+                                                                                                    gis_portal_t, 
+                                                                                                    pier_t,
+                                                                                                    lot_id_field, 
+                                                                                                    obstruc_field,
+                                                                                                    "Land",
+                                                                                                    land1_field,
+                                                                                                    )
+                      
+                compile_land = pd.concat([compile_land, gis_t])
 
                 #--------------------------------------------------------------#
                 ##                    Summary Statistics                      ##
                 #--------------------------------------------------------------#
-                summary_table = summary_statistics_count_ids(proj, cp, x_lot_ids, y_lot_ids, y_lot_portal_ids)
+                summary_table = summary_statistics_count_ids(proj, cp, tracker_obs_ids, gis_obs_ids, gis_portal_obs_ids)
                 sum_lot_compile = pd.concat([sum_lot_compile, summary_table[0]], ignore_index=False)
 
             #--------------------------------------------------------------#
@@ -1264,7 +1286,8 @@ class AddObstructionToStructureN2(object):
         def Obstruction_Structure_ML_Update():                       
             # Define field names
             cp_field = 'CP'
-            struc1_field = 'Structure.1'
+            struc_obstruc_field = 'Structure'
+            struc_obstrucid_field = 'Structure.1'
             obstruc_field = 'Obstruction'
             struc_id_field = 'StrucID'
 
@@ -1285,30 +1308,32 @@ class AddObstructionToStructureN2(object):
             cps = ['N-01','N-02','N-03']
 
             for cp in cps:
-                gis_struc_t = gis_struc_table.query(f"{cp_field} == '{cp}'").reset_index(drop=True)
+                gis_t = gis_struc_table.query(f"{cp_field} == '{cp}'").reset_index(drop=True)
                 gis_nlo_t = gis_nlo_table.query(f"{cp_field} == '{cp}'").reset_index(drop=True)
-                pier_wtracker_t = pier_wtracker.query(f"{cp_field} == '{cp}'").reset_index(drop=True)
+                pier_t = pier_wtracker.query(f"{cp_field} == '{cp}'").reset_index(drop=True)
+                gis_portal_t = gis_struc_portal_t.query(f"{cp_field} == '{cp}'").reset_index(drop=True)
 
                 #--------------------------------------------------------------#
                 ## B. Identify Obstruction (Yes' or 'No') to GIS master list ###
                 #--------------------------------------------------------------#
-                ## Note that Civil table may have duplicated LotIDs or Structure IDs, as some pile caps are obstructed by the same lots or structures.
-                x_struc_ids = extract_ids_for_assign_obstruction(proj, pier_wtracker_t, struc1_field)
-
-                # Add these obstructing StrucIDs to GIS Structure master list
-                gis_struc_t, y_struc_ids = add_obstruction(gis_struc_t, struc_id_field, obstruc_field, x_struc_ids)
-
-                # Extract obstructing StrucIDs from the GIS Attribute table (GIS_portal)
-                y_struc_portal_ids = extract_obstructing_ids(gis_struc_portal_t, cp_field, cp, struc_id_field, x_struc_ids) 
+                #--- Structure
+                gis_t, tracker_obs_ids, gis_obs_ids, gis_portal_obs_ids = add_obstruction_and_extract_ids(
+                                                                                                    gis_t, 
+                                                                                                    gis_portal_t, 
+                                                                                                    pier_t,
+                                                                                                    struc_id_field, 
+                                                                                                    obstruc_field,
+                                                                                                    struc_obstruc_field,
+                                                                                                    struc_obstrucid_field)
 
                 #--- 2. NLO
                 # Add these obstructing StrucIDs to GIS ISF master list
                 # Note that regardless of NLO' status, all the NLOs falling under obstructing structures must be visualized.
-                gis_nlo_t, _ = add_obstruction(gis_nlo_t, struc_id_field, obstruc_field, x_struc_ids)
+                gis_nlo_t, _ = add_obstruction(gis_nlo_t, struc_id_field, obstruc_field, tracker_obs_ids)
  
                 # Check obstructing StrucIDS between NLO and Structure GIS master list
-                ids = gis_struc_t.query(f"{obstruc_field} == 'Yes'").index
-                gis_struc_ids = gis_struc_t.loc[ids, struc_id_field].values
+                ids = gis_t.query(f"{obstruc_field} == 'Yes'").index
+                gis_struc_ids = gis_t.loc[ids, struc_id_field].values
 
                 ids = gis_nlo_t.query(f"{obstruc_field} == 'Yes'").index
                 gis_nlo_ids = unique(gis_nlo_t.loc[ids, struc_id_field])    
@@ -1322,13 +1347,13 @@ class AddObstructionToStructureN2(object):
                     arcpy.AddMessage('No, everything is fine.')
 
                 ### 4. Compile for cps
-                compile_struc = pd.concat([compile_struc, gis_struc_t])
+                compile_struc = pd.concat([compile_struc, gis_t])
                 compile_nlo = pd.concat([compile_nlo, gis_nlo_t])
 
                 #--------------------------------------------------------------#
                 ##                    Summary Statistics                      ##
                 #--------------------------------------------------------------#
-                summary_table = summary_statistics_count_ids(proj, cp, x_struc_ids, y_struc_ids, y_struc_portal_ids)
+                summary_table = summary_statistics_count_ids(proj, cp, tracker_obs_ids, gis_obs_ids, gis_portal_obs_ids)
                 sum_struc_compile = pd.concat([sum_struc_compile, summary_table[0]], ignore_index=False)
 
             noids_rap_vs_gisml = pd.Series(summary_table[1])    
@@ -1456,7 +1481,7 @@ class AddObstructionToLotSC(object):
 
             # Read as xlsx
             gis_lot_table = pd.read_excel(gis_lot_ms)
-            gis_lot_portal_t = pd.read_excel(gis_lot_portal)
+            gis_lot_portal_table = pd.read_excel(gis_lot_portal)
             pier_wtracker = pd.read_excel(pier_tracker_ms)
 
             # 0. Reset 'Obstruction' to 'No' first
@@ -1468,29 +1493,27 @@ class AddObstructionToLotSC(object):
 
             cps = ['S-01','S-02','S-03a','S-03c','S-04','S-05','S-06']
             for cp in cps:
-                gis_lot_t = gis_lot_table.query(f"{cp_field} == '{cp}'").reset_index(drop=True)
+                gis_t = gis_lot_table.query(f"{cp_field} == '{cp}'").reset_index(drop=True)
                 pier_t = pier_wtracker.query(f"{cp_field} == '{cp}'").reset_index(drop=True)
+                gis_portal_t = gis_lot_portal_table.query(f"{cp_field} == '{cp}'").reset_index(drop=True)
                 
                 #--------------------------------------------------------------#
                 ## B. Identify Obstruction (Yes' or 'No') to GIS master list ###
                 #--------------------------------------------------------------#
-                # Note that Civil table may have duplicated LotIDs or Structure IDs, as some pile caps
-                # are obstructed by the same lots or structures.
-
-                # Land
-                x_lot_ids = extract_ids_for_assign_obstruction(proj, pier_t, land_obstruc_field, land_obstrucid_field)
-
-                ## Add these obstructing LotIDs to GIS Structure master list
-                gis_lot_t, y_lot_ids = add_obstruction(gis_lot_t, lot_id_field, obstruc_field, x_lot_ids)
-
-                #--- Extract obstructing LotIDs from the GIS Attribute table (GIS_portal)
-                y_lot_portal_ids = extract_obstructing_ids(gis_lot_portal_t, cp_field, cp, lot_id_field, x_lot_ids)
-                compile_land = pd.concat([compile_land, gis_lot_t])
+                gis_t, tracker_obs_ids, gis_obs_ids, gis_portal_obs_ids = add_obstruction_and_extract_ids( 
+                                                                                                    gis_t, 
+                                                                                                    gis_portal_t, 
+                                                                                                    pier_t,
+                                                                                                    lot_id_field, 
+                                                                                                    obstruc_field,
+                                                                                                    land_obstruc_field,
+                                                                                                    land_obstrucid_field)
+                compile_land = pd.concat([compile_land, gis_t])
 
                 #--------------------------------------------------------------#
                 ##                    Summary Statistics                      ##
                 #--------------------------------------------------------------#
-                summary_table = summary_statistics_count_ids(proj, cp, x_lot_ids, y_lot_ids, y_lot_portal_ids)
+                summary_table = summary_statistics_count_ids(proj, cp, tracker_obs_ids, gis_obs_ids, gis_portal_obs_ids)
                 sum_lot_compile = pd.concat([sum_lot_compile, summary_table[0]], ignore_index=False)
 
             #--------------------------------------------------------------#
@@ -1615,40 +1638,35 @@ class AddObstructionToStructureSC(object):
       
             cps = ['S-01','S-02','S-03a','S-03c','S-04','S-05','S-06']
             for i, cp in enumerate(cps):
-                gis_struc_t = gis_struc_table.query(f"{cp_field} == '{cp}'").reset_index(drop=True)
+                gis_t = gis_struc_table.query(f"{cp_field} == '{cp}'").reset_index(drop=True)
                 gis_nlo_t = gis_nlo_table.query(f"{cp_field} == '{cp}'").reset_index(drop=True)
                 pier_t = pier_wtracker.query(f"{cp_field} == '{cp}'").reset_index(drop=True)
-                # pier_t[struc_obstruc_field] =pier_t[struc_obstruc_field].astype(str)
-
+                gis_portal_t = gis_struc_portal_t.query(f"{cp_field} == '{cp}'").reset_index(drop=True)
+   
                 #--------------------------------------------------------------#
                 ##  Identify Obstruction (Yes' or 'No') to GIS master list    ##
                 #--------------------------------------------------------------#
-                # Note that Civil table may have duplicated LotIDs or Structure IDs, as some pile caps
-                # are obstructed by the same lots or structures.
+                #--- Structure
+                gis_t, tracker_obs_ids, gis_obs_ids, gis_portal_obs_ids = add_obstruction_and_extract_ids(
+                                                                                                    gis_t, 
+                                                                                                    gis_portal_t, 
+                                                                                                    pier_t,
+                                                                                                    struc_id_field, 
+                                                                                                    obstruc_field,
+                                                                                                    struc_obstruc_field,
+                                                                                                    struc_obstrucid_field)
 
-                #--- Structure and ISF
-                x_struc_ids = extract_ids_for_assign_obstruction(proj, pier_t, struc_obstruc_field, struc_obstrucid_field)
-
-                # Add these obstructing StrucIDs to GIS Structure master list
-                gis_struc_t, y_struc_ids = add_obstruction(gis_struc_t, struc_id_field, obstruc_field, x_struc_ids)
-
-                # Extract obstructing StrucIDs from the GIS Attribute table (GIS_portal)
-                y_struc_portal_ids = extract_obstructing_ids(gis_struc_portal_t, cp_field, cp, struc_id_field, x_struc_ids) 
-
-                #--- 2. NLO
+                #--- NLO
                 # Add these obstructing StrucIDs to GIS ISF master list
                 # Note that regardless of NLO' status, all the NLOs falling under obstructing structures must be visualized.
-                gis_nlo_t, _ = add_obstruction(gis_nlo_t, struc_id_field, obstruc_field, x_struc_ids)
+                gis_nlo_t, _ = add_obstruction(gis_nlo_t, struc_id_field, obstruc_field, tracker_obs_ids)
              
-                #### 2.2. Check obstructing StrucIDS between NLO and Structure GIS master list
-                ids = gis_struc_t.index[gis_struc_t[obstruc_field] == 'Yes']
-                gis_struc_ids = gis_struc_t.loc[ids, struc_id_field].values
-
+                #--- Compare obstructing StrucIDS between NLO and Structure GIS master list
                 ids = gis_nlo_t.index[gis_nlo_t[obstruc_field] == 'Yes']
                 gis_nlo_ids = unique(gis_nlo_t.loc[ids, struc_id_field])    
-                unmatched_struc_ids = non_match_elements(gis_nlo_ids, gis_struc_ids)
+                unmatched_struc_ids = non_match_elements(gis_nlo_ids, gis_obs_ids)
 
-                arcpy.AddMessage(f"{cp}: any obstructing StrucIDs in the NLO ML that do not exist in the structure ML?")
+                arcpy.AddMessage(f"{cp}: any obstructing StrucIDs in the NLO missing from structure ML?")
                 if len(unmatched_struc_ids) > 0:
                     arcpy.AddMessage(unmatched_struc_ids)
                     arcpy.AddMessage("---------------------------------------------------------------------------------------")
@@ -1657,13 +1675,13 @@ class AddObstructionToStructureSC(object):
                     arcpy.AddMessage("---------------------------------------------------------------------------------------")
 
                 ## Compile for cps
-                compile_struc = pd.concat([compile_struc, gis_struc_t])
+                compile_struc = pd.concat([compile_struc, gis_t])
                 compile_nlo = pd.concat([compile_nlo, gis_nlo_t])
 
                 #--------------------------------------------------------------#
                 ##                    Summary Statistics                      ##
                 #--------------------------------------------------------------#
-                summary_table = summary_statistics_count_ids(proj, cp, x_struc_ids, y_struc_ids, y_struc_portal_ids)
+                summary_table = summary_statistics_count_ids(proj, cp, tracker_obs_ids, gis_obs_ids, gis_portal_obs_ids)
                 sum_struc_compile = pd.concat([sum_struc_compile, summary_table[0]], ignore_index=False)
 
             #-----------------------------------------------------------------#
@@ -1683,7 +1701,6 @@ class AddObstructionToStructureSC(object):
             miss_cp = tuple(non_match_elements(unique(gis_nlo_table[cp_field]), unique(compile_nlo[cp_field])))
             if len(miss_cp) > 0:
                 gis_nlo_misst = gis_nlo_table.query(f"{cp_field} in {miss_cp}")
-                # gis_nlo_misst[obstruc_field] = 'No'
                 compile_nlo = pd.concat([compile_nlo, gis_nlo_misst])
            
             compile_nlo.to_excel(os.path.join(gis_rap_dir, os.path.basename(gis_nlo_ms)), index=False) ## gis_isf
@@ -1700,7 +1717,7 @@ class JustMessage2(object):
 
 class UpdateLotGIS(object):
     def __init__(self):
-        self.label = "5.1. Update GIS Attribute Table (Lot) - Stop Service & Disconnect"
+        self.label = "5.1. Update GIS Attribute Table (Lot) - Disconnect SDE"
         self.description = "Update feature layer for land acquisition"
 
     def getParameterInfo(self):

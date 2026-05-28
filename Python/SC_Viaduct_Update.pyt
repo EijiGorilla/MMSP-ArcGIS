@@ -2061,25 +2061,38 @@ class AddEditFieldsToBuildingLayerStation(object):
             
         # 3. Types of categories
         search_array = {
-            r'Bored Pile|Bore Pile|BoredPile|BorePile|BORED PILE': 1,
-            r'PileCap|Pile Cap|Pilecap': 2,
-            r'Pier Head|PierHead': 3,
-            r'^Pier$|Pier Column|PierColumn': 4,
-            r'^VIA-PCS$|VIA|Viaduct|VIADUCT|BR': 5,
-            r'At Grade|AtGrade|Abutment|(ATG)': 7,
-            r'Pier Wall|PierWall|Pier Walls|PierWalls': 8,
+            r'At Grade|AtGrade|Abutment|BORED PILE.*(ATG)': 7,
+            r'^Bored Pile|^Bore Pile|^BoredPile|^BorePile|^BORED PILE': 1,
+            r'^PileCap|^Pile Cap|^Pilecap': 2,
+            r'^Pier Head|^PierHead': 4,
+            r'^Pier$|^Pier Column|^PierColumn': 3,
+            r'^VIA-PCS|^VIA Type|Viaduct|VIADUCT|BR': 5,
+            r'^Pier Wall|PierWall|^Pier Walls$|PierWalls': 8,
             
         }
         for layer in layers:
             field_list = [f.name for f in arcpy.ListFields(layer)]
             if description_field in field_list:
-                with arcpy.da.UpdateCursor(layer, [description_field, types_field, category_field]) as cursor:
+                with arcpy.da.UpdateCursor(layer, [description_field, types_field]) as cursor:
                     for row in cursor:
-                        if row[0] or row[2]:
-                            row[1] = return_matching_value(row[0], search_array, return_value=True, default=0)
-                            row[1] = return_matching_value(row[2], search_array, return_value=True, default=0)
+                        if row[0]:
+                            row[1] = return_matching_value(row[0], search_array, return_value=True, default=None)
                         else:
-                            row[1] = 0
+                            row[1] = None
+                        cursor.updateRow(row)
+            else:
+                arcpy.AddMessage(f"{layer} does not have {description_field} field. Please check.")
+
+        for layer in layers:
+            field_list = [f.name for f in arcpy.ListFields(layer)]
+            if description_field in field_list:
+                arcpy.management.SelectLayerByAttribute(layer, 'NEW_SELECTION', f"{types_field} IS NULL")
+                with arcpy.da.UpdateCursor(layer, [category_field, types_field]) as cursor:
+                    for row in cursor:
+                        if row[0]:
+                            row[1] = return_matching_value(row[0], search_array, return_value=True, default=None)
+                        else:
+                            row[1] = None
                         cursor.updateRow(row)
             else:
                 arcpy.AddMessage(f"{layer} does not have {description_field} field. Please check.")

@@ -712,66 +712,34 @@ class UpdateGISTable(object):
         finish_actual_field = 'finish_actual'
         date_fields = [start_actual_field, finish_plan_field, finish_actual_field]
 
-        uniqueID = 'uniqueID'
+        join_field = 'uniqueID'
 
-        # 1. Copy Original Feature Layers
-        copied_name = 'tempLayer'               
-        gis_copied = arcpy.CopyFeatures_management(gis_layer, copied_name)
-            
-        arcpy.AddMessage("Stage 1: Copy feature layer was success")
-                
-        # 2. Delete Field
-        gis_fields = [f.name for f in arcpy.ListFields(gis_copied)]
-            
-        ## 2.1. Identify fields to be dropped
-        gis_drop_fields_check = [e for e in gis_fields if e not in (uniqueID,'Shape','Shape_Length','Shape_Area','Shape.STArea()','Shape.STLength()','OBJECTID','GlobalID')]
-            
-        ## 2.2. Extract existing fields
-        arcpy.AddMessage("Stage 1: Extract existing fields was success")
-            
-        ## 2.3. Check if there are fields to be dropped
-        gis_drop_fields = [f for f in gis_fields if f in tuple(gis_drop_fields_check)]
-            
-        arcpy.AddMessage("Stage 1: Checking for Fields to be dropped was success")
-            
-        ## 2.4 Drop
-        if len(gis_drop_fields) == 0:
-            arcpy.AddMessage("There is no field that can be dropped from the feature layer")
-        else:
-            arcpy.DeleteField_management(gis_copied, gis_drop_fields)
-                
-        arcpy.AddMessage("Stage 1: Dropping Fields was success")
-        arcpy.AddMessage("Section 2 of Stage 1 was successfully implemented")
+        layer_copy = "layer_copy"
+        arcpy.management.CopyFeatures(gis_layer, layer_copy)
 
-        # 3. Join Field
-        ## 3.1. Convert Excel tables to feature table
-        viaduct_ml = arcpy.conversion.ExportTable(excel_table, 'viaduct_ml')
+        #--- Keep only uniquID
+        arcpy.management.DeleteField(layer_copy, [join_field], "KEEP_FIELDS")
 
-        # Check if uniqueID match between ML and GIS
-        uniqueid_gis = unique_values(gis_copied, uniqueID)
-        uniqueid_ml = unique_values(viaduct_ml, uniqueID)
+        #--- Check matching
+        id_copy = unique_values(layer_copy, join_field)
+        id_ml = unique_values(excel_table, join_field)
+
+        id_miss_gis = [e for e in id_copy if e not in id_ml]
+        id_miss_ml = [e for e in id_ml if e not in id_copy]
+
+        if id_miss_ml or id_miss_gis:
+            arcpy.AddMessage('The following IDs do not match between ML and GIS.')
+            arcpy.AddMessage('Missing IDs in GIS table: {}'.format(id_miss_gis))
+            arcpy.AddMessage('Missing IDs in ML Excel table: {}'.format(id_miss_ml))
+            arcpy.AddError('Please check the uniqueID field in both GIS and ML tables.')
         
-        uniqueid_miss_gis = [e for e in uniqueid_gis if e not in uniqueid_ml]
-        uniqueid_miss_ml = [e for e in uniqueid_ml if e not in uniqueid_gis]
+        transfer_fields = [f.name for f in arcpy.ListFields(excel_table) if f.name not in ('ObjectID', 'OBJECTID', join_field)]
+        arcpy.management.JoinField(layer_copy, join_field, excel_table, join_field, transfer_fields)
 
-        if uniqueid_miss_ml or uniqueid_miss_gis:
-            arcpy.AddMessage('The following uniqueIDs do not match between ML and GIS.')
-            
-        ## 3.2. Get Join Field from MasterList gdb table: Gain all fields except 'Id'
-        viaduct_ml_fields = [f.name for f in arcpy.ListFields(viaduct_ml)]
-        viaduct_ml_transfer_fields = [e for e in viaduct_ml_fields if e not in ('uniqueId', uniqueID,'OBJECTID')]
-            
-        ## 3.3. Extract a Field from MasterList and Feature Layer to be used to join two tables
-        gis_join_field = ' '.join(map(str, [f for f in gis_fields if f in ('uniqueId', uniqueID)]))                      
-        viaduct_ml_join_field =' '.join(map(str, [f for f in viaduct_ml_fields if f in ('uniqueId', uniqueID)]))
-            
-        ## 3.4 Join
-        arcpy.JoinField_management(in_data=gis_copied, in_field=gis_join_field, join_table=viaduct_ml, join_field=viaduct_ml_join_field, fields=viaduct_ml_transfer_fields)
-
-        ## 3.5. Remove dummy date from GIS attribute table if any
+        #--- Remove dummy date from GIS attribute table if any
         try:
             for field in date_fields:
-                with arcpy.da.UpdateCursor(gis_copied, [field]) as cursor:
+                with arcpy.da.UpdateCursor(layer_copy, [field]) as cursor:
                     for row in cursor:
                         if row[0]:
                             year = row[0].strftime("%Y")
@@ -783,20 +751,18 @@ class UpdateGISTable(object):
         except:
             pass
 
-        # 4. Trucnate
-        arcpy.TruncateTable_management(gis_layer)
+        #--- Trucnate
+        arcpy.management.TruncateTable(gis_layer)
 
-        # 5. Append
-        arcpy.Append_management(gis_copied, gis_layer, schema_type = 'NO_TEST')
+        #--- Append
+        arcpy.management.Append(layer_copy, gis_layer, schema_type = 'NO_TEST')
 
-        # 6. Table to Excel
-        # (This ensures that SC_Viaduct_ML.xlsx is always consistent with SC Viaduct GIS attribute table)
-        # Reason: uniqueID is sometimes updated in the GIS attribute table
+        #--- Table to Excel
         arcpy.conversion.TableToExcel(gis_layer, os.path.join(gis_dir, 'SC_Viaduct_Portal.xlsx'))
         
-        # Delete the copied feature layer
-        deleteTempLayers = [gis_copied, viaduct_ml]
-        arcpy.Delete_management(deleteTempLayers)
+        #--- Delete the copied feature layer
+        deleteTempLayers = [layer_copy]
+        arcpy.management.Delete(deleteTempLayers)
 
 class JustMessage2(object):
     def __init__(self):

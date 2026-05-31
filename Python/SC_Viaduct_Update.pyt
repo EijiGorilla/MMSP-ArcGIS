@@ -235,11 +235,8 @@ def preprocess_civil_table(via_type_index,
                            status_field,
                            ):
     x = pd.read_excel(file, sheet_name = sheet_name)
-    ids = x.query(f"{remarks_field} == 'SAMPLE'").index
     
-    try:
-        x = x.iloc[ids[0] + 1:, ].reset_index(drop=True)
-    
+    try:    
         # Remove empty pier number
         ids = x.query(f"{civil_pier_field}.isna()").index
         x = x.drop(ids).reset_index(drop=True)
@@ -298,9 +295,6 @@ def preprocess_civil_table(via_type_index,
     if sheet_name == 'BoredPile':
         ids = x.query(f"{package_field}.isna() or {No_field}.isna()").index
         x = x.drop(ids).reset_index(drop=True)
-    # else:
-    #     ids = x.query(f"{civil_pier_field}.isna()").index
-    #     x = x.drop(ids).reset_index(drop=True)
     return x
 
 #--- Custom class for generating a summary statistics table ---#
@@ -483,7 +477,7 @@ class CompileViaductMasterList(object):
             }
 
             comp_table = pd.DataFrame()
-            for i, type in enumerate(viaduct_types):
+            for type in viaduct_types:
                 x = preprocess_civil_table(via_type_index,
                    civil_ml,
                    type,
@@ -499,29 +493,19 @@ class CompileViaductMasterList(object):
                    status_field,
                    )
                 #--- Bored Pile ---#
-                if i == 0:                    
-                    # Fix pile no
+                if type == 'BoredPile':                    
                     x[No_field] = x[No_field].astype(str).str.replace('.0','')
-                
-                    # Crete pileId
                     x[pierno_id] = x[civil_pier_field] + "-" + x[No_field] + "-" + x[type_field]
-
-                    # Compile
                     comp_table = pd.concat([comp_table, x])
 
                 #--- At Grade ---#
                 elif type == 'At-Grade':
                     x[pierno_id] = x[pileno_field] + "-" + x[type_field]
-
-                    # Compile
                     comp_table = pd.concat([comp_table, x])
 
                 #--- Other components ---#
                 else:
-                    # Crete pileId
                     x[pierno_id] = x[civil_pier_field] + "-" + x[type_field]
-                
-                    # Compile
                     comp_table = pd.concat([comp_table, x])
 
             #--- Conver type_field to integer ---#
@@ -531,6 +515,7 @@ class CompileViaductMasterList(object):
             duplicated_ids = find_duplicates_ordered(comp_table[pierno_id].values)
 
             if duplicated_ids:
+                comp_table.to_excel(os.path.join(via_dir, proj + "_Viaduct_Civil_ML_with_duplicates.xlsx"), index=False)
                 arcpy.AddMessage(f"Duplicated PierIds were found: {duplicated_ids}")
                 arcpy.AddError("Please check Civil's master list table.")
             else:
@@ -541,16 +526,14 @@ class CompileViaductMasterList(object):
                 for col in rename_cols:
                     comp_table = comp_table.rename(columns={str(col): rename_cols[col]})
 
-                #--- Re-format BUEP (x) -> BUE-P (O), SCTP (x) -> SCT-P (O)
-                arrays = {
+                #--- Re-format BUEP (x) -> BUE-P (O), SCTP (x) -> SCT-P (O) and CP
+                pierno_array = {
                     r'^BUEP': 'BUE-P',
                     r'^SCTP': 'SCT-P',
                     r'^P--': 'P-'
                 }
-                comp_table = replace_strings_in_dataframe(comp_table, pierno_field, arrays)
 
-                #--- Fix CP notation
-                arrays = {
+                cp_array = {
                     r'^1$': 'S-01',
                     r'^2$': 'S-02',
                     r'^4$': 'S-04',
@@ -558,13 +541,16 @@ class CompileViaductMasterList(object):
                     r'^6$': 'S-06',
                     r'^3a$': 'S-03a',
                     r'^3c$': 'S-03c',
+                    r'^S01$': r'S-01',
                     r'^S02$': r'S-02',
                     r'^S03A$': r'S-03a',
+                    r'^S03C$': r'S-03c',
                     r'^S04$': r'S-04',
                     r'^S05$': r'S-05',
                     r'^S06$': r'S-06',
                 }
-                comp_table = replace_strings_in_dataframe(comp_table, cp_field, arrays)
+                for field, array in zip([pierno_field, cp_field], [pierno_array, cp_array]):
+                    comp_table = replace_strings_in_dataframe(comp_table, field, array)
 
                 #--- Remove Pier Number with 'ES..'
                 ids = comp_table[comp_table[pierno_field].str.contains(r'^ES.*', regex=True, na=False)].index

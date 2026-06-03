@@ -128,6 +128,19 @@ def replace_strings_in_dataframe(table, field, search_replace_arrays):
         table[field] = table[field].apply(lambda x: re.sub(search, search_replace_arrays[search], str(x)))
     return table
 
+def replace_strings_table(table, field, array):
+    """
+    table: pandas dataFrame
+    field: field to be updated
+    array: array of pattern and replacement strings (e.g., {r'3A|3B': '3a', r''...})
+    """
+    # for item in array:
+    #     table[field] = table[field].apply(lambda x: re.sub(item, array[item], str(x)))
+    for item in array:
+        table[field] = table[field].str.replace(item, array[item], regex=True)
+        table[field] = table[field].apply(lambda x: re.sub(item, array[item], str(x)))
+    return table
+
 #--- Update pier numbers
 def update_monopile_pier_numbers_civilML(table, field):
     """
@@ -468,6 +481,15 @@ class CompileViaductMasterList(object):
         for i, type in enumerate(viaduct_types):
             x = pd.read_excel(civil_ml, sheet_name = type, skiprows=2)
 
+            #--- Fix PierNumber
+            search_array = {
+                r'\s+': '',
+                r'^P-': 'P',
+                r'^P': 'P-',
+                r'^P-R': 'PR'
+            }
+            x = replace_strings_in_dataframe(x, pierno_field, search_array)
+
             #-- column indices
             cols = x.columns
             col_indices = {name: i for i, name in enumerate(cols)}
@@ -535,8 +557,8 @@ class UpdateGISExcelML(object):
         )
 
         civil_ml = arcpy.Parameter(
-            displayName = "N2 Viaduct Civil ML (Excel)",
-            name = "N2 Viaduct Civil ML (Excel)",
+            displayName = "N2 Viaduct Civil ML compiled (Excel)",
+            name = "N2 Viaduct Civil ML compiled",
             datatype = "DEFile",
             parameterType = "Required",
             direction = "Input"

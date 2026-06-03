@@ -16,9 +16,18 @@ def unique(lists):
         collect.append(x)
     return(collect)
 
-def unique_values(table, field):  ##uses list comprehension
+def unique_values_layer(table, field):  ##uses list comprehension
     with arcpy.da.SearchCursor(table, [field]) as cursor:
         return sorted({row[0] for row in cursor if row[0] is not None})
+    
+def toString(table, to_string_fields):
+    for field in to_string_fields:
+        try:
+            table[field] = table[field].astype(str)
+            table[field] = table[field].replace(r'\s+', '', regex=True)
+        except:
+            pass
+    return table
 
 def non_match_elements(list_a, list_b):
     non_match = []
@@ -171,6 +180,158 @@ def convert_to_nan(table, ids, fields):
 
     return table
 
+def first_row_fill_empty(table, fields, data, datatype):
+    """
+    arg: the first row is filled when empty to avoide data type inconsistency in GIS attribute table
+    table: pandas dataFrame
+    fields: a list of subject fields
+    data: string, number, or date (e.g., 0.0, '1990-01-01')
+    datatype: only two types are allowd: 'float' or 'date'
+    """
+    for field in fields:
+        first_row = table[field].iloc[:1].item()
+        if first_row is None or pd.isnull(first_row):
+            if datatype == "float":
+                table.loc[0, field] = data
+                table[field] = pd.to_numeric(table[field], errors='coerce')
+            elif datatype == "date":
+                table = to_Date_no_hms(table, field)
+                table.loc[0, field] = pd.to_datetime(data, format='%Y-%m-%d', errors='coerce')
+    return table
+
+def first_row_delete_dummy_fc(fc, fields, datatype):
+    """
+    Arg: Delete dummy data from the first in selected fields.
+    fc: Feature Class (Layer),
+    datatype: Allowed for only 'float' or 'date'
+    """
+    try:
+        for field in fields:
+            if datatype == 'float':
+                with arcpy.da.UpdateCursor(fc, [field]) as cursor:
+                    for row in cursor:
+                        if row[0]:
+                            if row[0] == -99.0:
+                                row[0] = None
+                        cursor.updateRow(row)
+                    break
+            elif datatype == 'date':
+                with arcpy.da.UpdateCursor(fc, [field]) as cursor:
+                    for row in cursor:
+                        if row[0]:
+                            year = row[0].strftime("%Y")
+                            if int(year) < 2000:
+                                row[0] = None
+                            else:
+                                row[0] = row[0]
+                        cursor.updateRow(row)
+                    break
+    except:
+        arcpy.AddMessage(f"failed to delete dummy data in the first of selected fields..")
+        arcpy.AddError('error...')
+
+def gis_attribute_table_update(gis_dir,
+                               target_layer,
+                               input_table,
+                               join_field,
+                               export_file_name,
+                               check_box,
+                               date_fields=None):
+    """
+    Update GIS attribute table by joining with Excel table and export to Excel file. It also checks matching of uniqueID between GIS and Excel tables before joining, and gives messages if there are mismatches. If date_fields are provided, it will remove dummy dates (before year 2000) from the GIS attribute table after joining.
+    gis_dir: directory for exporting Excel file
+    target_layer: GIS feature layer to be updated
+    input_table: Feature Table to join with GIS attribute table (Not excel file)
+    join_field: field name for joining GIS and Excel tables (e.g., uniqueID)
+    export_file_name: file name for exported Excel file (without extension)
+    (optional) date_fields: list of date field names to check for dummy dates (e.g., ['start_actual', 'finish_plan', 'finish_actual'])
+    """
+    layer_copy = "layer_copy"
+    arcpy.management.CopyFeatures(target_layer, layer_copy)
+
+    #--- Keep only uniquID
+    arcpy.management.DeleteField(layer_copy, [join_field], "KEEP_FIELDS")
+
+    #--- Check matching
+    id_copy = unique_values_layer(layer_copy, join_field)
+    id_ml = unique_values_layer(input_table, join_field)
+
+    id_miss_gis = [e for e in id_copy if e not in id_ml]
+    id_miss_ml = [e for e in id_ml if e not in id_copy]
+
+    if id_miss_ml or id_miss_gis:
+        arcpy.AddMessage('The following IDs do not match between ML and GIS.')
+        arcpy.AddMessage('Missing IDs in GIS table: {}'.format(id_miss_gis))
+        arcpy.AddMessage('Missing IDs in ML Excel table: {}'.format(id_miss_ml))
+        arcpy.AddError('Please check the uniqueID field in both GIS and ML tables.')
+    
+    #--- Join fields
+    transfer_fields = [f.name for f in arcpy.ListFields(input_table) if f.name not in ('ObjectID', 'OBJECTID', join_field)]
+    arcpy.management.JoinField(layer_copy, join_field, input_table, join_field, transfer_fields)
+
+    #-----------------------------------------------------#
+    #       Add missing fields if check_box is True       #
+    #-----------------------------------------------------#
+    if check_box:
+        exclude_fields = ['ObjectID',
+                          'OBJECTID',
+                          'Shape_Length',
+                          'Shape_Area',
+                          'Shape.STArea()',
+                          'Shape.STLength()',
+                          'GlobalID',
+                          'created_user',
+                          'created_date',
+                          'last_edited_user',
+                          'last_edited_date',
+                          'temp_',
+                          'temp'
+                        ]
+        fields_target = [f.name for f in arcpy.ListFields(target_layer) if f.name not in tuple(exclude_fields)]
+        fields_input = [f.name for f in arcpy.ListFields(input_table) if f.name not in tuple(exclude_fields)]
+        fields_add = [item for item in fields_input if item not in fields_target]
+        arcpy.AddMessage(f"Missing fields in target feature layer: {fields_add}")
+
+        to_dataTypes = {
+                        'String': 'TEXT',
+                        'Integer': 'SHORT',
+                        'SmallInteger': 'SHORT',
+                        'Double': 'DOUBLE',
+                        'Date': 'DATE',
+                    }
+
+        #--- Add fields to target feature
+        if fields_add:
+            for field in fields_add:
+                arcpy.AddMessage(f"Adding missing field: {field}")
+                org_type = arcpy.ListFields(target_layer, field)[0].type
+
+                if org_type != 'Geometry':
+                    arcpy.management.AddField(target_layer,
+                                            field,
+                                            to_dataTypes[org_type],
+                                            "","","",
+                                            field,
+                                            "NULLABLE")
+
+
+    #--- Remove dummy date from GIS attribute table if any
+    if date_fields:
+        first_row_delete_dummy_fc(layer_copy, date_fields, datatype='date')
+
+    #--- Trucnate
+    arcpy.management.TruncateTable(target_layer)
+
+    #--- Append
+    arcpy.management.Append(layer_copy, target_layer, schema_type = 'NO_TEST')
+
+    #--- Table to Excel
+    arcpy.conversion.TableToExcel(target_layer, f"{os.path.join(gis_dir, export_file_name)}.xlsx")
+    
+    #--- Delete the copied feature layer
+    deleteTempLayers = [layer_copy]
+    arcpy.management.Delete(deleteTempLayers)
+
 #--- Custom class for generating a summary statistics table ---#
 def summary_by_field(table, stats_type, stats_field, groupby_fields):
     count_name = 'temp'
@@ -289,70 +450,67 @@ class CompileViaductMasterList(object):
         via_dir = params[1].valueAsText
         civil_ml = params[2].valueAsText
 
-        def N2_Compile_viaduct_tables():
-            cp_field = "CP"
-            pierno_id = 'PierId'
-            pierno_field = 'PierNo'
-            pileno_field = 'PileNo'
-            status_field = 'Status'
-            type_field = 'Type'
-            startdate_field = 'Start'
-            finishdate_field = 'Finish'
+        cp_field = "CP"
+        pierno_id = 'PierId'
+        pierno_field = 'PierNo'
+        pileno_field = 'PileNo'
+        status_field = 'Status'
+        type_field = 'Type'
+        startdate_field = 'Start'
+        finishdate_field = 'Finish'
 
-            viaduct_types = ['BoredPile', 'PileCap', 'PierColumn', 'PierHead', 'Precast']
-            viaduct_types_val = [1, 2, 3, 4, 5]
-            via_type_index = {name: viaduct_types_val[i] for i, name in enumerate(viaduct_types)}
+        viaduct_types = ['BoredPile', 'PileCap', 'PierColumn', 'PierHead', 'Precast']
+        viaduct_types_val = [1, 2, 3, 4, 5]
+        via_type_index = {name: viaduct_types_val[i] for i, name in enumerate(viaduct_types)}
 
-            compile_table = pd.DataFrame(columns=[cp_field, type_field, pierno_field, pileno_field, status_field, startdate_field, finishdate_field])
-            
-            for i, type in enumerate(viaduct_types):
-                x = pd.read_excel(civil_ml, sheet_name = type, skiprows=2)
+        compile_table = pd.DataFrame(columns=[cp_field, type_field, pierno_field, pileno_field, status_field, startdate_field, finishdate_field])
+        
+        for i, type in enumerate(viaduct_types):
+            x = pd.read_excel(civil_ml, sheet_name = type, skiprows=2)
 
-                #-- column indices
-                cols = x.columns
-                col_indices = {name: i for i, name in enumerate(cols)}
-                x = x.iloc[:, 0:col_indices['Comment']+1]
+            #-- column indices
+            cols = x.columns
+            col_indices = {name: i for i, name in enumerate(cols)}
+            x = x.iloc[:, 0:col_indices['Comment']+1]
 
-                x[type_field] = str(via_type_index[type])
-                #--- Bored Pile ---#
-                if type == 'BoredPile':
-                    # Multiple piles
-                    ids = x.query(f"{pileno_field}.notna()").index
-                    x.loc[ids, pierno_id] = x.loc[ids, pierno_field] + "-" + x.loc[ids, pileno_field] + "-" + x.loc[ids, type_field]
+            x[type_field] = str(via_type_index[type])
+            #--- Bored Pile ---#
+            if type == 'BoredPile':
+                # Multiple piles
+                ids = x.query(f"{pileno_field}.notna()").index
+                x.loc[ids, pierno_id] = x.loc[ids, pierno_field] + "-" + x.loc[ids, pileno_field] + "-" + x.loc[ids, type_field]
 
-                    # Monot Pile (P-159NB/SB, P-160NB/SB)
-                    ids = x.query(f"{pileno_field}.isna()").index 
-                    x.loc[ids, pierno_id] = x.loc[ids, pierno_field] + "-" + x.loc[ids, type_field]
+                # Monot Pile (P-159NB/SB, P-160NB/SB)
+                ids = x.query(f"{pileno_field}.isna()").index 
+                x.loc[ids, pierno_id] = x.loc[ids, pierno_field] + "-" + x.loc[ids, type_field]
 
-                    # Add 'Status'
-                    x = add_status(x, startdate_field, finishdate_field, status_field)
-                    compile_table = pd.concat([compile_table, x])
-                    
-                else:
-                    x[pierno_id] = x[pierno_field] + "-" + x[type_field]
-                    x = add_status(x, startdate_field, finishdate_field, status_field)
-
-                    # Add Type = 0 for P-661 and P-662 for PierHead (N-02)
-                    if type == 'PierHead':
-                        idx = x.query(f"{pierno_field} in ['P-661', 'P-662']").index
-                        x.loc[idx, type_field] = '0'
-                    compile_table = pd.concat([compile_table, x])
-
-            #--- Conver type_field to integer ---#
-            compile_table[type_field] = compile_table[type_field].astype('int64')
-
-            #--- Check duplication
-            duplicated_ids = find_duplicates_ordered(compile_table[pierno_id].values)
-
-            if len(duplicated_ids) > 0:
-                arcpy.AddMessage(f"Duplicated Pier IDs: {duplicated_ids}")
-                arcpy.AddError("There are duplicated IDs. Please check.")
+                # Add 'Status'
+                x = add_status(x, startdate_field, finishdate_field, status_field)
+                compile_table = pd.concat([compile_table, x])
+                
             else:
-                # Export to excel
-                excel_file = proj + "_Viaduct_ML_Civil_compiled.xlsx"
-                compile_table.to_excel(os.path.join(via_dir, excel_file), index=False)
+                x[pierno_id] = x[pierno_field] + "-" + x[type_field]
+                x = add_status(x, startdate_field, finishdate_field, status_field)
 
-        N2_Compile_viaduct_tables()
+                # Add Type = 0 for P-661 and P-662 for PierHead (N-02)
+                if type == 'PierHead':
+                    idx = x.query(f"{pierno_field} in ['P-661', 'P-662']").index
+                    x.loc[idx, type_field] = '0'
+                compile_table = pd.concat([compile_table, x])
+
+        #--- Conver type_field to integer ---#
+        compile_table[type_field] = compile_table[type_field].astype('int64')
+
+        #--- Check duplication
+        duplicated_ids = find_duplicates_ordered(compile_table[pierno_id].values)
+
+        if len(duplicated_ids) > 0:
+            arcpy.AddMessage(f"Duplicated Pier IDs: {duplicated_ids}")
+            arcpy.AddError("There are duplicated IDs. Please check.")
+        else:
+            # Export to excel
+            excel_file = proj + "_Viaduct_ML_Civil_compiled.xlsx"
+            compile_table.to_excel(os.path.join(via_dir, excel_file), index=False)
 
 class UpdateGISExcelML(object):
     def __init__(self):
@@ -398,87 +556,79 @@ class UpdateGISExcelML(object):
 
         arcpy.env.overwriteOutput = True
 
-        def N2_Viaduct_Update():
-            pierno_id = 'PierId'
-            pierno_field = 'PierNumber'
-            pileno_field = 'PileNo'
-            status_field = 'Status'
-            type_field = 'Type'
-            startdate_field = 'Start'
-            finishdate_field = 'Finish'
-            update_fields = [status_field, startdate_field, finishdate_field]
-            dummy_date = '1990-01-01'
+        pierno_id = 'PierId'
+        pierno_field = 'PierNumber'
+        pileno_field = 'PileNo'
+        status_field = 'Status'
+        type_field = 'Type'
+        startdate_field = 'Start'
+        finishdate_field = 'Finish'
+        update_fields = [status_field, startdate_field, finishdate_field]
+        dummy_date = '1990-01-01'
 
-            x = pd.read_excel(gis_ml)
-            y = pd.read_excel(civil_ml)
+        x = pd.read_excel(gis_ml)
+        y = pd.read_excel(civil_ml)
 
-            x[type_field] = x[type_field].astype(int)
-            x[type_field] = x[type_field].astype(str)
-            x[pierno_id] = np.nan
+        x = toString(x, [type_field, pierno_id, pileno_field])
+        x[type_field] = x[type_field].str.replace(r'.0', '')
 
-            for i in range(0, 5):
-                if i == 0:
-                    # Multiple piles
-                    idx = x.query(f"{type_field} == '{i+1}' and {pileno_field}.notna() ").index
-                    x.loc[idx, pierno_id] = x.loc[idx, pierno_field] + "-" + x.loc[idx, pileno_field] + "-" + x.loc[idx, type_field]
+        for i in range(1, 6):
+            if i == 1:
+                # Multiple piles
+                idx = x.query(f"{type_field} == '{i}' and {pileno_field}.notna() ").index
+                x.loc[idx, pierno_id] = x.loc[idx, pierno_field] + "-" + x.loc[idx, pileno_field] + "-" + x.loc[idx, type_field]
 
-                    # Mono pile
-                    idx = x.query(f"{type_field} == '{i+1}' and {pileno_field}.isna()").index
-                    x.loc[idx, pierno_id] = x.loc[idx, pierno_field] + "-" + x.loc[idx, type_field]
+                # Mono pile
+                idx = x.query(f"{type_field} == '{i}' and {pileno_field}.isna()").index
+                x.loc[idx, pierno_id] = x.loc[idx, pierno_field] + "-" + x.loc[idx, type_field]
 
-                else:
-                    idx = x.query(f"{type_field} == '{i+1}'").index
-                    x.loc[idx, pierno_id] = x.loc[idx, pierno_field] + "-" + x.loc[idx, type_field]
-
-            # x.to_excel(os.path.join(gis_dir, "N2_Viaduct_MasterList_with_pierID.xlsx"), index=False)
-           
-            #--- Check duplicated pier ids
-            idx = x.query(f"{pierno_id}.notna()").index
-            gis_piers = x.loc[idx, pierno_id].values
-            duplicated_ids = find_duplicates_ordered(x[pierno_id].values)
-
-            if len(duplicated_ids) > 0:
-                arcpy.AddMessage(f"Duplicated Pier IDs: {duplicated_ids}")
-                arcpy.AddError("There are duplicated IDs. Please check.")
             else:
-                #--- Check unmatched pier ids between gis and civil
-                civil_piers = y[pierno_id].values
-                no_gis_piers = [f for f in civil_piers if f not in gis_piers and f == f]
-                no_civil_piers = [f for f in gis_piers if f not in civil_piers and f == f]
-                if len(no_gis_piers) > 0 or len(no_civil_piers) > 0:
-                    arcpy.AddMessage(f"There are unmatched Pier IDs: {no_gis_piers + no_civil_piers}")
-                    arcpy.AddError(f"Please check..")
+                idx = x.query(f"{type_field} == '{i}'").index
+                x.loc[idx, pierno_id] = x.loc[idx, pierno_field] + "-" + x.loc[idx, type_field]
 
-                else:
-                    arcpy.AddMessage(no_civil_piers)
-                    arcpy.AddMessage(no_gis_piers)
+        # x.to_excel(os.path.join(gis_dir, "N2_Viaduct_MasterList_with_pierID.xlsx"), index=False)
+        
+        #--- Check duplicated pier ids
+        idx = x.query(f"{pierno_id}.notna()").index
+        gis_piers = x.loc[idx, pierno_id].values
+        duplicated_ids = find_duplicates_ordered(x[pierno_id].values)
 
-                    #--- Filter out: type = 0 or 6
-                    x = x.query(f"{pierno_id}.notna()").reset_index(drop=True)
-                    x[type_field] = x[type_field].astype(int)
-                    x = x.drop(columns=update_fields)
+        if len(duplicated_ids) > 0:
+            arcpy.AddMessage(f"Duplicated Pier IDs: {duplicated_ids}")
+            arcpy.AddError("There are duplicated IDs. Please check.")
+        else:
+            #--- Check unmatched pier ids between gis and civil
+            civil_piers = y[pierno_id].values
+            no_gis_piers = [f for f in civil_piers if f not in gis_piers and f == f]
+            no_civil_piers = [f for f in gis_piers if f not in civil_piers and f == f]
+            if len(no_gis_piers) > 0 or len(no_civil_piers) > 0:
+                arcpy.AddMessage(f"There are unmatched Pier IDs: {no_gis_piers + no_civil_piers}")
+                arcpy.AddError(f"Please check..")
 
-                    #--- Keep update fields ---#
-                    y = y[[pierno_id] + update_fields]
+            else:
+                arcpy.AddMessage(no_civil_piers)
+                arcpy.AddMessage(no_gis_piers)
 
-                    arcpy.AddMessage(f"total rows for x: {len(x)}")
-                    arcpy.AddMessage(f"total rows for y: {len(y)}")
-                     
-                    #--- Join civil ML to GIS ML ---#
-                    xy = pd.merge(left=x, right=y, how='left', left_on=pierno_id, right_on=pierno_id, validate="one_to_one")
+                #--- Filter out: type = 0 or 6
+                x = x.query(f"{pierno_id}.notna()").reset_index(drop=True)
+                x[type_field] = x[type_field].astype(int)
+                x = x.drop(columns=update_fields)
 
-                    #--- start and finish date ---#
-                    xy = xy.reset_index(drop=True)
-                    for field in [startdate_field, finishdate_field]:
-                        date_item = xy[field].iloc[:1].item()
-                        if date_item is None or pd.isnull(date_item):
-                            xy.loc[0, field] = pd.to_datetime(dummy_date)
-                        xy = to_Date_no_hms(xy, field)
+                #--- Keep update fields ---#
+                y = y[[pierno_id] + update_fields]
 
-                    #--- Export ---#
-                    xy.to_excel(os.path.join(gis_dir, "N2_Viaduct_GIS_ML_new.xlsx"), index=False)
-                               
-        N2_Viaduct_Update()
+                arcpy.AddMessage(f"total rows for x: {len(x)}")
+                arcpy.AddMessage(f"total rows for y: {len(y)}")
+                    
+                #--- Join civil ML to GIS ML ---#
+                xy = pd.merge(left=x, right=y, how='left', left_on=pierno_id, right_on=pierno_id, validate="one_to_one")
+
+                #--- start and finish date ---#
+                xy = xy.reset_index(drop=True)
+                xy = first_row_fill_empty(xy, [startdate_field, finishdate_field], '1990-01-01', 'date')
+
+                #--- Export ---#
+                xy.to_excel(os.path.join(gis_dir, "N2_Viaduct_GIS_ML_new.xlsx"), index=False)
 
 class UpdateGISTable(object):
     def __init__(self):
@@ -509,7 +659,15 @@ class UpdateGISTable(object):
             direction = "Input"
         )
 
-        params = [gis_dir, gis_layer, excel_table]
+        check_box = arcpy.Parameter(
+            displayName="Add Missing Fields to Target Feature Layer",
+            name="Add Missing Fields to Target Feature Layer",
+            datatype="GPBoolean",
+            parameterType="Optional",
+            direction="Input"
+       )
+
+        params = [gis_dir, gis_layer, excel_table, check_box]
         return params
     
     def updateMessages(self, params):
@@ -519,102 +677,18 @@ class UpdateGISTable(object):
         gis_dir = params[0].valueAsText
         gis_layer = params[1].valueAsText
         excel_table = params[2].valueAsText
-
-
+        check_box = params[3].value
         arcpy.AddMessage('Updating SC Viaduct layer has started..')
 
-        # For Removing dummy dates if any specified in the first tool
-        startdate_field = 'Start'
-        finishdate_field = 'Finish'
-        date_fields = [startdate_field, finishdate_field]
+        date_fields = ['Start', 'Finish']
 
-        uniqueID = 'uniqueID'
-
-        # 1. Copy Original Feature Layers
-        copied_name = 'tempLayer'               
-        gis_copied = arcpy.CopyFeatures_management(gis_layer, copied_name)
-            
-        arcpy.AddMessage("Stage 1: Copy feature layer was success")
-                
-        # 2. Delete Field
-        gis_fields = [f.name for f in arcpy.ListFields(gis_copied)]
-            
-        ## 2.1. Identify fields to be dropped
-        gis_drop_fields_check = [e for e in gis_fields if e not in (uniqueID,'Shape','Shape_Length','Shape_Area','Shape.STArea()','Shape.STLength()','OBJECTID','GlobalID')]
-            
-        ## 2.2. Extract existing fields
-        arcpy.AddMessage("Stage 1: Extract existing fields was success")
-            
-        ## 2.3. Check if there are fields to be dropped
-        gis_drop_fields = [f for f in gis_fields if f in tuple(gis_drop_fields_check)]
-            
-        arcpy.AddMessage("Stage 1: Checking for Fields to be dropped was success")
-            
-        ## 2.4 Drop
-        if len(gis_drop_fields) == 0:
-            arcpy.AddMessage("There is no field that can be dropped from the feature layer")
-        else:
-            arcpy.DeleteField_management(gis_copied, gis_drop_fields)
-                
-        arcpy.AddMessage("Stage 1: Dropping Fields was success")
-        arcpy.AddMessage("Section 2 of Stage 1 was successfully implemented")
-
-        # 3. Join Field
-        ## 3.1. Convert Excel tables to feature table
-        viaduct_ml = arcpy.conversion.ExportTable(excel_table, 'viaduct_ml')
-
-        # Check if LotID match between ML and GIS
-        uniqueid_gis = unique_values(gis_copied, uniqueID)
-        uniqueid_ml = unique_values(viaduct_ml, uniqueID)
-        
-        uniqueid_miss_gis = [e for e in uniqueid_gis if e not in uniqueid_ml]
-        uniqueid_miss_ml = [e for e in uniqueid_ml if e not in uniqueid_gis]
-
-        if uniqueid_miss_ml or uniqueid_miss_gis:
-            arcpy.AddMessage('The following IDs do not match between ML and GIS.')
-            arcpy.AddMessage('Missing uniqueID in GIS table: {}'.format(uniqueid_miss_gis))
-            arcpy.AddMessage('Missing uniqueID in ML Excel table: {}'.format(uniqueid_miss_ml))
-            
-        ## 3.2. Get Join Field from MasterList gdb table: Gain all fields except 'Id'
-        viaduct_ml_fields = [f.name for f in arcpy.ListFields(viaduct_ml)]
-        viaduct_ml_transfer_fields = [e for e in viaduct_ml_fields if e not in (uniqueID,'OBJECTID')]
-            
-        ## 3.3. Extract a Field from MasterList and Feature Layer to be used to join two tables
-        gis_join_field = ' '.join(map(str, [f for f in gis_fields if f in ('uniqueId', uniqueID)]))                      
-        viaduct_ml_join_field =' '.join(map(str, [f for f in viaduct_ml_fields if f in ('uniqueId', uniqueID)]))
-            
-        ## 3.4 Join
-        arcpy.JoinField_management(in_data=gis_copied, in_field=gis_join_field, join_table=viaduct_ml, join_field=viaduct_ml_join_field, fields=viaduct_ml_transfer_fields)
-
-        ## 3.5. Remove dummy date from GIS attribute table if any
-        try:
-            for field in date_fields:
-                with arcpy.da.UpdateCursor(gis_copied, [field]) as cursor:
-                    for row in cursor:
-                        if row[0]:
-                            year = row[0].strftime("%Y")
-                            if int(year) < 2000:
-                                row[0] = None
-                            else:
-                                row[0] = row[0]
-                        cursor.updateRow(row)
-        except:
-            pass
-
-        # 4. Trucnate
-        arcpy.TruncateTable_management(gis_layer)
-
-        # 5. Append
-        arcpy.Append_management(gis_copied, gis_layer, schema_type = 'NO_TEST')
-
-        # 6. Table to Excel
-        # (This ensures that SC_Viaduct_ML.xlsx is always consistent with SC Viaduct GIS attribute table)
-        # Reason: uniqueID is sometimes updated in the GIS attribute table
-        arcpy.conversion.TableToExcel(gis_layer, os.path.join(gis_dir, 'N2_Viaduct_GIS_Portal.xlsx'))
-        
-        # Delete the copied feature layer
-        deleteTempLayers = [gis_copied, viaduct_ml]
-        arcpy.Delete_management(deleteTempLayers)
+        gis_attribute_table_update(gis_dir,
+                                     gis_layer,
+                                     excel_table,
+                                     'uniqueID',
+                                     "N2_Viaduct_Portal",
+                                     check_box,
+                                     date_fields)
 
 class JustMessage3(object):
     def __init__(self):
@@ -832,13 +906,13 @@ class UpdatePierWorkableTrackerML(object):
                 
             #--- change CP notation
             arrays = {r'\s+': '', r'^CPN': 'N-', r'[,/].*': ''}
-            civil_t = replace_strings_in_dataframe(civil_t, new_cols[1], arrays)
+            civil_t = replace_strings_in_dataframe(civil_t, cp_field, arrays)
 
             #--- Update 'Workability' field ---#
-            civil_t[new_cols[5]] = civil_t[new_cols[5]].str.title()
+            civil_t[workability_field] = civil_t[workability_field].str.title()
             for status in ['Yes', 'No', 'Partial']:
-                ids = civil_t.query(f"{new_cols[5]} == '{status}'").index
-                civil_t.loc[ids, new_cols[5]] = workable_status[status]
+                ids = civil_t.query(f"{workability_field} == '{status}'").index
+                civil_t.loc[ids, workability_field] = workable_status[status]
 
             idx_workable = civil_t.index[civil_t[workability_field] == 'Workable']
 
@@ -882,16 +956,13 @@ class UpdatePierWorkableTrackerML(object):
                     r'^[,./]': '',
                     r'[,./]$': ''
                     }
+                
 
-                # Land1        
-                rap_t = replace_strings_in_dataframe(rap_t, land1_field, arrays)
-                ids = rap_t.index[rap_t[land1_field] == '']
-                rap_t.loc[ids, land1_field] = np.nan
-
-                # struc1
-                rap_t = replace_strings_in_dataframe(rap_t, struc1_field, arrays)             
-                ids = rap_t.index[rap_t[struc1_field] == '']
-                rap_t.loc[ids, struc1_field] = np.nan
+                # Reformat obstructing IDs for land and structure
+                for field in [land1_field, struc1_field]:
+                    rap_t = replace_strings_in_dataframe(rap_t, field, arrays)
+                    idx = rap_t.index[rap_t[field] == '']
+                    rap_t.loc[idx, field] = np.nan
 
                 # NLO
                 ## Enter NLO using obstructing structure IDs
@@ -1054,9 +1125,10 @@ class CheckPierNumbers(object):
             compile_table = pd.DataFrame()
 
             for cp in ['N-01', 'N-02', 'N-03']:
-                civilt = civil_t.query(f"{cp_field} == '{cp}'").reset_index(drop=True)
+                qe = f"{cp_field} == '{cp}'"
+                civilt = civil_t.query(qe).reset_index(drop=True)
                 gist = gis_ml.query(f"{cp_field} == '{cp}' and {type_field} == 2").reset_index(drop=True)
-                trackert = gist_t.query(f"{cp_field} == '{cp}'").reset_index(drop=True)
+                trackert = gist_t.query(qe).reset_index(drop=True)
 
                 gis_piers = extract_pier_numbers(pier_num_field, gist, None, None)
                 tracker_piers = extract_pier_numbers(pier_num_field, None, None, trackert)
@@ -1399,15 +1471,15 @@ class UpdateStripMapLayer(object):
 
             # Enter the second CP to 'GroupId' field
             ## The second CP is always +1 from the previous
+            cp_array = {
+                'N-01': 'N-02',
+                'N-02': 'N-03',
+                'N-03': 'N-04'
+            }
             with arcpy.da.UpdateCursor(strip_map_layer, ['CP',cp2_field]) as cursor:
                 for row in cursor:
                     if row[0]:
-                        if row[0] == 'N-01':
-                            row[1] = 'N-02'
-                        if row[0] == 'N-02':
-                            row[1] = 'N-03'
-                        elif row[0] == 'N-03':
-                            row[1] = 'N-04'
+                        row[1] = cp_array[row[0]]
                     cursor.updateRow(row)           
 
         Strip_Map_Layer_Update()
@@ -1799,12 +1871,12 @@ class ReSortGISTable(object):
         type_field = 'Type'
 
         # 0.5. If 'CP' and 'Type' fields contain empty rows, exit and stop process
-        cp_list = [row[0] for row in arcpy.da.SearchCursor(layer, ["CP"])]
-        type_list = [row[0] for row in arcpy.da.SearchCursor(layer, ["Type"])]
-        unique_value_list = list(cp_list+type_list)
+        cp_list = [row[0] for row in arcpy.da.SearchCursor(layer, ["CP"]) if row[0]]
+        type_list = [row[0] for row in arcpy.da.SearchCursor(layer, ["Type"]) if row[0]]
+        unique_value_list = list(cp_list + type_list)
         unique_final = set(unique_value_list)
+        
         arcpy.AddMessage(unique_final)
-        # final_list = pd.Series(unique_final)
         empty_list = [i for i, val in enumerate(unique_final) if val is None]
 
         if len(empty_list) == 0:

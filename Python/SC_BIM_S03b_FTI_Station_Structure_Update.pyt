@@ -43,6 +43,97 @@ B. Update construction status in existing building layers for FTI Station.
 ### 2.6. Update existing building layers using the master excel
 
 """
+def unique(lists):
+    collect = []
+    unique_list = pd.Series(lists).drop_duplicates().tolist()
+    for x in unique_list:
+        collect.append(x)
+    return(collect)
+
+def parse_multiple_dateFormats(date_string):
+    formats = ["%m/%d/%Y", "%d-%b-%Y"]
+    for fmt in formats:
+        try:
+            return datetime.strptime(date_string, fmt)
+        except ValueError:
+            continue
+
+    return None
+
+def update_status_using_date_fields(layer,
+                                    dates_array,
+                                    status_field,
+                                    start_actual_field,
+                                    finish_actual_field):
+    """
+    Add date fields, convert string dates, and enter
+    layer: feature layer
+    dates_array: an array of field names (string dates) and corresponding new date fields
+                e.g., progress_dates_array = {
+                't03__Actual_Start_Date': start_actual_field,
+                't02__Planned_Completion_Date': finish_plan_field,
+                't04__Actual_Completion_Date': finish_actual_field
+                }
+    status_field: field to update status ('Status')
+    finish_actual_field: a date field newly added to store converted string date (this field is used to update statuss)
+    """
+    field_list = [f.name for f in arcpy.ListFields(layer)]
+    date_fields = [f[1] for f in dates_array.items()]
+
+    #--- Add date fields
+    for field in date_fields:
+        if field not in field_list:
+            arcpy.management.AddField(layer, field, "DATE", "", "", "", field, "NULLABLE", "")
+
+    #--- Extract dates
+    for field in dates_array:
+        if field in field_list:
+            with arcpy.da.UpdateCursor(layer, [field, dates_array[field]]) as cursor:
+                for row in cursor:
+                    if row[0]:
+                        date_obj = parse_multiple_dateFormats(row[0])
+                        row[1] = date_obj
+                    cursor.updateRow(row)
+        else:
+            arcpy.AddMessage(f"{os.path.basename(layer)} does not have {field}. Please check.")
+
+    #--- Update status
+    # if all(field in field_list for field in date_fields):
+    for field in dates_array:
+        if field in field_list:
+            with arcpy.da.UpdateCursor(layer, [status_field, start_actual_field, finish_actual_field]) as cursor:
+                for row in cursor:
+                    if row[2]:
+                        row[0] = 4
+                    elif row[1] and row[2] is None:
+                        row[0] = 2
+                    else:
+                        row[0] = 1
+                    cursor.updateRow(row)
+        else:
+            arcpy.AddMessage(f"Status for {os.path.basename(layer)} was not updated, as {field} is missing.")
+
+def return_where_clause_for_SelectLayerByAttribute(layer, search_field):
+    """
+    Collect unique values in a search field and return where_clause used in
+    arcpy.management.SelectLayerByAttribute geoprocessing python tool
+    layer: feature layer
+    search_field: field used to search and collect unique values
+    """
+    eList = []
+    with arcpy.da.SearchCursor(layer, [search_field]) as cursor:
+        for row in cursor:
+            if row[0]:
+                eList.append(row[0])
+
+    uniqueValues = tuple([e for e in unique(eList)])
+
+    if len(uniqueValues) == 1:
+        where_clause = f"{search_field} = '{uniqueValues[0]}'"
+    else:
+        where_clause = f"{search_field} IN {uniqueValues}"
+    
+    return where_clause
 
 class Toolbox(object):
     def __init__(self):
@@ -181,17 +272,7 @@ class AddFieldsToBuildingLayerStation(object):
 
         layers = list(input_layers.split(";"))
 
-        finish_date_field = 'Finish_date'
         add_fields = ['Station', 'Types', 'CP', 'Status']
-        component_source_field = "t00__Description"
-
-        # 0. Filter sublayers 
-        # sublayers = []
-        # ## Process sublayers only when they have "t00__Description" field.
-        # for layer in layers:
-        #     fields = [f.name for f in arcpy.ListFields(layer)]
-        #     if component_source_field in fields:
-        #         sublayers.append(layer)
 
         # 1. Add fields
         arcpy.AddMessage("Add Fields start...")
@@ -210,20 +291,17 @@ class AddFieldsToBuildingLayerStation(object):
                     row[0] = 1
                     cursor.updateRow(row)
 
-        # 3. Types of categories
-        ## 3.1. Create a 'temp' field to easily separate underground (UTG) from aboveground (ATG).
+        #--- Add 'UG' or 'ATG'
         component_field = "Component"
         for layer in layers:
             arcpy.management.AddField(layer, component_field, "TEXT", "", "", "", component_field, "NULLABLE", "")
-
         
-        # Add 'UG' or 'ATG'
         ug_n = ['000001', '000002', '000006', '000021', '000031', '000041']
         ag_n = ['000011']
 
         # For all layers
         for layer in layers:
-            arcpy.AddMessage(layer)
+            arcpy.AddMessage(os.path.basename(layer))
             with arcpy.da.UpdateCursor(layer, ["DocName", component_field]) as cursor:
                 for row in cursor:
                     if row[0]:
@@ -234,8 +312,8 @@ class AddFieldsToBuildingLayerStation(object):
                             row[1] = "ATG"
                     cursor.updateRow(row)
         
-        # Add sub-components for Below-ground
-        ## Only sublayers (with t00__Description)
+        #--- Add sub-components for Below-ground
+        # Only sublayers (with t00__Description)
         for layer in layers:
             with arcpy.da.UpdateCursor(layer, [component_field, "Types", "Family"]) as cursor:
                 try:
@@ -254,7 +332,7 @@ class AddFieldsToBuildingLayerStation(object):
                     arcpy.AddMessage(f"Skip layer: {layer}")
                     pass
 
-        # Add sub-components for Above-ground
+        #--- Add sub-components for Above-ground
         for layer in layers:
             with arcpy.da.UpdateCursor(layer, [component_field, 'Types', "Family", "Workset"]) as cursor:
                 try:
@@ -275,34 +353,12 @@ class AddFieldsToBuildingLayerStation(object):
                     arcpy.AddMessage(f"Skip layer: {layer}")
                     pass
                     
-        ## Use 'DocName' field to extract CP and Station
-        stations = {
-            "BLUSTN": 11,
-            "ESPSTN": 12,
-            "STMSTN": 13,
-            "PACSTN": 14,
-            "BUESTN": 15,
-            "EDSA": 16,
-            "EDSB": 31,
-            "FTISTN": 18,
-            "BCTSTN": 19,
-            "SCTSTN": 20,
-            "ALASTN": 21,
-            "MTNSTN": 22,
-            "SPDSTN": 23,
-            "PCTSTN": 24,
-            "BINSTN": 25,
-            "STRSTN": 26,
-            "CBYSTN": 27,
-            "BANSTN": 29,
-            "CMBSTN": 30
-        }
-
+        #-- Add CP and station number for FTI
         for layer in layers:
-            with arcpy.da.UpdateCursor(layer, ['DocName', 'CP', 'Station']) as cursor:
+            with arcpy.da.UpdateCursor(layer, ['CP', 'Station']) as cursor:
                 for row in cursor:
-                    row[2] = 18
-                    row[1] = "S-03b"
+                    row[1] = 18
+                    row[0] = "S-03b"
                     cursor.updateRow(row)
 
 class EditBuildingLayerStation(object):
@@ -329,60 +385,23 @@ class EditBuildingLayerStation(object):
             multiValue = True
         )
 
-        # finish_field = arcpy.Parameter(
-        #     displayName = "Field indicating completed construction dates",
-        #     name = "Field indicating completed construction dates",
-        #     datatype = "Field",
-        #     parameterType = "Required",
-        #     direction = "Input",
-        # )
-        # finish_field.parameterDependencies = [delete_fc.name]
-
         params = [delete_fc, new_fc]
         return params
 
     def updateMessage(self, params):
         return
     
-    def execute(self, params, messages):
-        def unique(lists):
-            collect = []
-            unique_list = pd.Series(lists).drop_duplicates().tolist()
-            for x in unique_list:
-                collect.append(x)
-            return(collect)
-        
+    def execute(self, params, messages):        
         delete_bim = params[0].valueAsText
         new_bim = params[1].valueAsText
-        # finish_date_field = params[3].valueAsText
 
         arcpy.env.overwriteOutput = True
 
         # define fields
         status_field = 'Status'
-        # finish_date_field = 'Finish_date'
-
-        # Stations domains
-        FTI_domain_number = 18
         
         del_layers = list(delete_bim.split(";"))
         new_layers = list(new_bim.split(";"))
-
-        # 0. Filter sublayers 
-        # component_source_field = "t00__Description"
-        # del_sublayers = []
-        # new_sublayers = []
-
-        # ## Process sublayers only when they have "t00__Description" field.
-        # for layer in del_layers:
-        #     fields = [f.name for f in arcpy.ListFields(layer)]
-        #     if component_source_field in fields:
-        #         del_sublayers.append(layer)
-
-        # for layer in new_layers:
-        #     fields = [f.name for f in arcpy.ListFields(layer)]
-        #     if component_source_field in fields:
-        #         new_sublayers.append(layer)
 
         # 1. Check names are matched between deleted layers and new layers
         del_basenames = []
@@ -397,6 +416,18 @@ class EditBuildingLayerStation(object):
         arcpy.AddMessage(f"deleted layer names: {sorted(del_basenames)}")
         arcpy.AddMessage(f"new layer names: {sorted(new_basenames)}")
 
+        status_field = 'Status'
+        docName_field = 'DocName'
+        start_actual_field = 'start_actual'
+        finish_plan_field = 'finish_plan'
+        finish_actual_field = 'finish_actual'
+
+        progress_dates_array = {
+            't03__Actual_Start_Date': start_actual_field,
+            't02__Planned_Completion_Date': finish_plan_field,
+            't04__Actual_Completion_Date': finish_actual_field
+        }
+
         # # 2. Add and Delete
         if sorted(del_basenames) == sorted(new_basenames):
             arcpy.AddMessage('Sublayer names are all matched.')
@@ -404,18 +435,14 @@ class EditBuildingLayerStation(object):
             for target_layer in del_layers:
                 del_basename = os.path.basename(target_layer)
 
-                # 1. Add new layer
+                #--- Add new layer
                 new_layers_series = pd.Series(new_layers)
                 id = new_layers_series.index[new_layers_series.str.contains(del_basename,regex=True)][0]
                 new_layer = new_layers[id]
                 arcpy.AddMessage(del_basename + "; " + new_layer)
 
-                # 2. Update 'Status' field in new_layer using 'xx_Status or xx_status' field from Revit
-                # empty cell (null): 1. To be Constructed, 4. Completed
-                # 2. Extract fields
+                #--- Search field name excluding 'Project_'
                 bim_fields = [e.name for e in arcpy.ListFields(new_layer)]
-
-                ## 3. Search field name excluding 'Project_'
                 try:
                     bim_status_field = [re.search(r'^(?!.*Project)(.*?)_Status$|(?!.*Project)(.*?)_status$', e).group() for e in bim_fields if re.search(r'^(?!.*Project)(.*?)_Status$|(?!.*Project)(.*?)_status$', e) is not None]
                 except AttributeError:
@@ -423,37 +450,16 @@ class EditBuildingLayerStation(object):
 
                 arcpy.AddMessage(f"The name of status field in BIM models: {bim_status_field}")
 
-                # 4. Update 'Status' field in new_layer
-                if len(bim_status_field) == 1: # Update only When status field exists in the BIM model (input)
-                    with arcpy.da.UpdateCursor(new_layer, [bim_status_field, status_field]) as cursor:
-                        for row in cursor:
-                            if row[0] == 'Completed':
-                                row[1] = 4
-                            elif row[0] is None:
-                                row[1] = 1
-                            cursor.updateRow(row)
+                #--- Add dates and update status
+                update_status_using_date_fields(new_layer,
+                                                progress_dates_array,
+                                                status_field,
+                                                start_actual_field,
+                                                finish_actual_field)
 
-                # 5. Replace target layer with new observations
-                ### Note FIT Station structure has multiple revit models. We cannot just replace
-                ### all the rows in the target layer with inputs. 
-                ### We need to identify rows to be updated using DocName in the input (new) layer.
-                docNumbers = []
-                with arcpy.da.SearchCursor(new_layer, ["DocName"]) as cursor:
-                    for row in cursor:
-                        if row[0]:
-                            docNumbers.append(row[0])
-
-                ## Get a unique list of docnames
-                docNumberUnique = unique(docNumbers)
-
-                numbers = tuple([e for e in docNumberUnique])
-                docName_field = 'DocName'
-
-                if (len(docNumberUnique) == 1):
-                    where_clause = f"{docName_field} = '{numbers[0]}'"
-                else:
-                    where_clause = f"{docName_field} IN {numbers}"
-                arcpy.management.SelectLayerByAttribute(target_layer, 'NEW_SELECTION',where_clause)
+                #--- Replace target layer with new observation
+                where_clause = return_where_clause_for_SelectLayerByAttribute(new_layer, docName_field)
+                arcpy.management.SelectLayerByAttribute(target_layer, 'NEW_SELECTION', where_clause)
 
                 # Delete Rows
                 arcpy.management.DeleteRows(target_layer)

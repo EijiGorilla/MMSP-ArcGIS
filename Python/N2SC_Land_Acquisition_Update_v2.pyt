@@ -26,7 +26,11 @@ def unique(lists):
 def unique_values(table, field):  ##uses list comprehension
     with arcpy.da.SearchCursor(table, [field]) as cursor:
         return sorted({row[0] for row in cursor if row[0] is not None})
-
+    
+def unique_values_layer(table, field):  ##uses list comprehension
+    with arcpy.da.SearchCursor(table, [field]) as cursor:
+        return sorted({row[0] for row in cursor if row[0] is not None})
+    
 def non_match_elements(list_a, list_b):
     """
     Return non-matched values between two lists
@@ -36,6 +40,16 @@ def non_match_elements(list_a, list_b):
         if i not in list_b:
             non_match.append(i)
     return non_match
+
+def check_field_match(target_table, input_table, join_field):
+    id1 =  unique_values(target_table[join_field])
+    id2 = unique_values(input_table[join_field])
+        
+    target_table_miss = [f for f in id1 if f not in id2]
+    input_table_miss = [f for f in id2 if f not in id1]
+
+    arcpy.AddMessage('Missing Ids in target table: {}'.format(target_table_miss))
+    arcpy.AddMessage('Missing Ids in input table: {}'.format(input_table_miss))
 
 def first_letter_capital(table, column_names): # column_names are list
     for name in column_names:
@@ -330,6 +344,107 @@ def preprocess_rap_table(proj,
 
     return table
 
+def gis_attribute_table_update(gis_dir,
+                               target_layer,
+                               input_table,
+                               join_field,
+                               export_file_name,
+                               check_box,
+                               date_fields=None):
+    """
+    Update GIS attribute table by joining with Excel table and export to Excel file. It also checks matching of uniqueID between GIS and Excel tables before joining, and gives messages if there are mismatches. If date_fields are provided, it will remove dummy dates (before year 2000) from the GIS attribute table after joining.
+    gis_dir: directory for exporting Excel file
+    target_layer: GIS feature layer to be updated
+    input_table: Feature Table to join with GIS attribute table (Not excel file)
+    join_field: field name for joining GIS and Excel tables (e.g., uniqueID)
+    export_file_name: file name for exported Excel file (without extension)
+    (optional) date_fields: list of date field names to check for dummy dates (e.g., ['start_actual', 'finish_plan', 'finish_actual'])
+    """
+    layer_copy = "layer_copy"
+    arcpy.management.CopyFeatures(target_layer, layer_copy)
+
+    #--- Keep only uniquID
+    arcpy.management.DeleteField(layer_copy, [join_field], "KEEP_FIELDS")
+
+    #--- Check matching
+    id_copy = unique_values_layer(layer_copy, join_field)
+    id_ml = unique_values_layer(input_table, join_field)
+
+    id_miss_gis = [e for e in id_copy if e not in id_ml]
+    id_miss_ml = [e for e in id_ml if e not in id_copy]
+
+    if id_miss_ml or id_miss_gis:
+        arcpy.AddMessage('The following IDs do not match between ML and GIS.')
+        arcpy.AddMessage('Missing IDs in GIS Excel table: {}'.format(id_miss_gis))
+        arcpy.AddMessage('Missing IDs in GIS Attribute Table: {}'.format(id_miss_ml))
+    
+    #--- Join fields
+    transfer_fields = [f.name for f in arcpy.ListFields(input_table) if f.name not in ('ObjectID', 'OBJECTID', join_field)]
+    arcpy.management.JoinField(layer_copy, join_field, input_table, join_field, transfer_fields)
+
+    #-----------------------------------------------------#
+    #       Add missing fields if check_box is True       #
+    #-----------------------------------------------------#
+    if check_box:
+        exclude_fields = ['ObjectID',
+                          'OBJECTID',
+                          'Shape_Length',
+                          'Shape_Area',
+                          'Shape.STArea()',
+                          'Shape.STLength()',
+                          'GlobalID',
+                          'created_user',
+                          'created_date',
+                          'last_edited_user',
+                          'last_edited_date',
+                          'temp_',
+                          'temp'
+                        ]
+        fields_target = [f.name for f in arcpy.ListFields(target_layer) if f.name not in tuple(exclude_fields)]
+        fields_input = [f.name for f in arcpy.ListFields(input_table) if f.name not in tuple(exclude_fields)]
+        fields_add = [item for item in fields_input if item not in fields_target]
+        arcpy.AddMessage(f"Missing fields in target feature layer: {fields_add}")
+
+        to_dataTypes = {
+                        'String': 'TEXT',
+                        'Integer': 'SHORT',
+                        'SmallInteger': 'SHORT',
+                        'Double': 'DOUBLE',
+                        'Date': 'DATE',
+                    }
+
+        #--- Add fields to target feature
+        if fields_add:
+            for field in fields_add:
+                arcpy.AddMessage(f"Adding missing field: {field}")
+                org_type = arcpy.ListFields(input_table, field)[0].type
+
+                if org_type != 'Geometry':
+                    arcpy.management.AddField(target_layer,
+                                            field,
+                                            to_dataTypes[org_type],
+                                            "","","",
+                                            field,
+                                            "NULLABLE")
+
+
+    #--- Remove dummy date from GIS attribute table if any
+    if date_fields:
+        first_row_delete_dummy_fc(layer_copy, date_fields, datatype='date')
+
+    #--- Trucnate
+    arcpy.management.TruncateTable(target_layer)
+
+    #--- Append
+    arcpy.management.Append(layer_copy, target_layer, schema_type = 'NO_TEST')
+
+    #--- Table to Excel
+    arcpy.conversion.TableToExcel(target_layer, f"{os.path.join(gis_dir, export_file_name)}.xlsx")
+    
+    #--- Delete the copied feature layer
+    deleteTempLayers = [layer_copy]
+    arcpy.management.Delete(deleteTempLayers)
+        
 #-----------------------#
 #    Pier Workability   #
 #-----------------------#
@@ -611,9 +726,12 @@ class CompileRAPtables(object):
                     
                     # Keep only 'LotID', 'StatusLA', 'AffectedArea', 'HandedOverArea', 'HandedOver'
                     t1 = t0[keep_fields]
-                    ref_t = merge_table_to_masterTable(t1, ref_t, lotid_field, rename_array,
-                                                             hist_fields,
-                                                             add_dummy_value=True)
+                    ref_t = merge_table_to_masterTable(t1,
+                                                       ref_t,
+                                                       lotid_field,
+                                                       rename_array,
+                                                       hist_fields,
+                                                       add_dummy_value=True)
 
                     #--- HandedOverDate ---#
                     # remove "-", "_"
@@ -983,67 +1101,63 @@ class UpdateStructure(object):
 
         arcpy.env.overwriteOutput = True
         #arcpy.env.addOutputsToMap = True
+  
+        #--------------------------------------#
+        #    Update Excel Master List Tables   #
+        #--------------------------------------#
+        rap_table = pd.read_excel(rap_struc_ms)
+        rap_relo_table = pd.read_excel(rap_relo_ms)
+        gis_table = pd.read_excel(gis_struc_ms)
 
-        def N2SC_Structure_Update():
-          
-            #--------------------------------------#
-            #    Update Excel Master List Tables   #
-            #--------------------------------------#
-            rap_table = pd.read_excel(rap_struc_ms)
-            rap_relo_table = pd.read_excel(rap_relo_ms)
-            gis_table = pd.read_excel(gis_struc_ms)
+        # Join Field
+        joinField = 'StrucID'
+        cp_field = 'CP'
+        structure_status_field = 'StatusStruc'
+        structure_use_field = 'StructureUse'
+        family_number_field = 'FamilyNumber'
 
-            # Join Field
-            joinField = 'StrucID'
-            cp_field = 'CP'
-            structure_status_field = 'StatusStruc'
-            structure_use_field = 'StructureUse'
-            family_number_field = 'FamilyNumber'
+        # Create backup files
+        try:
+            gis_table.to_excel(os.path.join(gis_bakcup_dir, lastupdate + "_" + proj + "_Structure_Status.xlsx"), index=False)
+        except Exception:
+            arcpy.AddMessage('You did not choose to create a backup file of {0} master list.'.format(proj + '_Structure_Status'))
+        
+        # if there are duplicated observations in Envi's table, stop the process and exit
+        duplicated_Ids = rap_table[rap_table.duplicated([joinField]) == True][joinField]
 
-            # Create backup files
-            try:
-                gis_table.to_excel(os.path.join(gis_bakcup_dir, lastupdate + "_" + proj + "_Structure_Status.xlsx"), index=False)
-            except Exception:
-                arcpy.AddMessage('You did not choose to create a backup file of {0} master list.'.format(proj + '_Structure_Status'))
+        if len(duplicated_Ids) == 0:
+            #-- preprocess the RAP table
+            rap_table = preprocess_rap_table(proj, 
+                                                rap_table, 
+                                                'structure',
+                                                joinField,
+                                                cp_field, 
+                                                to_string_fields=[joinField, cp_field, structure_use_field],
+                                                to_numeric_fields=None, 
+                                                to_date_fields=None, 
+                                                endorsed_field=None)
+
+            # Check and Fix StatusStruc, 
+            ## 1. StatusStruc =0 -> StatusStruc = empty
+            id = rap_table.index[rap_table[structure_status_field] == 0]
+            rap_table.loc[id, structure_status_field] = None
             
-            # if there are duplicated observations in Envi's table, stop the process and exit
-            duplicated_Ids = rap_table[rap_table.duplicated([joinField]) == True][joinField]
+            # Join the number of families to table
+            toString(rap_relo_table, [joinField])
+            rap_relo_table[family_number_field] = 0
+            df = rap_relo_table.groupby(joinField).count()[[family_number_field]]
+            rap_table = pd.merge(left=rap_table, right=df, how='left', left_on=joinField, right_on=joinField)
+        
+            # Export
+            export_file_name = f"{os.path.splitext(os.path.basename(gis_struc_ms))[0]}.xlsx"
+            export_excel(rap_table, gis_dir, export_file_name)
 
-            if len(duplicated_Ids) == 0:
-                #-- preprocess the RAP table
-                rap_table = preprocess_rap_table(proj, 
-                                                 rap_table, 
-                                                 'structure',
-                                                 joinField,
-                                                 cp_field, 
-                                                 to_string_fields=[joinField, cp_field, structure_use_field],
-                                                 to_numeric_fields=None, 
-                                                 to_date_fields=None, 
-                                                 endorsed_field=None)
+            arcpy.AddMessage("The {} master list for structure was successfully exported.".format(proj))
 
-                # Check and Fix StatusStruc, 
-                ## 1. StatusStruc =0 -> StatusStruc = empty
-                id = rap_table.index[rap_table[structure_status_field] == 0]
-                rap_table.loc[id, structure_status_field] = None
-                
-                # Join the number of families to table
-                toString(rap_relo_table, [joinField])
-                rap_relo_table[family_number_field] = 0
-                df = rap_relo_table.groupby(joinField).count()[[family_number_field]]
-                rap_table = pd.merge(left=rap_table, right=df, how='left', left_on=joinField, right_on=joinField)
-            
-                # Export
-                export_file_name = f"{os.path.splitext(os.path.basename(gis_struc_ms))[0]}.xlsx"
-                export_excel(rap_table, gis_dir, export_file_name)
- 
-                arcpy.AddMessage("The {} master list for structure was successfully exported.".format(proj))
-
-            else:
-                arcpy.AddMessage(duplicated_Ids)
-                arcpy.AddError('There are duplicated Ids in Envi table shown above. The Process stopped. Please correct the duplicated rows.')
-                pass
-
-        N2SC_Structure_Update()
+        else:
+            arcpy.AddMessage(duplicated_Ids)
+            arcpy.AddError('There are duplicated Ids in Envi table shown above. The Process stopped. Please correct the duplicated rows.')
+            pass
 
 class JustMessage10(object):
     def __init__(self):
@@ -1121,86 +1235,84 @@ class AddObstructionToLotN2(object):
         pier_workable_tracker = params[5].valueAsText
 
         arcpy.env.overwriteOutput = True
+                   
+        # Define field names
+        cp_field = 'CP'
+        land1_field = 'Land.1'
+        obstruc_field = 'Obstruction'
+        lot_id_field = 'LotID'
 
-        def Obstruction_Land_ML_Update():                      
-            # Define field names
-            cp_field = 'CP'
-            land1_field = 'Land.1'
-            obstruc_field = 'Obstruction'
-            lot_id_field = 'LotID'
+        # Read as xlsx
+        gis_lot_table = pd.read_excel(gis_lot_ms)
+        gis_lot_portal_t = pd.read_excel(gis_lot_portal)
+        pier_wtracker = pd.read_excel(pier_workable_tracker)
 
-            # Read as xlsx
-            gis_lot_table = pd.read_excel(gis_lot_ms)
-            gis_lot_portal_t = pd.read_excel(gis_lot_portal)
-            pier_wtracker = pd.read_excel(pier_workable_tracker)
-
-            # to string
-            gis_lot_table[lot_id_field] = gis_lot_table[lot_id_field].astype(str)
-            gis_lot_portal_t[lot_id_field] = gis_lot_portal_t[lot_id_field].astype(str)
+        # to string
+        gis_lot_table[lot_id_field] = gis_lot_table[lot_id_field].astype(str)
+        gis_lot_portal_t[lot_id_field] = gis_lot_portal_t[lot_id_field].astype(str)
 
 
-            # 0. Reset 'Obstruction' to 'No' first
-            gis_lot_table.loc[:, obstruc_field] = np.nan
+        # 0. Reset 'Obstruction' to 'No' first
+        gis_lot_table.loc[:, obstruc_field] = np.nan
 
-            # 1. Clean fields
-            compile_land = pd.DataFrame()
-            sum_lot_compile = pd.DataFrame()
+        # 1. Clean fields
+        compile_land = pd.DataFrame()
+        sum_lot_compile = pd.DataFrame()
 
-            cps = ['N-01','N-02','N-03']
-            for cp in cps:
-                gis_t = gis_lot_table.query(f"{cp_field} == '{cp}'").reset_index(drop=True)
-                pier_t = pier_wtracker.query(f"{cp_field} == '{cp}'").reset_index(drop=True)
-                gis_portal_t = gis_lot_portal_t.query(f"{cp_field} == '{cp}'").reset_index(drop=True)
-                
-                #--------------------------------------------------------------#
-                ## B. Identify Obstruction (Yes' or 'No') to GIS master list ###
-                #--------------------------------------------------------------#
-                gis_t, tracker_obs_ids, gis_obs_ids, gis_portal_obs_ids = add_obstruction_and_extract_ids( 
-                                                                                                    gis_t, 
-                                                                                                    gis_portal_t, 
-                                                                                                    pier_t,
-                                                                                                    lot_id_field, 
-                                                                                                    obstruc_field,
-                                                                                                    "Land",
-                                                                                                    land1_field,
-                                                                                                    )
-                      
-                compile_land = pd.concat([compile_land, gis_t])
-
-                #--------------------------------------------------------------#
-                ##                    Summary Statistics                      ##
-                #--------------------------------------------------------------#
-                summary_table = summary_statistics_count_ids(proj, cp, tracker_obs_ids, gis_obs_ids, gis_portal_obs_ids)
-                sum_lot_compile = pd.concat([sum_lot_compile, summary_table[0]], ignore_index=False)
+        cps = ['N-01','N-02','N-03']
+        for cp in cps:
+            qe = f"{cp_field} == '{cp}'"
+            gis_t = gis_lot_table.query(qe).reset_index(drop=True)
+            pier_t = pier_wtracker.query(qe).reset_index(drop=True)
+            gis_portal_t = gis_lot_portal_t.query(qe).reset_index(drop=True)
+            
+            #--------------------------------------------------------------#
+            ## B. Identify Obstruction (Yes' or 'No') to GIS master list ###
+            #--------------------------------------------------------------#
+            gis_t, tracker_obs_ids, gis_obs_ids, gis_portal_obs_ids = add_obstruction_and_extract_ids( 
+                                                                                                gis_t, 
+                                                                                                gis_portal_t, 
+                                                                                                pier_t,
+                                                                                                lot_id_field, 
+                                                                                                obstruc_field,
+                                                                                                "Land",
+                                                                                                land1_field,
+                                                                                                )
+                    
+            compile_land = pd.concat([compile_land, gis_t])
 
             #--------------------------------------------------------------#
-            ##  Overwrite existing GIS_Lot_ML with summary statistics      ##
+            ##                    Summary Statistics                      ##
             #--------------------------------------------------------------#
-            # Add missing CPs (N-04 & N-05) to the compiled table
-            compile_cps = unique(compile_land[cp_field])
-            gis_cps = unique(gis_lot_table[cp_field])
- 
-            miss_cp = tuple(non_match_elements(gis_cps, compile_cps))
-            gis_lot_misst = gis_lot_table.query(f"{cp_field} in {miss_cp}")
-            gis_lot_misst[obstruc_field] = 'No'
-            compile_land = pd.concat([compile_land, gis_lot_misst]).reset_index(drop=True)
+            summary_table = summary_statistics_count_ids(proj, cp, tracker_obs_ids, gis_obs_ids, gis_portal_obs_ids)
+            sum_lot_compile = pd.concat([sum_lot_compile, summary_table[0]], ignore_index=False)
 
-            # Manually Assign non-matched lot ids (overlapping CPs and piers) to 'Yes' in the Obstruction field
-            # non_matched_lot_ids = flatten_extend(non_matched_lot_ids)
+        #--------------------------------------------------------------#
+        ##  Overwrite existing GIS_Lot_ML with summary statistics      ##
+        #--------------------------------------------------------------#
+        # Add missing CPs (N-04 & N-05) to the compiled table
+        compile_cps = unique(compile_land[cp_field])
+        gis_cps = unique(gis_lot_table[cp_field])
 
-            arcpy.AddMessage(f"The following non-matched LotIDs were assigned to 'Yes' in the Obstruction field separately due to the associated overlapping piers and cps")
-            arcpy.AddMessage(str(summary_table[1])) # pd.Series removes nested list
+        miss_cp = tuple(non_match_elements(gis_cps, compile_cps))
+        gis_lot_misst = gis_lot_table.query(f"{cp_field} in {miss_cp}")
+        gis_lot_misst[obstruc_field] = 'No'
+        compile_land = pd.concat([compile_land, gis_lot_misst]).reset_index(drop=True)
 
-            ids = compile_land.index[compile_land[lot_id_field].isin(tuple(summary_table[1]))]
-            compile_land.loc[ids, obstruc_field] = 'Yes'
+        # Manually Assign non-matched lot ids (overlapping CPs and piers) to 'Yes' in the Obstruction field
+        # non_matched_lot_ids = flatten_extend(non_matched_lot_ids)
 
-            # Export updated GIS Lot ML with obstruction field
-            compile_land.to_excel(os.path.join(gis_rap_dir, os.path.basename(gis_lot_ms)), index=False)
+        arcpy.AddMessage(f"The following non-matched LotIDs were assigned to 'Yes' in the Obstruction field separately due to the associated overlapping piers and cps")
+        arcpy.AddMessage(str(summary_table[1])) # pd.Series removes nested list
 
-            ## Export summary table
-            sum_lot_compile.to_excel(os.path.join(gis_via_dir, '99-N2_Non-Matched_Obstruction_for_Land_RAP_vs_GIS.xlsx'), sheet_name='Land', index=False)
+        ids = compile_land.index[compile_land[lot_id_field].isin(tuple(summary_table[1]))]
+        compile_land.loc[ids, obstruc_field] = 'Yes'
 
-        Obstruction_Land_ML_Update()
+        # Export updated GIS Lot ML with obstruction field
+        compile_land.to_excel(os.path.join(gis_rap_dir, os.path.basename(gis_lot_ms)), index=False)
+
+        ## Export summary table
+        sum_lot_compile.to_excel(os.path.join(gis_via_dir, '99-N2_Non-Matched_Obstruction_for_Land_RAP_vs_GIS.xlsx'), sheet_name='Land', index=False)
 
 class AddObstructionToStructureN2(object):
     def __init__(self):
@@ -1308,10 +1420,11 @@ class AddObstructionToStructureN2(object):
             cps = ['N-01','N-02','N-03']
 
             for cp in cps:
-                gis_t = gis_struc_table.query(f"{cp_field} == '{cp}'").reset_index(drop=True)
-                gis_nlo_t = gis_nlo_table.query(f"{cp_field} == '{cp}'").reset_index(drop=True)
-                pier_t = pier_wtracker.query(f"{cp_field} == '{cp}'").reset_index(drop=True)
-                gis_portal_t = gis_struc_portal_t.query(f"{cp_field} == '{cp}'").reset_index(drop=True)
+                qe = f"{cp_field} == '{cp}'"
+                gis_t = gis_struc_table.query(qe).reset_index(drop=True)
+                gis_nlo_t = gis_nlo_table.query(qe).reset_index(drop=True)
+                pier_t = pier_wtracker.query(qe).reset_index(drop=True)
+                gis_portal_t = gis_struc_portal_t.query(qe).reset_index(drop=True)
 
                 #--------------------------------------------------------------#
                 ## B. Identify Obstruction (Yes' or 'No') to GIS master list ###
@@ -1493,9 +1606,10 @@ class AddObstructionToLotSC(object):
 
             cps = ['S-01','S-02','S-03a','S-03c','S-04','S-05','S-06']
             for cp in cps:
-                gis_t = gis_lot_table.query(f"{cp_field} == '{cp}'").reset_index(drop=True)
-                pier_t = pier_wtracker.query(f"{cp_field} == '{cp}'").reset_index(drop=True)
-                gis_portal_t = gis_lot_portal_table.query(f"{cp_field} == '{cp}'").reset_index(drop=True)
+                qe = f"{cp_field} == '{cp}'"
+                gis_t = gis_lot_table.query(qe).reset_index(drop=True)
+                pier_t = pier_wtracker.query(qe).reset_index(drop=True)
+                gis_portal_t = gis_lot_portal_table.query(qe).reset_index(drop=True)
                 
                 #--------------------------------------------------------------#
                 ## B. Identify Obstruction (Yes' or 'No') to GIS master list ###
@@ -1638,10 +1752,11 @@ class AddObstructionToStructureSC(object):
       
             cps = ['S-01','S-02','S-03a','S-03c','S-04','S-05','S-06']
             for i, cp in enumerate(cps):
-                gis_t = gis_struc_table.query(f"{cp_field} == '{cp}'").reset_index(drop=True)
-                gis_nlo_t = gis_nlo_table.query(f"{cp_field} == '{cp}'").reset_index(drop=True)
-                pier_t = pier_wtracker.query(f"{cp_field} == '{cp}'").reset_index(drop=True)
-                gis_portal_t = gis_struc_portal_t.query(f"{cp_field} == '{cp}'").reset_index(drop=True)
+                qe = f"{cp_field} == '{cp}'"
+                gis_t = gis_struc_table.query(qe).reset_index(drop=True)
+                gis_nlo_t = gis_nlo_table.query(qe).reset_index(drop=True)
+                pier_t = pier_wtracker.query(qe).reset_index(drop=True)
+                gis_portal_t = gis_struc_portal_t.query(qe).reset_index(drop=True)
    
                 #--------------------------------------------------------------#
                 ##  Identify Obstruction (Yes' or 'No') to GIS master list    ##
@@ -1757,7 +1872,15 @@ class UpdateLotGIS(object):
             direction = "Input"
         )
 
-        params = [proj, gis_dir, in_lot, ml_lot]
+        check_box = arcpy.Parameter(
+            displayName="Add Missing Fields to Target Feature Layer",
+            name="Add Missing Fields to Target Feature Layer",
+            datatype="GPBoolean",
+            parameterType="Optional",
+            direction="Input"
+       )
+
+        params = [proj, gis_dir, in_lot, ml_lot, check_box]
         return params
 
     def updateMessages(self, params):
@@ -1768,64 +1891,19 @@ class UpdateLotGIS(object):
         gis_dir = params[1].valueAsText
         target_feature = params[2].valueAsText
         mlLot = params[3].valueAsText
+        check_box = params[4].valueAsText
 
         arcpy.env.overwriteOutput = True
 
         join_field = "LotID"
-        #-----------------------------------------#
-        #          Update FGDB                    #
-        #-----------------------------------------#
-        # Copy SDE
-        portal_copy = "portal_copy"
-        arcpy.management.CopyFeatures(target_feature, portal_copy)
 
-        # Keepy only 'LotID'
-        arcpy.management.DeleteField(portal_copy, [join_field], "KEEP_FIELDS")
-
-        # Join fields
-        # Check matching
-        lotid_copy = unique_values(portal_copy, join_field)
-        lotid_ml = unique_values(mlLot, join_field)
-
-        lotid_miss_gis = [e for e in lotid_copy if e not in lotid_ml]
-        lotid_miss_ml = [e for e in lotid_ml if e not in lotid_copy]
-
-        if lotid_miss_ml or lotid_miss_gis:
-            arcpy.AddMessage('The following Lot IDs do not match between ML and GIS.')
-            arcpy.AddMessage('Missing LotIDs in GIS table: {}'.format(lotid_miss_gis))
-            arcpy.AddMessage('Missing LotIDs in ML Excel table: {}'.format(lotid_miss_ml))
-        transfer_fields = [f.name for f in arcpy.ListFields(mlLot) if f.name not in ('ObjectID', 'OBJECTID', join_field)]
-        arcpy.management.JoinField(portal_copy, join_field, mlLot, join_field, transfer_fields)
-
-        #--- Extract fields where dummy numbers are removed
-        portal_copy_fields = [f.name for f in arcpy.ListFields(portal_copy) if f.name.startswith('x')]
-
-        #--- Remove dummy numbers
-        arcpy.AddMessage(f"Remove dummy numbers in the 1st row.")
-        first_row_delete_dummy_fc(portal_copy, portal_copy_fields, 'float' )
-
-        #--- Identify fields added to SDE
-        portal_fields = [f.name for f in arcpy.ListFields(target_feature) if f.name.startswith('x')]
-        addFields = [item for item in portal_copy_fields if item not in portal_fields]
-        arcpy.AddMessage(f"Fields to add: {addFields}")
-
-        #--- Add fields to SDE
-        if len(addFields) > 0:
-            arcpy.AddMessage(f"Add missing fields to target feature.")
-            for field in addFields:
-                arcpy.AddMessage(f"Add '{field}'")
-                arcpy.management.AddField(target_feature, field, "DOUBLE", "", "", "", field, "NULLABLE")
-
-        #--- Truncate target feature (SDE)
-        arcpy.AddMessage(f"Truncate target feature.")
-        arcpy.TruncateTable_management(target_feature)
-
-        arcpy.AddMessage(f"Append to target feature.")
-        arcpy.management.Append(portal_copy, target_feature, schema_type = 'NO_TEST')
-
-        # # Export
-        file_name = project + "_" + "GIS_Land_Portal.xlsx"
-        arcpy.conversion.TableToExcel(target_feature, os.path.join(gis_dir, file_name))
+        gis_attribute_table_update(gis_dir,
+                                target_feature,
+                                mlLot,
+                                join_field,
+                                f"{project}_GIS_Land_Portal",
+                                check_box,
+                                date_fields=None)
 
 class UpdateStructureGIS(object):
     def __init__(self):
@@ -1891,7 +1969,15 @@ class UpdateStructureGIS(object):
             direction = "Input"
         )
 
-        params = [proj, gis_dir, in_structure, in_occupancy, in_isf, ml_structure, ml_isf]
+        check_box = arcpy.Parameter(
+            displayName="Add Missing Fields to Target Feature Layer",
+            name="Add Missing Fields to Target Feature Layer",
+            datatype="GPBoolean",
+            parameterType="Optional",
+            direction="Input"
+       )
+
+        params = [proj, gis_dir, in_structure, in_occupancy, in_isf, ml_structure, ml_isf, check_box]
         return params
 
     def updateMessages(self, params):
@@ -1905,29 +1991,9 @@ class UpdateStructureGIS(object):
         inISF = params[4].valueAsText
         mlStruct = params[5].valueAsText
         mlISF = params[6].valueAsText
+        check_box = params[7].valueAsText
 
-        def unique_values(table, field):  ##uses list comprehension
-            with arcpy.da.SearchCursor(table, [field]) as cursor:
-                return sorted({row[0] for row in cursor if row[0] is not None})
-            
-        def non_match_elements(list_a, list_b):
-            non_match = []
-            for i in list_a:
-                if i not in list_b:
-                    non_match.append(i)
-            return non_match
-                    
-        def check_field_match(target_table, input_table, join_field):
-            id1 =  unique_values(target_table[join_field])
-            id2 = unique_values(input_table[join_field])
-                
-            target_table_miss = [f for f in id1 if f not in id2]
-            input_table_miss = [f for f in id2 if f not in id1]
-
-            arcpy.AddMessage('Missing Ids in target table: {}'.format(target_table_miss))
-            arcpy.AddMessage('Missing Ids in input table: {}'.format(input_table_miss))
-
-        arcpy.env.overwriteOutput = True     
+        arcpy.env.overwriteOutput = True
 
         # 1. Copy Original Feature Layers
         join_field = 'StrucID'
@@ -1935,40 +2001,23 @@ class UpdateStructureGIS(object):
 
         # if there are duplicated observations in Portal and exit
         struc_ids_list = [f[0] for f in arcpy.da.SearchCursor(inStruc, [join_field])]
-        dup = [x for x in struc_ids_list if struc_ids_list.count(x) > 1]
-        if len(dup) == 0:
-            # 1. Copy structure layer
-            arcpy.management.CopyFeatures(inStruc, Struc_Temp)
-            arcpy.AddMessage("Stage 1: Copy feature layer was success")
-                    
-            # 2. Fields to be dropped
-            gis_fields = [f.name for f in arcpy.ListFields(Struc_Temp)]
-            drop_fields = [e for e in gis_fields if e not in (join_field, 'strucID','Shape','Shape_Length','Shape_Area','Shape.STArea()','Shape.STLength()','OBJECTID','GlobalID')]
-            arcpy.management.DeleteField(Struc_Temp, drop_fields)   
+        duplicated_ids = find_duplicates_ordered(struc_ids_list)
+        if duplicated_ids:
+            arcpy.AddMessage('The following Struc IDs are duplicated in the GIS attribute table:')
+            arcpy.AddMessage(duplicated_ids)
+            arcpy.AddError('There are duplicated StrucIDs in the GIS attribute table. The process stops. Please fix this first.')
 
-            # 3. Join Field
-            ## 3.1. Convert Excel tables to feature table
-            struc_ml = arcpy.conversion.ExportTable(mlStruct, 'structure_ml')
-                
+        else:
             #---------------------------------------------------------#
             #         STAGE 1: Update Existing Structure Layer        #
             #---------------------------------------------------------#
-            # Gain all fields except 'StrucID'
-            struc_ml_fields = [f.name for f in arcpy.ListFields(struc_ml)]
-            struc_ml_transfer_fields = [e for e in struc_ml_fields if e not in (join_field, 'strucID','OBJECTID')]
-            
-            # Extract a Field from MasterList and Feature Layer to be used to join two tables               
-            ## Join
-            arcpy.management.JoinField(in_data=Struc_Temp, in_field=join_field, join_table=struc_ml, join_field=join_field, fields=struc_ml_transfer_fields)
-
-            # Trucnate
-            arcpy.management.TruncateTable(inStruc)
-
-            # Append
-            schemaType = "NO_TEST"
-            fieldMappings = ""
-            subtype = ""
-            arcpy.management.Append(Struc_Temp, inStruc, schemaType, fieldMappings, subtype)
+            gis_attribute_table_update(gis_dir,
+                            inStruc,
+                            mlStruct,
+                            'StrucID',
+                            f"{project}_GIS_Structure_Portal",
+                            check_box,
+                            date_fields=None)
 
             #---------------------------------------------------------------------------------#
             #         STAGE 2: Update Existing Structure (Occupancy) & Structure (ISF)        #
@@ -1991,24 +2040,13 @@ class UpdateStructureGIS(object):
             ## Convert ISF (Relocation excel) to Feature table
             MasterListISF = arcpy.conversion.ExportTable(mlISF, 'MasterListISF')
 
-            ## Gain all fields except 'StrucId'
-            inputFieldISF = [f.name for f in arcpy.ListFields(MasterListISF)]
-            joinFieldISF = [e for e in inputFieldISF if e not in ('StrucId', 'strucID','OBJECTID')]
-
-            ## Extract a Field from MasterList and Feature Layer to be used to join two tables
-            tISF = [f.name for f in arcpy.ListFields(inOccup)] # Note 'inputLayerOccupOrigin' must be used, not ISF
-            in_fieldISF= ' '.join(map(str, [f for f in tISF if f in (join_field,'strucID')]))
-
-            uISF = [f.name for f in arcpy.ListFields(MasterListISF)]
-            join_fieldISF = ' '.join(map(str, [f for f in uISF if f in (join_field, 'strucID')]))
-
             # Join
             xCoords = "POINT_X"
             yCoords = "POINT_Y"
             zCoords = "POINT_Z"
 
             # Join only 'POINT_X' and 'POINT_Y' in the 'inputLayerOccupOrigin' to 'MasterListISF'
-            arcpy.management.JoinField(in_data=MasterListISF, in_field=join_fieldISF, join_table=inOccup, join_field=in_fieldISF, fields=[xCoords, yCoords, zCoords])
+            arcpy.management.JoinField(in_data=MasterListISF, in_field=join_field, join_table=inOccup, join_field=join_field, fields=[xCoords, yCoords, zCoords])
 
             # XY Table to Points (FL)
             out_feature_class = "Status_for_Relocation_ISF_temp"
@@ -2033,28 +2071,15 @@ class UpdateStructureGIS(object):
             arcpy.management.Append(outLayerISF, inISF, schema_type = 'NO_TEST')
 
             # Delete the copied feature layer
-            deleteTempLayers = [Struc_Temp, struc_ml, pointStruc, outLayerISF, MasterListISF] 
+            deleteTempLayers = [Struc_Temp, pointStruc, outLayerISF, MasterListISF] 
             arcpy.management.Delete(deleteTempLayers)
 
             #----------------------------------------------------#
             #       Export updated GIS Layers to Excel Sheet     #
             #----------------------------------------------------#
-            # Structure
-            file_name_structure = project + "_" + "GIS_Structure_Portal.xlsx"
-            arcpy.conversion.TableToExcel(inStruc, os.path.join(gis_dir, file_name_structure))
-
-            # Occupancy (not necessary. )
-            # file_name_occupancy = project + "_" + "GIS_Structure_Occupancy_Portal.xlsx"
-            # arcpy.conversion.TableToExcel(inStruc, os.path.join(gis_dir, file_name_occupancy))
-
             # NLO
             file_name_nlo = project + "_" + "GIS_ISF_Portal.xlsx"
             arcpy.conversion.TableToExcel(inISF, os.path.join(gis_dir, file_name_nlo))
-
-        else:
-            arcpy.AddMessage('The following Struc IDs are duplicated in the GIS attribute table:')
-            arcpy.AddMessage(dup)
-            arcpy.AddError('There are duplicated StrucIDs in the GIS attribute table. The process stops. Please fix this first.')
 
 class JustMessage3(object):
     def __init__(self):

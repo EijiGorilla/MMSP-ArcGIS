@@ -57,6 +57,118 @@ def unique(lists):
         collect.append(x)
     return(collect)
 
+def replace_strings(string, search_replace_arrays):
+    """
+    Replace strings
+    string: string or text subject to replacement
+    search_replace_arrays: list of dictionary containing (search_string, replace_string)
+    Example: {
+    search_replace_arrays = {
+        r'\s+': '',
+        r'CPN': 'N-',
+        r'[,/].*' : '' # This will remove anything after ',' or '/' in the string
+    }
+    """
+    compile = []
+    for search in search_replace_arrays:
+        try:
+            keyword = re.search(search, string).group(0)
+            new_name = re.sub(keyword, search_replace_arrays[search], string)
+            compile.append(new_name)
+        except:
+            pass
+
+    if compile:
+        return compile[0]
+    else:
+        return string
+    
+
+def parse_multiple_dateFormats(date_string):
+    formats = ["%m/%d/%Y", "%d-%b-%Y"]
+    for fmt in formats:
+        try:
+            return datetime.strptime(date_string, fmt)
+        except ValueError:
+            continue
+
+    return None
+
+def update_status_using_date_fields(layer,
+                                    dates_array,
+                                    status_field,
+                                    start_actual_field,
+                                    finish_actual_field):
+    """
+    Add date fields, convert string dates, and enter
+    layer: feature layer
+    dates_array: an array of field names (string dates) and corresponding new date fields
+                e.g., progress_dates_array = {
+                't03__Actual_Start_Date': start_actual_field,
+                't02__Planned_Completion_Date': finish_plan_field,
+                't04__Actual_Completion_Date': finish_actual_field
+                }
+    status_field: field to update status ('Status')
+    finish_actual_field: a date field newly added to store converted string date (this field is used to update statuss)
+    """
+    field_list = [f.name for f in arcpy.ListFields(layer)]
+    date_fields = [f[1] for f in dates_array.items()]
+
+    #--- Add date fields
+    for field in date_fields:
+        if field not in field_list:
+            arcpy.management.AddField(layer, field, "DATE", "", "", "", field, "NULLABLE", "")
+
+    #--- Extract dates
+    for field in dates_array:
+        if field in field_list:
+            with arcpy.da.UpdateCursor(layer, [field, dates_array[field]]) as cursor:
+                for row in cursor:
+                    if row[0]:
+                        date_obj = parse_multiple_dateFormats(row[0])
+                        row[1] = date_obj
+                    cursor.updateRow(row)
+        else:
+            arcpy.AddMessage(f"{os.path.basename(layer)} does not have {field}. Please check.")
+
+    #--- Update status
+    # if all(field in field_list for field in date_fields):
+    for field in dates_array:
+        if field in field_list:
+            with arcpy.da.UpdateCursor(layer, [status_field, start_actual_field, finish_actual_field]) as cursor:
+                for row in cursor:
+                    if row[2]:
+                        row[0] = 4
+                    elif row[1] and row[2] is None:
+                        row[0] = 2
+                    else:
+                        row[0] = 1
+                    cursor.updateRow(row)
+        else:
+            arcpy.AddMessage(f"Status for {os.path.basename(layer)} was not updated, as {field} is missing.")
+
+def return_where_clause_for_SelectLayerByAttribute(layer, search_field):
+    """
+    Collect unique values in a search field and return where_clause used in
+    arcpy.management.SelectLayerByAttribute geoprocessing python tool
+    layer: feature layer
+    search_field: field used to search and collect unique values
+    """
+    eList = []
+    with arcpy.da.SearchCursor(layer, [search_field]) as cursor:
+        for row in cursor:
+            if row[0]:
+                eList.append(row[0])
+
+    uniqueValues = tuple([e for e in unique(eList)])
+
+    if len(uniqueValues) == 1:
+        where_clause = f"{search_field} = '{uniqueValues[0]}'"
+    else:
+        where_clause = f"{search_field} IN {uniqueValues}"
+    
+    return where_clause
+
 class Toolbox(object):
     def __init__(self):
         self.label = "UpdateN2StationStructures"
@@ -185,7 +297,7 @@ class AddFieldsToBuildingLayerStation(object):
 
         layers = list(input_layers.split(";"))
 
-        # 1. Add fields
+        #--- Add fields
         finish_date_field = 'Finish_date'
         add_fields = ['Station', 'Types', 'CP', 'Status']
 
@@ -197,7 +309,7 @@ class AddFieldsToBuildingLayerStation(object):
                 else:
                     arcpy.management.AddField(layer, field, "SHORT", "", "", "", field, "NULLABLE", "")
   
-        # 2. Initial set for Status
+        #--- Initial set for Status
         arcpy.AddMessage("Convert 'Status' = 1.")
         for layer in layers:
             with arcpy.da.UpdateCursor(layer, ['Status']) as cursor:
@@ -205,25 +317,22 @@ class AddFieldsToBuildingLayerStation(object):
                     row[0] = 1
                     cursor.updateRow(row)
 
-        # 3. Types of categories
+        #--- Types of categories
+        array_category = {
+            'Structural Foundations': 1,
+            'Structural Columns': 2,
+            'Structural Framing': 3,
+            'Roofs': 4,
+            'Floors': 5,
+            'Walls': 6,
+            'Columns': 7
+        }
         for layer in layers:
             with arcpy.da.UpdateCursor(layer, ['Category', 'Types']) as cursor:
                 for row in cursor:
-                    if row[0] == 'Structural Foundations':
-                        row[1] = 1
-                    elif row[0] == 'Structural Columns':
-                        row[1] = 2
-                    elif row[0] == 'Structural Framing':
-                        row[1] = 3
-                    elif row[0] == 'Roofs':
-                        row[1] = 4
-                    elif row[0] == 'Floors':
-                        row[1] = 5
-                    elif row[0] == 'Walls':
-                        row[1] = 6
-                    elif row[0] == 'Columns':
-                        row[1] = 7
-                    else:
+                    try:
+                        row[1] = array_category[row[0]]
+                    except:
                         row[1] = 8
                     cursor.updateRow(row)
                     
@@ -260,12 +369,13 @@ class AddFieldsToBuildingLayerStation(object):
                         cp_all = re.search(r'[S]0\d+?[abcABC]|[S]0\d+',row[0])
                     
                     st_name = re.search(r'\w+STN',row[0]).group()
-                    cp_name = re.sub(r'0','-0',str(cp_all))
-
-                    cp_name = re.sub('A','a',cp_name)
-                    cp_name = re.sub('B','b',cp_name)
-                    cp_name = re.sub('C','c',cp_name)
-
+                    cp_name = replace_strings(str(cp_all), {
+                        r'0': '-0',
+                        r'A': 'a',
+                        r'B': 'b',
+                        r'C': 'c'
+                    })
+ 
                     row[2] = stations[st_name]
                     row[1] = cp_name
                     cursor.updateRow(row)
@@ -647,15 +757,6 @@ class EditBuildingLayerDepot(object):
             multiValue = True
         )
 
-        # finish_field = arcpy.Parameter(
-        #     displayName = "Field indicating completed construction dates",
-        #     name = "Field indicating completed construction dates",
-        #     datatype = "Field",
-        #     parameterType = "Required",
-        #     direction = "Input",
-        # )
-        # finish_field.parameterDependencies = [delete_fc.name]
-
         params = [building_update, delete_fc, new_fc]
         return params
 
@@ -671,7 +772,15 @@ class EditBuildingLayerDepot(object):
 
         # Define fields
         status_field = 'Status'
-        # finish_date_field = 'Finish_date'
+        start_actual_field = 'start_actual'
+        finish_plan_field = 'finish_plan'
+        finish_actual_field = 'finish_actual'
+
+        progress_dates_array = {
+            't03__Actual_Start_Date': start_actual_field,
+            't02__Planned_Completion_Date': finish_plan_field,
+            't04__Actual_Completion_Date': finish_actual_field
+        }
 
         # Building names = domain names for depot building layers    
         del_layers = list(delete_bim.split(";"))
@@ -722,6 +831,20 @@ class EditBuildingLayerDepot(object):
                     bim_status_field = [re.search(r'^(?!.*Project)(.*?)_Status$|(?!.*Project)(.*?)_status$', e) for e in bim_fields if re.search(r'^(?!.*Project)(.*?)_Status$|(?!.*Project)(.*?)_status$', e) is not None]
 
                 arcpy.AddMessage(f"The name of status field in BIM models: {bim_status_field}")
+
+                #---------------------------------------------------------------#
+                #                     When dates become available:
+                #
+                #--- Add dates and update status
+                # update_status_using_date_fields(new_layer,
+                #                                 progress_dates_array,
+                #                                 status_field,
+                #                                 start_actual_field,
+                #                                 finish_actual_field)
+                #--- Replace target layer with new observation
+                # where_clause = return_where_clause_for_SelectLayerByAttribute(new_layer, docName_field)
+                # arcpy.management.SelectLayerByAttribute(target_layer, 'NEW_SELECTION', where_clause)
+                #---------------------------------------------------------------#
 
                 # 4. Update 'Status' field in new_layer
                 if len(bim_status_field) == 1: # Update only When status field exists in the BIM model (input)

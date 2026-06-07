@@ -228,13 +228,13 @@ def preprocess_civil_table(via_type_index,
                            file,
                            sheet_name,
                            id_field_atg,
-                           pileno_field,
                            remarks_field,
                            type_field, 
                            start_actual_field, 
                            finish_plan_field, 
                            finish_actual_field, 
-                           package_field, No_field, 
+                           package_field,
+                           No_field, 
                            civil_pier_field,
                            status_field,
                            ):
@@ -264,7 +264,7 @@ def preprocess_civil_table(via_type_index,
 
         # Delete 'PT.' and keep only numbers
         x = replace_strings_in_dataframe(x, id_field_atg, {r'PT.': '', r'\s+': ''})
-        x = x.rename(columns={id_field_atg: pileno_field})
+        x = x.rename(columns={id_field_atg: No_field})
 
         # Remove 'Chainage' columns
         x = x.iloc[:, 1:]
@@ -366,6 +366,82 @@ def update_status_using_date_fields(layer,
         else:
             arcpy.AddMessage(f"Status for {os.path.basename(layer)} was not updated, as {field} is missing.")
 
+
+def update_stripMap_workability(index,
+                        target_feature,
+                        input_feature,
+                        where_clause,
+                        where_clause_stripmap,
+                        workability_field,
+                        workability_status):
+    """
+    Assign workability status to stripMapIndex layer based on pier point layer
+    index: 1: Non-workable, 2: Completed, 0: Workable
+    target_feature: stripMapIndex Layer
+    input_feature: pier point feature
+    where_clause: select and highlight pier point feature by assigned index
+    where_clause_stripmap: derived using strip_map_where_clause[index].
+                           strip_map_where_clause = {
+                                    0: "Workability is null",
+                                    1: None,
+                                    2: "Workability is null"
+                                    }
+    workability_field: 'Workability'
+    workability_status: {
+                        0: "Workable",
+                        1: "Non-Workable",
+                        2: "Completed"
+                        }
+    """
+    if index == 1:
+        arcpy.management.SelectLayerByAttribute(input_feature, 'NEW_SELECTION', where_clause)
+        arcpy.management.SelectLayerByLocation(target_feature, 'CONTAINS', input_feature, where_clause_stripmap)
+        with arcpy.da.UpdateCursor(target_feature, [workability_field]) as cursor:
+            for row in cursor:
+                row[0] = workability_status[index]
+                cursor.updateRow(row)
+    else:
+        arcpy.management.SelectLayerByAttribute(input_feature, 'NEW_SELECTION', where_clause)
+        arcpy.management.SelectLayerByAttribute(target_feature, 'NEW_SELECTION', where_clause_stripmap)
+        arcpy.management.SelectLayerByLocation(target_feature, 'CONTAINS', input_feature)
+
+        with arcpy.da.UpdateCursor(target_feature, [workability_field]) as cursor:
+            for row in cursor:
+                if row[0] == None:
+                    row[0] = workability_status[index]
+                cursor.updateRow(row)
+    arcpy.management.SelectLayerByAttribute(input_feature, "CLEAR_SELECTION")
+    arcpy.management.SelectLayerByAttribute(target_feature, "CLEAR_SELECTION")
+
+def update_stripMap_cp(target_feature, input_feature, end_cp, cp_array):
+    """
+    Assign the 2nd CP to stripMapIndex layer to properly filter the layer straddling between two CPs.
+
+    """
+    cp2_field = 'GroupId'
+    cp_end_field = 'CP_End'
+    where_clause = f"{cp_end_field} <> '{end_cp}'"
+
+    #--- Reset 'GroupId' field
+    with arcpy.da.UpdateCursor(target_feature, [cp2_field]) as cursor:
+        for row in cursor:
+            if row[0]:
+                row[0] = None
+            cursor.updateRow(row)
+    
+    #--- Update
+    arcpy.management.SelectLayerByAttribute(input_feature, 'NEW_SELECTION', where_clause)
+    arcpy.management.SelectLayerByLocation(target_feature, 'INTERSECT', input_feature)
+
+    with arcpy.da.UpdateCursor(target_feature, ['CP', cp2_field]) as cursor:
+        for row in cursor:
+            if row[0]:
+                row[1] = cp_array[row[0]]
+            cursor.updateRow(row)
+
+    #--- Clear selection
+    arcpy.management.SelectLayerByAttribute(input_feature, "CLEAR_SELECTION")
+    arcpy.management.SelectLayerByAttribute(target_feature, "CLEAR_SELECTION")
 
 #--- Custom class for generating a summary statistics table ---#
 def summary_by_field(table, stats_type, stats_field, groupby_fields):
@@ -479,16 +555,17 @@ def first_row_delete_dummy_fc(fc, fields, datatype):
     datatype: Allowed for only 'float' or 'date'
     """
     try:
-        for field in fields:
-            if datatype == 'float':
+        if datatype == 'float':    
+            for field in fields:
                 with arcpy.da.UpdateCursor(fc, [field]) as cursor:
                     for row in cursor:
                         if row[0]:
                             if row[0] == -99.0:
                                 row[0] = None
                         cursor.updateRow(row)
-                    break
-            elif datatype == 'date':
+                        break
+        elif datatype == 'date':
+            for field in fields:
                 with arcpy.da.UpdateCursor(fc, [field]) as cursor:
                     for row in cursor:
                         if row[0]:
@@ -498,7 +575,7 @@ def first_row_delete_dummy_fc(fc, fields, datatype):
                             else:
                                 row[0] = row[0]
                         cursor.updateRow(row)
-                    break
+                        break
     except:
         arcpy.AddMessage(f"failed to delete dummy data in the first of selected fields..")
         arcpy.AddError('error...')
@@ -696,13 +773,13 @@ class CompileViaductMasterList(object):
                 civil_ml,
                 type,
                 id_field_atg,
-                pileno_field,
                 remarks_field,
                 type_field, 
                 start_actual_field, 
                 finish_plan_field, 
                 finish_actual_field, 
-                package_field, No_field, 
+                package_field,
+                No_field, 
                 civil_pier_field,
                 status_field,
                 )
@@ -714,7 +791,7 @@ class CompileViaductMasterList(object):
 
             #--- At Grade ---#
             elif type == 'At-Grade':
-                x[pierno_id] = x[pileno_field] + "-" + x[type_field]
+                x[pierno_id] = x[No_field] + "-" + x[type_field]
                 comp_table = pd.concat([comp_table, x])
 
             #--- Other components ---#
@@ -1539,7 +1616,6 @@ class UpdateStripMapLayer(object):
         cpbreak_layer = params[2].valueAsText
         
         arcpy.env.overwriteOutput = True
-
         workability_field_stripmap = 'Workability'
 
         #--- Empty all rows in 'Workability' field in strip map layer
@@ -1556,7 +1632,7 @@ class UpdateStripMapLayer(object):
             2: "Workability is null"
         }
 
-        workability_staus = {
+        workability_status = {
             0: "Workable",
             1: "Non-Workable",
             2: "Completed"
@@ -1566,44 +1642,17 @@ class UpdateStripMapLayer(object):
             where_clause = f"AllWorkable = {i}"
             where_clause_stripmap = strip_map_where_clause[i]
 
-            if i == 1:
-                arcpy.management.SelectLayerByAttribute(pier_point_layer, 'NEW_SELECTION', where_clause)
-                arcpy.management.SelectLayerByLocation(strip_map_layer, 'CONTAINS', pier_point_layer, where_clause_stripmap)
-                with arcpy.da.UpdateCursor(strip_map_layer, [workability_field_stripmap]) as cursor:
-                    for row in cursor:
-                        row[0] = workability_staus[i]
-                        cursor.updateRow(row)
-            else:
-                arcpy.management.SelectLayerByAttribute(pier_point_layer, 'NEW_SELECTION', where_clause)
-                arcpy.management.SelectLayerByAttribute(strip_map_layer, 'NEW_SELECTION', where_clause_stripmap)
-                arcpy.management.SelectLayerByLocation(strip_map_layer, 'CONTAINS', pier_point_layer)
-
-                with arcpy.da.UpdateCursor(strip_map_layer, [workability_field_stripmap]) as cursor:
-                    for row in cursor:
-                        if row[0] == None:
-                            row[0] = workability_staus[i]
-                        cursor.updateRow(row)
-
-        ### Add second 'CP' for strip polygons overlapping with two CPs.
-        #### Used to accommodate two different CPs when selected in the smart map
-        cp_field = 'CP_End'
-        cp2_field = 'GroupId'
-        where_clause = f"{cp_field} <> 'S-06'"
-
-        # First enter null 'GroupId' field
-        with arcpy.da.UpdateCursor(strip_map_layer, [cp2_field]) as cursor:
-            for row in cursor:
-                if row[0]:
-                    row[0] = None
-                cursor.updateRow(row)
-                
-        # Select rows
-
-        arcpy.management.SelectLayerByAttribute(cpbreak_layer, 'NEW_SELECTION', where_clause)
-        arcpy.management.SelectLayerByLocation(strip_map_layer, 'INTERSECT', cpbreak_layer)
-
-        # Enter the second CP to 'GroupId' field
-        ## The second CP is always +1 from the previous
+            update_stripMap_workability(i,
+                                    strip_map_layer,
+                                    pier_point_layer,
+                                    where_clause,
+                                    where_clause_stripmap,
+                                    workability_field_stripmap,
+                                    workability_status
+                                    )
+            
+        #--- Update 2nd CP field for overlapping polygons ---#
+        # The second CP is always +1 from the previous
         cp_array = {
             'S-01': 'S-02',
             'S-02': 'S-03a',
@@ -1613,11 +1662,7 @@ class UpdateStripMapLayer(object):
             'S-04': 'S-05',
             'S-05': 'S-06',
         }
-        with arcpy.da.UpdateCursor(strip_map_layer, ['CP',cp2_field]) as cursor:
-            for row in cursor:
-                if row[0]:
-                    row[1] = cp_array[row[0]]
-                cursor.updateRow(row)
+        update_stripMap_cp(strip_map_layer, cpbreak_layer, "S-06", cp_array)    
 
 class ReSortGISTable(object):
     def __init__(self):

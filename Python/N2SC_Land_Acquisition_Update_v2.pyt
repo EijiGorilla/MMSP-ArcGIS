@@ -128,16 +128,17 @@ def first_row_delete_dummy_fc(fc, fields, datatype):
     datatype: Allowed for only 'float' or 'date'
     """
     try:
-        for field in fields:
-            if datatype == 'float':
+        if datatype == 'float':    
+            for field in fields:
                 with arcpy.da.UpdateCursor(fc, [field]) as cursor:
                     for row in cursor:
                         if row[0]:
                             if row[0] == -99.0:
                                 row[0] = None
                         cursor.updateRow(row)
-                    break
-            elif datatype == 'date':
+                        break
+        elif datatype == 'date':
+            for field in fields:
                 with arcpy.da.UpdateCursor(fc, [field]) as cursor:
                     for row in cursor:
                         if row[0]:
@@ -147,7 +148,7 @@ def first_row_delete_dummy_fc(fc, fields, datatype):
                             else:
                                 row[0] = row[0]
                         cursor.updateRow(row)
-                    break
+                        break
     except:
         arcpy.AddMessage(f"failed to delete dummy data in the first of selected fields..")
         arcpy.AddError('error...')

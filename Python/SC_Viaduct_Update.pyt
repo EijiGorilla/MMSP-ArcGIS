@@ -479,6 +479,12 @@ class summaryStatistics():
         def calculate_differene_before_after():
             stats = calculate_summary()
 
+            #--- Check discrepancies between two tables
+            for field in self.gpby_fds:
+                missing = list(set(stats["table1"][field]) - set(stats["table2"][field]))
+                if missing:
+                    arcpy.AddError(f"There are missing parameters in {field}: {missing}. Please check.")
+
             #-- Create an empty dataframe
             stats0 = stats['table1']
             stats0['values2'] = stats['table2']['values1']

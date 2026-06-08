@@ -132,9 +132,35 @@ def replace_strings_in_dataframe(table, field, search_replace_arrays):
         table[field] = table[field].apply(lambda x: re.sub(search, search_replace_arrays[search], str(x)))
     return table
 
+# def replace_strings(string, search_replace_arrays):
+#     """
+#     Replace strings
+#     string: string or text subject to replacement
+#     search_replace_arrays: list of dictionary containing (search_string, replace_string)
+#     Example: {
+#     search_replace_arrays = {
+#         r'\s+': '',
+#         r'CPN': 'N-',
+#         r'[,/].*' : '' # This will remove anything after ',' or '/' in the string
+#     }
+#     """
+#     compile = []
+#     for search in search_replace_arrays:
+#         try:
+#             keyword = re.search(search, string).group(0)
+#             new_name = re.sub(keyword, search_replace_arrays[search], string)
+#             compile.append(new_name)
+#         except:
+#             pass
+
+#     if compile:
+#         return compile[0]
+#     else:
+#         return string
+    
 def replace_strings(string, search_replace_arrays):
     """
-    Replace strings
+    Replace strings cascadingly
     string: string or text subject to replacement
     search_replace_arrays: list of dictionary containing (search_string, replace_string)
     Example: {
@@ -145,16 +171,17 @@ def replace_strings(string, search_replace_arrays):
     }
     """
     compile = []
+    new_name = string
     for search in search_replace_arrays:
         try:
-            keyword = re.search(search, string).group(0)
-            new_name = re.sub(keyword, search_replace_arrays[search], string)
+            # keyword = re.search(search, string).group(0)
+            new_name = re.sub(search, search_replace_arrays[search], new_name)
             compile.append(new_name)
         except:
             pass
 
     if compile:
-        return compile[0]
+        return compile[-1]
     else:
         return string
     
@@ -2258,16 +2285,19 @@ class AddEditFieldsToBuildingLayerStation(object):
         search_array = {
             r'[S]0\d+?[abcABC]|[S]0\d+'
         }
-        for layer in layers:
-            with arcpy.da.UpdateCursor(layer, [docname_field, cp_field]) as cursor:
-                for row in cursor:
-                    cp_all = return_matching_value(row[0], search_array, return_value=False, default=None)
-                    cp_name = replace_strings(str(cp_all), {
+
+        replace_array = {
                         r'0': '-0',
                         r'A': 'a',
                         r'B': 'b',
                         r'C': 'c'
-                    })
+                    }
+        
+        for layer in layers:
+            with arcpy.da.UpdateCursor(layer, [docname_field, cp_field]) as cursor:
+                for row in cursor:
+                    cp_all = return_matching_value(row[0], search_array, return_value=False, default=None)
+                    cp_name = replace_strings(str(cp_all), replace_array)
 
                     row[1] = cp_name
                     cursor.updateRow(row)
@@ -2276,6 +2306,13 @@ class AddEditFieldsToBuildingLayerStation(object):
         search_array = {
             r"PR[-_]?\d+|P[-_]?\d+[-]\d+|P[-_]?\d+[NS]?[SB]?|P[-_]?\d+[-]?[AB]?|BUE[-_]?P\d+[NS]?|DAT[-_]?\d+[NS]?|MT[-_]?\d+-\d+|MT[-_]?\d+-[ABUT]|SCT[-_]?P\d+[NS]?|STR[-_]?[Pp]\d+[NS]?"
         }
+
+        replace_piern_array = {r"P": "P-",
+                               r"--": "-",
+                               r"_": "",
+                               r"^P-R": "PR"
+                                }
+        
         for layer in layers:
             field_list = [f.name for f in arcpy.ListFields(layer)]
             if description_field in field_list:
@@ -2284,12 +2321,7 @@ class AddEditFieldsToBuildingLayerStation(object):
                         if row[0]:
                             pier_n = return_matching_value(row[0], search_array, return_value=False, default=None)
                             if pier_n is not None:
-                                piern = replace_strings(pier_n, {
-                                    r"P": "P-",
-                                    r"--": "-",
-                                    r"_": "",
-                                    r"^P-R": "PR"
-                                })
+                                piern = replace_strings(pier_n, replace_piern_array)
                                 row[1] = piern.upper()
                             else:
                                 arcpy.AddMessage(f"No pier number was found in {description_field} at the {i+1}th row of {os.path.basename(layer)}.")
@@ -2298,7 +2330,7 @@ class AddEditFieldsToBuildingLayerStation(object):
                             row[1] = None
                         cursor.updateRow(row)
             else:
-               arcpy.AddMessage(f"{os.path.basename(layer)} does not have {description_field} field. Please check.")
+               arcpy.AddMessage(f"{os.path.basename(layer)} does not have {description_field} field. Please check.") 
 
         #--- Update status using extracted dates
         for layer in layers:

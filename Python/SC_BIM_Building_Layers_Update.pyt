@@ -70,16 +70,17 @@ def replace_strings(string, search_replace_arrays):
     }
     """
     compile = []
+    new_name = string
     for search in search_replace_arrays:
         try:
-            keyword = re.search(search, string).group(0)
-            new_name = re.sub(keyword, search_replace_arrays[search], string)
+            # keyword = re.search(search, string).group(0)
+            new_name = re.sub(search, search_replace_arrays[search], new_name)
             compile.append(new_name)
         except:
             pass
 
     if compile:
-        return compile[0]
+        return compile[-1]
     else:
         return string
     

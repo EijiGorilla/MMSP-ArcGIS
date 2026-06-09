@@ -713,6 +713,31 @@ def gis_attribute_table_update(gis_dir,
     #--- Delete the copied feature layer
     deleteTempLayers = [layer_copy]
     arcpy.management.Delete(deleteTempLayers)
+
+def compare_ids_between_two_tables(t1, t1_qe, id1_field, t2, t2_qe, id2_field):
+    """
+    Extract two IDs (not necessarily unique IDs: duplicated IDs also work) and
+    return mismatched IDs
+    t1: table 1
+    t1_qe: query expression for table 1 in pandas query method
+    id1_field: id field for table 1
+    t2: table 2
+    t2_qe: query expression for table 2 in pandas query method
+    id2_field: id field for table 2
+
+    """
+    #--- table 1
+    idx = t1.query(t1_qe).index
+    t1_ids = t1.loc[idx, id1_field].values
+
+    #--- table 2
+    idx = t2.query(t2_qe).index
+    t2_ids = t2.t2.loc[idx, id2_field].values
+
+    notin_t1 = [f for f in t2_ids if f not in t1_ids]
+    notin_t2 = [f for f in t1_ids if f not in t1_ids]
+
+    return notin_t1, notin_t2
         
 class Toolbox(object):
     def __init__(self):
@@ -798,7 +823,7 @@ class CompileViaductMasterList(object):
 
         viaduct_types = ['BoredPile', 'PileCap', 'Pier', 'PierHead', 'Precast', 'At-Grade']
         viaduct_types_val = [1, 2, 3, 4, 5, 7]
-        via_type_index = {name: viaduct_types_val[i] for i, name in enumerate(viaduct_types)}
+        via_type_index = {name: viaduct_types_val[i] for i, name in enumerate(viaduct_types)}               
 
         comp_table = pd.DataFrame()
         for type in viaduct_types:
@@ -941,22 +966,20 @@ class UpdateExcelML(object):
         gis_t = pd.read_excel(gis_ml, keep_default_na=False)
         civil_t = pd.read_excel(civil_ml)
 
-        #--- Compare PierIds between Civil and GIS ML
-        # ids from civil
-        ids = civil_t.query(f"{status_field} == 4 or {status_field} == 2").index
-        civil_piers = civil_t.loc[ids, pierno_id].values
-
-        # ids from gis
-        ids = gis_t.query(f"{pierno_id}.isin({tuple(civil_piers)})").index
-        gis_piers = gis_t.loc[ids, pierno_id].values
-
-        notin_civil = [f for f in gis_piers if f not in civil_piers]
-        notin_gis = [f for f in civil_piers if f not in gis_piers]
+        #--- Compare PierIds between Civil and GIS ML        
+        notin_civil, notin_gis = compare_ids_between_two_tables(civil_t,
+                                                                f"{status_field} in [4, 2]",
+                                                                pierno_id,
+                                                                gis_t,
+                                                                f"{pierno_id}.isin({tuple(civil_piers)}",
+                                                                pierno_id)
 
         if notin_civil or notin_gis:
-            arcpy.AddMessagey("PierIds are not matched between GIS and Civil master list tables.")
-            arcpy.AddMessage(f"Not in Civil ML: {notin_civil}")
-            arcpy.AddMessage(f"Not in GIS ML: {notin_gis}")
+            arcpy.AddMessage('\n'.join([
+                "PierIds are not matched between GIS and Civil master list tables.",
+                f"Not in Civil ML: {notin_civil}",
+                f"Not in GIS ML: {notin_gis}"
+            ]))
 
         #--- Update Status
         else:

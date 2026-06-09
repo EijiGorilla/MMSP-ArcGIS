@@ -457,20 +457,26 @@ def extract_ids_for_assign_obstruction(table, field, field2=None):
     return ids
 
 def summary_statistics_count_ids(proj, cp, rap_ids, gisml_ids, gisportal_ids):
+    #--- Identify non-matched IDs between tables
     noids_rap_vs_gisml = ",".join(non_match_elements(rap_ids, gisml_ids))
     noids_rap_vs_gisportal = ",".join(non_match_elements(rap_ids, gisportal_ids))
+
+    #--- Count the number of non-matched IDs between tables
     rap_vs_gisml = len(rap_ids) - len(gisml_ids)
     rap_vs_gisportal = len(rap_ids) - len(gisportal_ids)
+
+    #--- Add parameters and to DataFrame
     params = [cp, len(rap_ids), len(gisml_ids), len(gisportal_ids), rap_vs_gisml, rap_vs_gisportal, noids_rap_vs_gisml, noids_rap_vs_gisportal]
     columns = ['cp', 'rap', 'gis_ml', 'gis_portal', 'rap_vs_gisml', 'rap_vs_gisportal', 'noIDs_rap_vs_gisml', 'noIDs_rap_vs_gisportal']
     table = pd.DataFrame(columns=columns)
     for i in range(0, len(columns)):
         table.loc[0, columns[i]] = params[i]
     
-    # Add remarks
+    #--- Add remarks
     if len(noids_rap_vs_gisml) > 0:
         table['remark'] = f"**{noids_rap_vs_gisml} were manually assigned 'Yes' in the Obstruction field of GIS_{proj}_ML.xlsx."
-    return [table, noids_rap_vs_gisml]
+    
+    return table, noids_rap_vs_gisml
 
 def add_obstruction(table, id_field, obstField, search_ids):
     """
@@ -531,6 +537,28 @@ def add_obstruction_and_extract_ids(
 
     return gis_table, tracker_obs_ids, gis_obs_ids, gis_portal_obs_ids
 
+def Assing_obstruction_status_manually(input_t, cp_field, target_t, id_field, obstruc_field, non_matched_ids):
+    """
+    Assign manually obstruction status ('Yes' or 'No') to two cases:
+    1. when compile table have missing CPs for some reason.
+    2. Some IDs have overlapping piers and CPs (?) and assign 'Yes' to these IDs.
+    """
+    #--- Add missing CPs to compiled table
+    miss_cp = tuple(non_match_elements(unique(input_t[cp_field]), unique(target_t[cp_field])))
+    input_misst = input_t.query(f"{cp_field} in {miss_cp}")
+    input_misst[obstruc_field] = 'No'
+    target_t = pd.concat([target_t, input_misst]).reset_index(drop=True)
+
+    arcpy.AddMessage('\n'.join([
+    f"The following non-matched IDs were assigned to 'Yes' in the Obstruction field separately due to the associated overlapping piers and cps",
+    str(non_matched_ids)
+    ]))
+
+    ids = target_t.query(f"{id_field}.isin({tuple(non_matched_ids)})").index
+    target_t.loc[ids, obstruc_field] = 'Yes'
+
+    return target_t
+    
 class summaryStatistics():
     # Make sure to use a list for groupby_field
     # The first field in groupby_fields will be a primary field for generating statistics.
@@ -720,7 +748,7 @@ class CompileRAPtables(object):
                 t0, yyyymmdd = preprocess_table_with_yyyymmdd(file, lotid_field, status_field)
                 t0 = remove_underline_hyphen_from_numeric_field(t0, hist_fields)
        
-                # Check if lotIds are matched with the latest ML                  
+                # Check duplicated lotIds for input and target tables                  
                 input_dup, target_dup = generate_check_lotid_match(t0, ref_t, lotid_field)
 
                 if (not input_dup) and (not target_dup):
@@ -1291,35 +1319,45 @@ class AddObstructionToLotN2(object):
             #--------------------------------------------------------------#
             ##                    Summary Statistics                      ##
             #--------------------------------------------------------------#
-            summary_table = summary_statistics_count_ids(proj, cp, tracker_obs_ids, gis_obs_ids, gis_portal_obs_ids)
-            sum_lot_compile = pd.concat([sum_lot_compile, summary_table[0]], ignore_index=False)
-
-        #--------------------------------------------------------------#
-        ##  Overwrite existing GIS_Lot_ML with summary statistics      ##
-        #--------------------------------------------------------------#
-        # Add missing CPs (N-04 & N-05) to the compiled table
-        compile_cps = unique(compile_land[cp_field])
-        gis_cps = unique(gis_lot_table[cp_field])
-
-        miss_cp = tuple(non_match_elements(gis_cps, compile_cps))
-        gis_lot_misst = gis_lot_table.query(f"{cp_field} in {miss_cp}")
-        gis_lot_misst[obstruc_field] = 'No'
-        compile_land = pd.concat([compile_land, gis_lot_misst]).reset_index(drop=True)
-
-        # Manually Assign non-matched lot ids (overlapping CPs and piers) to 'Yes' in the Obstruction field
-        # non_matched_lot_ids = flatten_extend(non_matched_lot_ids)
-
-        arcpy.AddMessage(f"The following non-matched LotIDs were assigned to 'Yes' in the Obstruction field separately due to the associated overlapping piers and cps")
-        arcpy.AddMessage(str(summary_table[1])) # pd.Series removes nested list
-
-        ids = compile_land.index[compile_land[lot_id_field].isin(tuple(summary_table[1]))]
-        compile_land.loc[ids, obstruc_field] = 'Yes'
-
-        # Export updated GIS Lot ML with obstruction field
-        compile_land.to_excel(os.path.join(gis_rap_dir, os.path.basename(gis_lot_ms)), index=False)
-
-        ## Export summary table
+            output_table, non_matched_ids = summary_statistics_count_ids(proj, cp, tracker_obs_ids, gis_obs_ids, gis_portal_obs_ids)
+            sum_lot_compile = pd.concat([sum_lot_compile, output_table], ignore_index=False)
+        
+        #--- Export summary table
         sum_lot_compile.to_excel(os.path.join(gis_via_dir, '99-N2_Non-Matched_Obstruction_for_Land_RAP_vs_GIS.xlsx'), sheet_name='Land', index=False)
+
+        #--------------------------------------------------------------#
+        #          Manually assign obstruction ('Yes' or 'No')         #
+        #--------------------------------------------------------------#
+        compile_land = Assing_obstruction_status_manually(gis_lot_table,
+                                                           cp_field,
+                                                           compile_land,
+                                                           lot_id_field,
+                                                           obstruc_field,
+                                                           non_matched_ids)
+        compile_land.to_excel(os.path.join(gis_rap_dir, os.path.basename(gis_lot_ms)), index=False) ## gis_struc
+  
+        # #--- Find missing CPs and assign 'No'
+        # compile_cps = unique(compile_land[cp_field])
+        # gis_cps = unique(gis_lot_table[cp_field])
+
+        # miss_cp = tuple(non_match_elements(gis_cps, compile_cps))
+        # gis_lot_misst = gis_lot_table.query(f"{cp_field} in {miss_cp}")
+        # gis_lot_misst[obstruc_field] = 'No'
+        # compile_land = pd.concat([compile_land, gis_lot_misst]).reset_index(drop=True)
+
+        # # Manually Assign non-matched lot ids (overlapping CPs and piers) to 'Yes' in the Obstruction field
+        # # non_matched_lot_ids = flatten_extend(non_matched_lot_ids)
+        # arcpy.AddMessage('\n'.join([
+        #     f"The following non-matched LotIDs were assigned to 'Yes' in the Obstruction field separately due to the associated overlapping piers and cps",
+        #     str(non_matched_ids)
+        # ]))
+
+        # #--- Assign 'Yes' to missing ids discovered in summary statistics
+        # ids = compile_land.index[compile_land[lot_id_field].isin(tuple(non_matched_ids))]
+        # compile_land.loc[ids, obstruc_field] = 'Yes'
+
+        #--- Export updated GIS Lot ML with obstruction field
+        # compile_land.to_excel(os.path.join(gis_rap_dir, os.path.basename(gis_lot_ms)), index=False)
 
 class AddObstructionToStructureN2(object):
     def __init__(self):
@@ -1401,122 +1439,110 @@ class AddObstructionToStructureN2(object):
         pier_workable_tracker = params[6].valueAsText
 
         arcpy.env.overwriteOutput = True
+                      
+        # Define field names
+        cp_field = 'CP'
+        struc_obstruc_field = 'Structure'
+        struc_obstrucid_field = 'Structure.1'
+        obstruc_field = 'Obstruction'
+        struc_id_field = 'StrucID'
 
-        def Obstruction_Structure_ML_Update():                       
-            # Define field names
-            cp_field = 'CP'
-            struc_obstruc_field = 'Structure'
-            struc_obstrucid_field = 'Structure.1'
-            obstruc_field = 'Obstruction'
-            struc_id_field = 'StrucID'
+        # Read as xlsx
+        gis_struc_table = pd.read_excel(gis_struc_ms)
+        gis_struc_portal_t = pd.read_excel(gis_struc_portal)
+        gis_nlo_table = pd.read_excel(gis_nlo_ms)
+        pier_wtracker = pd.read_excel(pier_workable_tracker)
 
-            # Read as xlsx
-            gis_struc_table = pd.read_excel(gis_struc_ms)
-            gis_struc_portal_t = pd.read_excel(gis_struc_portal)
-            gis_nlo_table = pd.read_excel(gis_nlo_ms)
-            pier_wtracker = pd.read_excel(pier_workable_tracker)
+        # 0. Reset 'Obstruction' to 'No' first
+        gis_struc_table.loc[:, obstruc_field] = np.nan
+        gis_nlo_table.loc[:, obstruc_field] = np.nan
 
-            # 0. Reset 'Obstruction' to 'No' first
-            gis_struc_table.loc[:, obstruc_field] = np.nan
-            gis_nlo_table.loc[:, obstruc_field] = np.nan
+        # 1. Clean fields
+        compile_struc = pd.DataFrame()
+        compile_nlo = pd.DataFrame()
+        sum_struc_compile = pd.DataFrame()
+        cps = ['N-01','N-02','N-03']
 
-            # 1. Clean fields
-            compile_struc = pd.DataFrame()
-            compile_nlo = pd.DataFrame()
-            sum_struc_compile = pd.DataFrame()
-            cps = ['N-01','N-02','N-03']
+        for cp in cps:
+            qe = f"{cp_field} == '{cp}'"
+            gis_t = gis_struc_table.query(qe).reset_index(drop=True)
+            gis_nlo_t = gis_nlo_table.query(qe).reset_index(drop=True)
+            pier_t = pier_wtracker.query(qe).reset_index(drop=True)
+            gis_portal_t = gis_struc_portal_t.query(qe).reset_index(drop=True)
 
-            for cp in cps:
-                qe = f"{cp_field} == '{cp}'"
-                gis_t = gis_struc_table.query(qe).reset_index(drop=True)
-                gis_nlo_t = gis_nlo_table.query(qe).reset_index(drop=True)
-                pier_t = pier_wtracker.query(qe).reset_index(drop=True)
-                gis_portal_t = gis_struc_portal_t.query(qe).reset_index(drop=True)
+            #--------------------------------------------------------------#
+            ## B. Identify Obstruction (Yes' or 'No') to GIS master list ###
+            #--------------------------------------------------------------#
+            #--- Structure
+            gis_t, tracker_obs_ids, gis_obs_ids, gis_portal_obs_ids = add_obstruction_and_extract_ids(
+                                                                                                gis_t, 
+                                                                                                gis_portal_t, 
+                                                                                                pier_t,
+                                                                                                struc_id_field, 
+                                                                                                obstruc_field,
+                                                                                                struc_obstruc_field,
+                                                                                                struc_obstrucid_field)
 
-                #--------------------------------------------------------------#
-                ## B. Identify Obstruction (Yes' or 'No') to GIS master list ###
-                #--------------------------------------------------------------#
-                #--- Structure
-                gis_t, tracker_obs_ids, gis_obs_ids, gis_portal_obs_ids = add_obstruction_and_extract_ids(
-                                                                                                    gis_t, 
-                                                                                                    gis_portal_t, 
-                                                                                                    pier_t,
-                                                                                                    struc_id_field, 
-                                                                                                    obstruc_field,
-                                                                                                    struc_obstruc_field,
-                                                                                                    struc_obstrucid_field)
+            #--- 2. NLO
+            # Add these obstructing StrucIDs to GIS ISF master list
+            # Note that regardless of NLO' status, all the NLOs falling under obstructing structures must be visualized.
+            gis_nlo_t, _ = add_obstruction(gis_nlo_t, struc_id_field, obstruc_field, tracker_obs_ids)
 
-                #--- 2. NLO
-                # Add these obstructing StrucIDs to GIS ISF master list
-                # Note that regardless of NLO' status, all the NLOs falling under obstructing structures must be visualized.
-                gis_nlo_t, _ = add_obstruction(gis_nlo_t, struc_id_field, obstruc_field, tracker_obs_ids)
- 
-                # Check obstructing StrucIDS between NLO and Structure GIS master list
-                ids = gis_t.query(f"{obstruc_field} == 'Yes'").index
-                gis_struc_ids = gis_t.loc[ids, struc_id_field].values
+            # Check obstructing StrucIDS between NLO and Structure GIS master list
+            ids = gis_t.query(f"{obstruc_field} == 'Yes'").index
+            gis_struc_ids = gis_t.loc[ids, struc_id_field].values
 
-                ids = gis_nlo_t.query(f"{obstruc_field} == 'Yes'").index
-                gis_nlo_ids = unique(gis_nlo_t.loc[ids, struc_id_field])    
-                unmatched_struc_ids = non_match_elements(gis_nlo_ids, gis_struc_ids)
-                arcpy.AddMessage(f"Any obstructing StrucIDs in the NLO ML that do not exist in the structure ML for {cp}?")
-                if len(unmatched_struc_ids) > 0:
-                    arcpy.AddMessage('Yes, you have the following unmatched obstructing StrucIDs between these master list tables.')
-                    arcpy.AddMessage(unmatched_struc_ids)
-                    arcpy.AddMessage('Please ensure that these unmatched StrucIDs share the same information on CP.')
-                else:
-                    arcpy.AddMessage('No, everything is fine.')
+            ids = gis_nlo_t.query(f"{obstruc_field} == 'Yes'").index
+            gis_nlo_ids = unique(gis_nlo_t.loc[ids, struc_id_field])    
+            unmatched_struc_ids = non_match_elements(gis_nlo_ids, gis_struc_ids)
 
-                ### 4. Compile for cps
-                compile_struc = pd.concat([compile_struc, gis_t])
-                compile_nlo = pd.concat([compile_nlo, gis_nlo_t])
+            if len(unmatched_struc_ids) > 0:
+                arcpy.AddMessage('\n'.join([
+                    'The following StrucIDs are unmatched between these master list tables:',
+                    unmatched_struc_ids,
+                    'Please ensure that these unmatched StrucIDs share the same information on CP.'
 
-                #--------------------------------------------------------------#
-                ##                    Summary Statistics                      ##
-                #--------------------------------------------------------------#
-                summary_table = summary_statistics_count_ids(proj, cp, tracker_obs_ids, gis_obs_ids, gis_portal_obs_ids)
-                sum_struc_compile = pd.concat([sum_struc_compile, summary_table[0]], ignore_index=False)
+                ]))
 
-            noids_rap_vs_gisml = pd.Series(summary_table[1])    
+            #--- Compile for cps
+            compile_struc = pd.concat([compile_struc, gis_t])
+            compile_nlo = pd.concat([compile_nlo, gis_nlo_t])
 
-            #-----------------------------------------------------------------#
-            ##  Overwrite existing GIS_Structure_ML with summary statistics  ##
-            #-----------------------------------------------------------------#
-            # Structure
-            arcpy.AddMessage('Structure')
+            #--------------------------------------------------------------#
+            ##                    Summary Statistics                      ##
+            #--------------------------------------------------------------#
+            output_table, non_matched_ids = summary_statistics_count_ids(proj, cp, tracker_obs_ids, gis_obs_ids, gis_portal_obs_ids)
+            sum_struc_compile = pd.concat([sum_struc_compile, output_table], ignore_index=False)
 
-            ## Add missing CPs to compiled table
-            miss_cp = tuple(non_match_elements(unique(gis_struc_table[cp_field]), unique(compile_struc[cp_field])))
-            gis_struc_misst = gis_struc_table.query(f"{cp_field} in {miss_cp}")
-            gis_struc_misst[obstruc_field] = 'No'
-            compile_struc = pd.concat([compile_struc, gis_struc_misst])
+        #--- Export summary statistics in one excel sheet
+        sum_struc_compile.to_excel(os.path.join(gis_via_dir, '99-N2_Non-Matched_Obstruction_for_Structure_RAP_vs_GIS.xlsx'), sheet_name='Structure', index=False)
 
-            #####
-            arcpy.AddMessage(f"The following non-matched StrucIDs were assigned to 'Yes' in the Obstruction field separately due to the associated overlapping piers and cps")
-            arcpy.AddMessage(str(noids_rap_vs_gisml))
-            ids = compile_struc.query(f"{struc_id_field}.isin({tuple(noids_rap_vs_gisml)})").index
-            compile_struc.loc[ids, obstruc_field] = 'Yes'
-            compile_struc.to_excel(os.path.join(gis_rap_dir, os.path.basename(gis_struc_ms)), index=False) ## gis_struc
-           
-            # NLO
-            arcpy.AddMessage('NLO')
+        noids_rap_vs_gisml = pd.Series(non_matched_ids)    
 
-            ## Add missing CPs to compiled table
-            miss_cp = tuple(non_match_elements(unique(gis_nlo_table[cp_field]), unique(compile_nlo[cp_field])))
-            gis_nlo_misst = gis_nlo_table.query(f"{cp_field} in {miss_cp}")
-            gis_nlo_misst[obstruc_field] = 'No'
-            compile_nlo = pd.concat([compile_nlo, gis_nlo_misst])
+        #--------------------------------------------------------------#
+        #          Manually assign obstruction ('Yes' or 'No')         #
+        #--------------------------------------------------------------#
+        # Structure
+        arcpy.AddMessage('Structure')
 
-            #####
-            arcpy.AddMessage(f"The following non-matched StrucIDs were assigned to 'Yes' in the Obstruction field separately due to the associated overlapping piers and cps")
-            arcpy.AddMessage(str(noids_rap_vs_gisml))
-            ids = compile_nlo.query(f"{struc_id_field}.isin({tuple(summary_table[1])})").index
-            compile_nlo.loc[ids, obstruc_field] = 'Yes'
-            compile_nlo.to_excel(os.path.join(gis_rap_dir, os.path.basename(gis_nlo_ms)), index=False) ## gis_isf
+        compile_struc = Assing_obstruction_status_manually(gis_struc_table,
+                                                           cp_field,
+                                                           compile_struc,
+                                                           struc_id_field,
+                                                           obstruc_field,
+                                                           noids_rap_vs_gisml)
+        compile_struc.to_excel(os.path.join(gis_rap_dir, os.path.basename(gis_struc_ms)), index=False) ## gis_struc
+        
+        # NLO
+        arcpy.AddMessage('NLO')
 
-            ## Export summary statistics in one excel sheet
-            sum_struc_compile.to_excel(os.path.join(gis_via_dir, '99-N2_Non-Matched_Obstruction_for_Structure_RAP_vs_GIS.xlsx'), sheet_name='Structure', index=False)
-
-        Obstruction_Structure_ML_Update()
+        compile_nlo = Assing_obstruction_status_manually(gis_nlo_table,
+                                                    cp_field,
+                                                    compile_nlo,
+                                                    struc_id_field,
+                                                    obstruc_field,
+                                                    noids_rap_vs_gisml)
+        compile_nlo.to_excel(os.path.join(gis_rap_dir, os.path.basename(gis_nlo_ms)), index=False) ## gis_isf
 
 class AddObstructionToLotSC(object):
     def __init__(self):
@@ -1591,66 +1617,63 @@ class AddObstructionToLotSC(object):
 
         arcpy.env.overwriteOutput = True
 
-        def Obstruction_Land_ML_Update():
-            # List of fields
-            obstruc_field = 'Obstruction' ## ('Yes' or 'No')
-            lot_id_field = 'LotID'
-            cp_field = 'CP'
-            land_obstruc_field = 'Land'
-            land_obstrucid_field = 'Land.1'
+        # List of fields
+        obstruc_field = 'Obstruction' ## ('Yes' or 'No')
+        lot_id_field = 'LotID'
+        cp_field = 'CP'
+        land_obstruc_field = 'Land'
+        land_obstrucid_field = 'Land.1'
 
-            # Read as xlsx
-            gis_lot_table = pd.read_excel(gis_lot_ms)
-            gis_lot_portal_table = pd.read_excel(gis_lot_portal)
-            pier_wtracker = pd.read_excel(pier_tracker_ms)
+        # Read as xlsx
+        gis_lot_table = pd.read_excel(gis_lot_ms)
+        gis_lot_portal_table = pd.read_excel(gis_lot_portal)
+        pier_wtracker = pd.read_excel(pier_tracker_ms)
 
-            # 0. Reset 'Obstruction' to 'No' first
-            gis_lot_table.loc[:, obstruc_field] = np.nan
+        # 0. Reset 'Obstruction' to 'No' first
+        gis_lot_table.loc[:, obstruc_field] = np.nan
 
-            # 1. Clean fields
-            compile_land = pd.DataFrame()
-            sum_lot_compile = pd.DataFrame()
+        # 1. Clean fields
+        compile_land = pd.DataFrame()
+        sum_lot_compile = pd.DataFrame()
 
-            cps = ['S-01','S-02','S-03a','S-03c','S-04','S-05','S-06']
-            for cp in cps:
-                qe = f"{cp_field} == '{cp}'"
-                gis_t = gis_lot_table.query(qe).reset_index(drop=True)
-                pier_t = pier_wtracker.query(qe).reset_index(drop=True)
-                gis_portal_t = gis_lot_portal_table.query(qe).reset_index(drop=True)
-                
-                #--------------------------------------------------------------#
-                ## B. Identify Obstruction (Yes' or 'No') to GIS master list ###
-                #--------------------------------------------------------------#
-                gis_t, tracker_obs_ids, gis_obs_ids, gis_portal_obs_ids = add_obstruction_and_extract_ids( 
-                                                                                                    gis_t, 
-                                                                                                    gis_portal_t, 
-                                                                                                    pier_t,
-                                                                                                    lot_id_field, 
-                                                                                                    obstruc_field,
-                                                                                                    land_obstruc_field,
-                                                                                                    land_obstrucid_field)
-                compile_land = pd.concat([compile_land, gis_t])
-
-                #--------------------------------------------------------------#
-                ##                    Summary Statistics                      ##
-                #--------------------------------------------------------------#
-                summary_table = summary_statistics_count_ids(proj, cp, tracker_obs_ids, gis_obs_ids, gis_portal_obs_ids)
-                sum_lot_compile = pd.concat([sum_lot_compile, summary_table[0]], ignore_index=False)
+        cps = ['S-01','S-02','S-03a','S-03c','S-04','S-05','S-06']
+        for cp in cps:
+            qe = f"{cp_field} == '{cp}'"
+            gis_t = gis_lot_table.query(qe).reset_index(drop=True)
+            pier_t = pier_wtracker.query(qe).reset_index(drop=True)
+            gis_portal_t = gis_lot_portal_table.query(qe).reset_index(drop=True)
+            
+            #--------------------------------------------------------------#
+            ## B. Identify Obstruction (Yes' or 'No') to GIS master list ###
+            #--------------------------------------------------------------#
+            gis_t, tracker_obs_ids, gis_obs_ids, gis_portal_obs_ids = add_obstruction_and_extract_ids( 
+                                                                                                gis_t, 
+                                                                                                gis_portal_t, 
+                                                                                                pier_t,
+                                                                                                lot_id_field, 
+                                                                                                obstruc_field,
+                                                                                                land_obstruc_field,
+                                                                                                land_obstrucid_field)
+            compile_land = pd.concat([compile_land, gis_t])
 
             #--------------------------------------------------------------#
-            ##  Overwrite existing GIS_Lot_ML with summary statistics      ##
+            ##                    Summary Statistics                      ##
             #--------------------------------------------------------------#
-            miss_cp = tuple(non_match_elements(unique(gis_lot_table[cp_field]), unique(compile_land[cp_field])))
+            output_table, _ = summary_statistics_count_ids(proj, cp, tracker_obs_ids, gis_obs_ids, gis_portal_obs_ids)
+            sum_lot_compile = pd.concat([sum_lot_compile, output_table], ignore_index=False)
 
-            if len(miss_cp) > 0:
-                gis_lot_misst = gis_lot_table.query(f"{cp_field} in {miss_cp}")
-                compile_land = pd.concat([compile_land, gis_lot_misst])
-            compile_land.to_excel(os.path.join(gis_rap_dir, os.path.basename(gis_lot_ms)), index=False) ## gis_land
- 
-            ## Export summary table
-            sum_lot_compile.to_excel(os.path.join(gis_via_dir, '99-SC_Pier_Workable_Obstruction_Land_summaryStats.xlsx'), sheet_name='Land', index=False)
+        #--- Export summary table
+        sum_lot_compile.to_excel(os.path.join(gis_via_dir, '99-SC_Pier_Workable_Obstruction_Land_summaryStats.xlsx'), sheet_name='Land', index=False)
 
-        Obstruction_Land_ML_Update()
+        #--------------------------------------------------------------#
+        ##  Overwrite existing GIS_Lot_ML with summary statistics      ##
+        #--------------------------------------------------------------#
+        miss_cp = tuple(non_match_elements(unique(gis_lot_table[cp_field]), unique(compile_land[cp_field])))
+
+        if len(miss_cp) > 0:
+            gis_lot_misst = gis_lot_table.query(f"{cp_field} in {miss_cp}")
+            compile_land = pd.concat([compile_land, gis_lot_misst])
+        compile_land.to_excel(os.path.join(gis_rap_dir, os.path.basename(gis_lot_ms)), index=False) ## gis_land
 
 class AddObstructionToStructureSC(object):
     def __init__(self):
@@ -1734,103 +1757,100 @@ class AddObstructionToStructureSC(object):
         arcpy.env.overwriteOutput = True
         #arcpy.env.addOutputsToMap = True
 
-        def Obstruction_Structure_ML_Update():
-            # Read as xlsx
-            gis_struc_table = pd.read_excel(gis_struc_ms)
-            gis_struc_portal_t = pd.read_excel(gis_struc_portal)
-            gis_nlo_table = pd.read_excel(gis_nlo_ms)
-            pier_wtracker = pd.read_excel(pier_tracker_ms)
+        # Read as xlsx
+        gis_struc_table = pd.read_excel(gis_struc_ms)
+        gis_struc_portal_t = pd.read_excel(gis_struc_portal)
+        gis_nlo_table = pd.read_excel(gis_nlo_ms)
+        pier_wtracker = pd.read_excel(pier_tracker_ms)
 
-            # List of fields
-            obstruc_field = 'Obstruction' ## ('Yes' or 'No')
-            cp_field = 'CP'
-            struc_id_field = 'StrucID'
-            struc_obstruc_field = 'Structure'
-            struc_obstrucid_field = 'Structure.1'
+        # List of fields
+        obstruc_field = 'Obstruction' ## ('Yes' or 'No')
+        cp_field = 'CP'
+        struc_id_field = 'StrucID'
+        struc_obstruc_field = 'Structure'
+        struc_obstrucid_field = 'Structure.1'
 
-            # 0. Reset 'Obstruction' to 'No' first
-            gis_struc_table.loc[:, obstruc_field] = np.nan
-            gis_nlo_table.loc[:, obstruc_field] = np.nan
+        # 0. Reset 'Obstruction' to 'No' first
+        gis_struc_table.loc[:, obstruc_field] = np.nan
+        gis_nlo_table.loc[:, obstruc_field] = np.nan
 
-            # 1. Clean fields
-            compile_struc = pd.DataFrame()
-            compile_nlo = pd.DataFrame()
-            sum_struc_compile = pd.DataFrame()
-      
-            cps = ['S-01','S-02','S-03a','S-03c','S-04','S-05','S-06']
-            for i, cp in enumerate(cps):
-                qe = f"{cp_field} == '{cp}'"
-                gis_t = gis_struc_table.query(qe).reset_index(drop=True)
-                gis_nlo_t = gis_nlo_table.query(qe).reset_index(drop=True)
-                pier_t = pier_wtracker.query(qe).reset_index(drop=True)
-                gis_portal_t = gis_struc_portal_t.query(qe).reset_index(drop=True)
-   
-                #--------------------------------------------------------------#
-                ##  Identify Obstruction (Yes' or 'No') to GIS master list    ##
-                #--------------------------------------------------------------#
-                #--- Structure
-                gis_t, tracker_obs_ids, gis_obs_ids, gis_portal_obs_ids = add_obstruction_and_extract_ids(
-                                                                                                    gis_t, 
-                                                                                                    gis_portal_t, 
-                                                                                                    pier_t,
-                                                                                                    struc_id_field, 
-                                                                                                    obstruc_field,
-                                                                                                    struc_obstruc_field,
-                                                                                                    struc_obstrucid_field)
+        # 1. Clean fields
+        compile_struc = pd.DataFrame()
+        compile_nlo = pd.DataFrame()
+        sum_struc_compile = pd.DataFrame()
+    
+        cps = ['S-01','S-02','S-03a','S-03c','S-04','S-05','S-06']
+        for i, cp in enumerate(cps):
+            qe = f"{cp_field} == '{cp}'"
+            gis_t = gis_struc_table.query(qe).reset_index(drop=True)
+            gis_nlo_t = gis_nlo_table.query(qe).reset_index(drop=True)
+            pier_t = pier_wtracker.query(qe).reset_index(drop=True)
+            gis_portal_t = gis_struc_portal_t.query(qe).reset_index(drop=True)
 
-                #--- NLO
-                # Add these obstructing StrucIDs to GIS ISF master list
-                # Note that regardless of NLO' status, all the NLOs falling under obstructing structures must be visualized.
-                gis_nlo_t, _ = add_obstruction(gis_nlo_t, struc_id_field, obstruc_field, tracker_obs_ids)
-             
-                #--- Compare obstructing StrucIDS between NLO and Structure GIS master list
-                ids = gis_nlo_t.index[gis_nlo_t[obstruc_field] == 'Yes']
-                gis_nlo_ids = unique(gis_nlo_t.loc[ids, struc_id_field])    
-                unmatched_struc_ids = non_match_elements(gis_nlo_ids, gis_obs_ids)
+            #--------------------------------------------------------------#
+            ##  Identify Obstruction (Yes' or 'No') to GIS master list    ##
+            #--------------------------------------------------------------#
+            #--- Structure
+            gis_t, tracker_obs_ids, gis_obs_ids, gis_portal_obs_ids = add_obstruction_and_extract_ids(
+                                                                                                gis_t, 
+                                                                                                gis_portal_t, 
+                                                                                                pier_t,
+                                                                                                struc_id_field, 
+                                                                                                obstruc_field,
+                                                                                                struc_obstruc_field,
+                                                                                                struc_obstrucid_field)
 
-                arcpy.AddMessage(f"{cp}: any obstructing StrucIDs in the NLO missing from structure ML?")
-                if len(unmatched_struc_ids) > 0:
-                    arcpy.AddMessage(unmatched_struc_ids)
-                    arcpy.AddMessage("---------------------------------------------------------------------------------------")
-                else:
-                    arcpy.AddMessage('No, everything is fine.')
-                    arcpy.AddMessage("---------------------------------------------------------------------------------------")
+            #--- NLO
+            # Add these obstructing StrucIDs to GIS ISF master list
+            # Note that regardless of NLO' status, all the NLOs falling under obstructing structures must be visualized.
+            gis_nlo_t, _ = add_obstruction(gis_nlo_t, struc_id_field, obstruc_field, tracker_obs_ids)
+            
+            #--- Compare obstructing StrucIDS between NLO and Structure GIS master list
+            ids = gis_nlo_t.index[gis_nlo_t[obstruc_field] == 'Yes']
+            gis_nlo_ids = unique(gis_nlo_t.loc[ids, struc_id_field])    
+            unmatched_struc_ids = non_match_elements(gis_nlo_ids, gis_obs_ids)
 
-                ## Compile for cps
-                compile_struc = pd.concat([compile_struc, gis_t])
-                compile_nlo = pd.concat([compile_nlo, gis_nlo_t])
+            arcpy.AddMessage(f"{cp}: any obstructing StrucIDs in the NLO missing from structure ML?")
+            if len(unmatched_struc_ids) > 0:
+                arcpy.AddMessage(unmatched_struc_ids)
+                arcpy.AddMessage("---------------------------------------------------------------------------------------")
+            else:
+                arcpy.AddMessage('No, everything is fine.')
+                arcpy.AddMessage("---------------------------------------------------------------------------------------")
 
-                #--------------------------------------------------------------#
-                ##                    Summary Statistics                      ##
-                #--------------------------------------------------------------#
-                summary_table = summary_statistics_count_ids(proj, cp, tracker_obs_ids, gis_obs_ids, gis_portal_obs_ids)
-                sum_struc_compile = pd.concat([sum_struc_compile, summary_table[0]], ignore_index=False)
+            ## Compile for cps
+            compile_struc = pd.concat([compile_struc, gis_t])
+            compile_nlo = pd.concat([compile_nlo, gis_nlo_t])
 
-            #-----------------------------------------------------------------#
-            ##  Overwrite existing GIS_Structure_ML with summary statistics  ##
-            #-----------------------------------------------------------------#
-           
-            # Structure
-            ## Add missing CPs to compiled table
-            miss_cp = tuple(non_match_elements(unique(gis_struc_table[cp_field]), unique(compile_struc[cp_field])))
-            if len(miss_cp) > 0:
-                gis_struc_misst = gis_struc_table.query(f"{cp_field} in {miss_cp}")
-                compile_struc = pd.concat([compile_struc, gis_struc_misst])
+            #--------------------------------------------------------------#
+            ##                    Summary Statistics                      ##
+            #--------------------------------------------------------------#
+            output_table, _ = summary_statistics_count_ids(proj, cp, tracker_obs_ids, gis_obs_ids, gis_portal_obs_ids)
+            sum_struc_compile = pd.concat([sum_struc_compile, output_table], ignore_index=False)
+        
+        #--- Export summary statistics table
+        sum_struc_compile.to_excel(os.path.join(gis_via_dir, '99-SC_Workable_Pier_obstructing_structure_summaryStats.xlsx'), sheet_name='Land', index=False)
 
-            compile_struc.to_excel(os.path.join(gis_rap_dir, os.path.basename(gis_struc_ms)), index=False) ## gis_struc
-           
-            # NLO
-            miss_cp = tuple(non_match_elements(unique(gis_nlo_table[cp_field]), unique(compile_nlo[cp_field])))
-            if len(miss_cp) > 0:
-                gis_nlo_misst = gis_nlo_table.query(f"{cp_field} in {miss_cp}")
-                compile_nlo = pd.concat([compile_nlo, gis_nlo_misst])
-           
-            compile_nlo.to_excel(os.path.join(gis_rap_dir, os.path.basename(gis_nlo_ms)), index=False) ## gis_isf
+        #-----------------------------------------------------------------#
+        ##  Overwrite existing GIS_Structure_ML with summary statistics  ##
+        #-----------------------------------------------------------------#
+        
+        # Structure
+        ## Add missing CPs to compiled table
+        miss_cp = tuple(non_match_elements(unique(gis_struc_table[cp_field]), unique(compile_struc[cp_field])))
+        if len(miss_cp) > 0:
+            gis_struc_misst = gis_struc_table.query(f"{cp_field} in {miss_cp}")
+            compile_struc = pd.concat([compile_struc, gis_struc_misst])
 
-            # Export summary statistics table
-            sum_struc_compile.to_excel(os.path.join(gis_via_dir, '99-SC_Workable_Pier_obstructing_structure_summaryStats.xlsx'), sheet_name='Land', index=False)
-
-        Obstruction_Structure_ML_Update()
+        compile_struc.to_excel(os.path.join(gis_rap_dir, os.path.basename(gis_struc_ms)), index=False) ## gis_struc
+        
+        # NLO
+        miss_cp = tuple(non_match_elements(unique(gis_nlo_table[cp_field]), unique(compile_nlo[cp_field])))
+        if len(miss_cp) > 0:
+            gis_nlo_misst = gis_nlo_table.query(f"{cp_field} in {miss_cp}")
+            compile_nlo = pd.concat([compile_nlo, gis_nlo_misst])
+        
+        compile_nlo.to_excel(os.path.join(gis_rap_dir, os.path.basename(gis_nlo_ms)), index=False) ## gis_isf
 
 class JustMessage2(object):
     def __init__(self):

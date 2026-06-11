@@ -558,9 +558,32 @@ def return_matching_value(string, search_replace_arrays, return_value=False, def
             pass
 
     if compile:
-        return compile[0]
+        return compile[-1] # compile[0]
     else:
         return default
+
+def return_matching_value_using_boolean(string, search_replace_arrays):
+    """
+    Find strings and return true or false when matching search strings from an array
+    string: string or text subject to replacement
+    search_replace_arrays: list of dictionary containing (search_string, replace_string)
+    Example: {
+    1. when return_value = True
+    search_replace_arrays = {
+        r'\s+': '',
+        r'CPN': 'N-',
+        r'[,/].*' : '' # This will remove anything after ',' or '/' in the string
+    }
+    """
+    for search in search_replace_arrays:
+        try:
+            keyword = re.search(search, string, flags=re.IGNORECASE).group(0)
+            if bool(keyword):
+                return search_replace_arrays[search]
+            else:
+                continue
+        except:
+            pass
 
 def first_row_fill_empty(table, fields, data, datatype):
     """
@@ -2255,54 +2278,55 @@ class AddEditFieldsToBuildingLayerStation(object):
             
         #--- Add Types
         search_array = {
-            r'At Grade|AtGrade|Abutment|BORED PILE.*(ATG)|^WS.*(Bored Pile)|^WS.*(At Grade)': 7,
-            r'^Bored Pile|^Bore Pile|^BoredPile|^BorePile|^BORED PILE|Bored Pile': 1,
+            r'At Grade|AtGrade|BORED PILE.*(ATG)|^WS.*(Bored Pile)|^WS.*(At Grade)': 7,
+            r'^Bored Pile|^Bore Pile|^BoredPile|^BorePile|Bored Pile': 1,
             r'^PileCap|^Pile Cap|^Pilecap|Pile Cap': 2,
             r'^Pier Head|^PierHead|Pier Head': 4,
-            r'^Pier$|^Pier Column|^PierColumn|Pier Column': 3,
-            r'^VIA-PCS|^VIA Type|Viaduct|VIADUCT|BR|Viaduct-PCS': 5,
-            r'^Pier Wall|PierWall|^Pier Walls$|PierWalls': 8,
+            r'Pier|^Pier$|^Pier Column|^PierColumn|Pier Column': 3,
+            r'^VIA-PCS|^VIA Type|Viaduct|BR|Viaduct-PCS': 5,
+            r'Abutment[s]': 0
         }
 
-        # Use description_field first
+        search_pierwall = {
+            r'^Pier Wall[s]$|^Pier Wall[s]|Pier Wall|^Pier Wall|PierWall|PierWalls': 8,
+            r'Abutment[s]': 0
+        }
+
+        #--- Use description_field first
         for layer in layers:
             field_list = [f.name for f in arcpy.ListFields(layer)]
             if description_field in field_list:
                 with arcpy.da.UpdateCursor(layer, [description_field, types_field]) as cursor:
                     for row in cursor:
                         if row[0]:
-                            row[1] = return_matching_value(row[0], search_array, return_value=True, default=None)
+                            row[1] = return_matching_value_using_boolean(row[0], search_array)
                         else:
                             row[1] = None
                         cursor.updateRow(row)
             else:
                 arcpy.AddMessage(f"{os.path.basename(layer)} does not have {description_field} field. Please check.")
 
-        # Then category field
+        #--- Then category field for pier wall
         for layer in layers:
             field_list = [f.name for f in arcpy.ListFields(layer)]
-            if description_field in field_list:
-                arcpy.management.SelectLayerByAttribute(layer, 'NEW_SELECTION', f"{types_field} IS NULL")
+            if category_field in field_list:
                 with arcpy.da.UpdateCursor(layer, [category_field, types_field]) as cursor:
                     for row in cursor:
                         if row[0]:
-                            row[1] = return_matching_value(row[0], search_array, return_value=True, default=None)
-                        else:
-                            row[1] = None
+                            if row[1] is None:
+                                row[1] = return_matching_value_using_boolean(row[0], search_pierwall)
                         cursor.updateRow(row)
             else:
                 arcpy.AddMessage(f"{os.path.basename(layer)} does not have {description_field} field. Please check.")
-            arcpy.management.SelectLayerByAttribute(layer, "CLEAR_SELECTION")
 
-        # All the other undefined types will be categorized as 'Others' (0)
+        #--- All the other undefined types will be categorized as 'Others' (0)
         for layer in layers:
             field_list = [f.name for f in arcpy.ListFields(layer)]
-            arcpy.management.SelectLayerByAttribute(layer, 'NEW_SELECTION', f"{types_field} IS NULL")
             with arcpy.da.UpdateCursor(layer, [types_field]) as cursor:
                 for row in cursor:
-                    row[0] = 0
+                    if row[0] is None:
+                        row[0] = 0
                     cursor.updateRow(row)
-            arcpy.management.SelectLayerByAttribute(layer, "CLEAR_SELECTION")
 
         #--- Add CP
         search_array = {

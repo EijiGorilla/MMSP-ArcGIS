@@ -1104,6 +1104,20 @@ class EditDepotCivilWorks(object):
                     bim_status_field = [re.search(r'^(?!.*Project)(.*?)_Status$|(?!.*Project)(.*?)_status$', e) for e in bim_fields if re.search(r'^(?!.*Project)(.*?)_Status$|(?!.*Project)(.*?)_status$', e) is not None]
                 arcpy.AddMessage(f"The name of status field in BIM model: {bim_status_field}")
 
+                #---------------------------------------------------------------#
+                #                     When dates become available:
+                #
+                #--- Add dates and update status
+                # update_status_using_date_fields(new_layer,
+                #                                 progress_dates_array,
+                #                                 status_field,
+                #                                 start_actual_field,
+                #                                 finish_actual_field)
+                #--- Replace target layer with new observation
+                # where_clause = return_where_clause_for_SelectLayerByAttribute(new_layer, docName_field)
+                # arcpy.management.SelectLayerByAttribute(target_layer, 'NEW_SELECTION', where_clause)
+                #---------------------------------------------------------------#
+
                 # 4. Update 'Status' field in new_layer
                 if len(bim_status_field) == 1:
                     with arcpy.da.UpdateCursor(new_layer, [bim_status_field, status_field]) as cursor:

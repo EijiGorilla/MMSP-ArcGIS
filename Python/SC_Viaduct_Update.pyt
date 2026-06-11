@@ -2312,8 +2312,7 @@ class AddEditFieldsToBuildingLayerStation(object):
             if category_field in field_list:
                 with arcpy.da.UpdateCursor(layer, [category_field, types_field]) as cursor:
                     for row in cursor:
-                        if row[0]:
-                            row[1] = ""
+                        if row[0] and row[1] is None:
                             row[1] = return_matching_value_using_boolean(row[0], search_pierwall)
                         cursor.updateRow(row)
             else:

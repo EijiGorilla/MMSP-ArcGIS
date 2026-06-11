@@ -2313,15 +2313,14 @@ class AddEditFieldsToBuildingLayerStation(object):
                 with arcpy.da.UpdateCursor(layer, [category_field, types_field]) as cursor:
                     for row in cursor:
                         if row[0]:
-                            if row[1] is None:
-                                row[1] = return_matching_value_using_boolean(row[0], search_pierwall)
+                            row[1] = ""
+                            row[1] = return_matching_value_using_boolean(row[0], search_pierwall)
                         cursor.updateRow(row)
             else:
                 arcpy.AddMessage(f"{os.path.basename(layer)} does not have {description_field} field. Please check.")
 
         #--- All the other undefined types will be categorized as 'Others' (0)
         for layer in layers:
-            field_list = [f.name for f in arcpy.ListFields(layer)]
             with arcpy.da.UpdateCursor(layer, [types_field]) as cursor:
                 for row in cursor:
                     if row[0] is None:

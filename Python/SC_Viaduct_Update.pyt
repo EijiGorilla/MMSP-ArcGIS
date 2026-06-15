@@ -737,7 +737,7 @@ def gis_attribute_table_update(gis_dir,
     deleteTempLayers = [layer_copy]
     arcpy.management.Delete(deleteTempLayers)
 
-def compare_ids_between_two_tables(t1, t1_qe, id1_field, t2, t2_qe, id2_field):
+def compare_ids_between_two_tables(t1, t1_qe, id1_field, t2, id2_field):
     """
     Extract two IDs (not necessarily unique IDs: duplicated IDs also work) and
     return mismatched IDs
@@ -745,7 +745,6 @@ def compare_ids_between_two_tables(t1, t1_qe, id1_field, t2, t2_qe, id2_field):
     t1_qe: query expression for table 1 in pandas query method
     id1_field: id field for table 1
     t2: table 2
-    t2_qe: query expression for table 2 in pandas query method
     id2_field: id field for table 2
 
     """
@@ -754,8 +753,12 @@ def compare_ids_between_two_tables(t1, t1_qe, id1_field, t2, t2_qe, id2_field):
     t1_ids = t1.loc[idx, id1_field].values
 
     #--- table 2
-    idx = t2.query(t2_qe).index
-    t2_ids = t2.t2.loc[idx, id2_field].values
+    # idx = t2.query(t2_qe).index
+    # t2_ids = t2.t2.loc[idx, id2_field].values
+    
+    #--- table 2
+    idx = t2.query(f"{id1_field}.isin({tuple(t1_ids)})").index
+    t2_ids = t2.loc[idx, id2_field].values
 
     notin_t1 = [f for f in t2_ids if f not in t1_ids]
     notin_t2 = [f for f in t1_ids if f not in t1_ids]
@@ -994,7 +997,6 @@ class UpdateExcelML(object):
                                                                 f"{status_field} in [4, 2]",
                                                                 pierno_id,
                                                                 gis_t,
-                                                                f"{pierno_id}.isin({tuple(civil_piers)}",
                                                                 pierno_id)
 
         if notin_civil or notin_gis:
@@ -1235,6 +1237,7 @@ class UpdatePierWorkableTrackerML(object):
         struc1_field = 'Structure.1'
         nlo_field = 'NLO'
         remarks_field = 'Remarks'
+        temp_field = 'temp'
 
         #--- Get a correct sheetname
         xls = pd.ExcelFile(civil_workable_ms)
@@ -1328,6 +1331,13 @@ class UpdatePierWorkableTrackerML(object):
         # Re-arrange
         df = pd.DataFrame(comp).T.reset_index(drop=True)
         df.columns = fields
+
+        # Identify non-workability piers
+        for piern in fix_piers:
+            for field in ['Utility','Others','Land','Structure','NLO']:
+                idx = df.query(f"{pier_number_field} == '{piern}' and {field}.notna()").index
+                if len(idx) > 0:
+                    df.loc[idx, workability_field] = 'Non-workable'
 
         # Remove original rows
         ids = civil_t[civil_t[pier_number_field].str.contains(r'^P-11[NS]$|^P-12[NS]$|^P-13[NS]$|^P-14[NS]$|^P-15[NS]$', regex=True, na=False)].index

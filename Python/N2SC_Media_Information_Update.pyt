@@ -14,7 +14,8 @@ from PIL import Image, ExifTags
 from datetime import datetime
 from pathlib import Path
 import shutil
-
+# Allow very large drone images
+Image.MAX_IMAGE_PIXELS = None
 
 def get_image_capture_time(filename):
     image = Image.open(filename)

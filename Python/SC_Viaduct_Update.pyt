@@ -764,7 +764,55 @@ def compare_ids_between_two_tables(t1, t1_qe, id1_field, t2, id2_field):
     notin_t2 = [f for f in t1_ids if f not in t1_ids]
 
     return notin_t1, notin_t2
-        
+
+def compile_merged_cell(table, fix_piers, fields, piern_field, workable_field):
+    """
+    Compile information in a merged cell of a pier number into a single row.
+    table: pandas dataframe table
+    fix_piers: a list of pier numbers to be compiled.
+    fields: a list of columns to be searched.
+    piern_field: pier number field
+    """
+    comp = {}
+    for pier in fix_piers:
+        ids = table[table[piern_field].str.contains(rf"^{pier}[NS]", regex=True, na=False)].index
+        x0 = table.loc[ids, ].reset_index(drop=True)
+        temp = []
+        for field in fields:
+            if field == "PierNumber":
+                arr = pier
+                temp.append(arr)
+            elif field == "Remarks":
+                arr = ""
+                temp.append(arr)
+            else:
+                arr = unique(x0[field][x0[field].notnull()].tolist())
+                temp.append(",".join(map(str, arr)))
+            comp[f"{pier}"] = temp
+
+    #--- Re-arrange
+    df = pd.DataFrame(comp).T.reset_index(drop=True)
+    df.columns = fields
+
+    #--- Identify non-workability piers
+    for piern in fix_piers:
+        for field in ['Utility','Others','Land','Structure','NLO']:
+            idx = df.query(f"{piern_field} == '{piern}' and {field}.notna()").index
+            if len(idx) > 0:
+                df.loc[idx, workable_field] = 'Non-workable'
+
+    # Remove original rows
+    ids = table[table[piern_field].str.contains(rf"{'|'.join([f"^{f}[NS]$" for f in fix_piers])}", regex=True, na=False)].index
+
+    # Re-arrange dataframe
+    x1 = table.drop(ids)
+    x1 = pd.concat([x1, df]).reset_index(drop=True)
+    for field in ['Utility','Others','Land','Structure','NLO','Status']:
+        x1[field] = pd.to_numeric(x1[field], errors='coerce').fillna(0).astype(int)
+    table = x1.sort_values(by=['CP','PierNumber'], ascending=True)
+
+    return table
+           
 class Toolbox(object):
     def __init__(self):
         self.label = "UpdateSCViaduct"
@@ -1263,8 +1311,6 @@ class UpdatePierWorkableTrackerML(object):
         civil_t = civil_t.iloc[:, np.r_[0,1,workability_col:remarks_col]].loc[row1:, ].reset_index(drop=True)
         civil_t.columns = columns
 
-        arcpy.AddMessage(civil_t.head(20))
-
         #--- Reformat Obstruction ids for land and structure (with NLO) ---#
         arrays = {
                 r'\n': ',',
@@ -1307,47 +1353,15 @@ class UpdatePierWorkableTrackerML(object):
         ids = civil_t[civil_t[pier_number_field].str.contains(r'^BUE|^P|^DAT|^MT|^SCT|^STR', regex=True, na=False)].index
         civil_t = civil_t.loc[ids, ]
 
-        #--- P-11N/S, P-12N/S, P-13N/S, P-14N/S, P-15N/S
+        #--- Compile merged cells for these piers: P-11N/S, P-12N/S, P-13N/S, P-14N/S, P-15N/S
         fix_piers = ['P-11','P-12','P-13','P-14','P-15']
         fields = columns + ['Status']
-        comp = {}
 
-        for pier in fix_piers:
-            ids = civil_t[civil_t[pier_number_field].str.contains(rf"^{pier}[NS]", regex=True, na=False)].index
-            x0 = civil_t.loc[ids, ].reset_index(drop=True)
-            temp = []
-            for field in fields:
-                if field == "PierNumber":
-                    arr = pier
-                    temp.append(arr)
-                elif field == "Remarks":
-                    arr = ""
-                    temp.append(arr)
-                else:
-                    arr = unique(x0[field][x0[field].notnull()].tolist())
-                    temp.append(",".join(map(str, arr)))
-                comp[f"{pier}"] = temp
-
-        # Re-arrange
-        df = pd.DataFrame(comp).T.reset_index(drop=True)
-        df.columns = fields
-
-        # Identify non-workability piers
-        for piern in fix_piers:
-            for field in ['Utility','Others','Land','Structure','NLO']:
-                idx = df.query(f"{pier_number_field} == '{piern}' and {field}.notna()").index
-                if len(idx) > 0:
-                    df.loc[idx, workability_field] = 'Non-workable'
-
-        # Remove original rows
-        ids = civil_t[civil_t[pier_number_field].str.contains(r'^P-11[NS]$|^P-12[NS]$|^P-13[NS]$|^P-14[NS]$|^P-15[NS]$', regex=True, na=False)].index
-
-        # Re-arrange dataframe
-        x1 = civil_t.drop(ids)
-        x1 = pd.concat([x1, df]).reset_index(drop=True)
-        for field in ['Utility','Others','Land','Structure','NLO','Status']:
-            x1[field] = pd.to_numeric(x1[field], errors='coerce').fillna(0).astype(int)
-        civil_t = x1.sort_values(by=['CP','PierNumber'], ascending=True)
+        civil_t = compile_merged_cell(civil_t,
+                                      fix_piers,
+                                      fields,
+                                      pier_number_field,
+                                      workability_field)
 
         #--------------------------------------------------------#
         #                 Identify Discrepancies                 #

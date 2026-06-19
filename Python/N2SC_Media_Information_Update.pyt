@@ -175,7 +175,16 @@ def lower_Resolution_Images(image_folder, output_path):
                 output_file = os.path.join(output_path, basename)
                 lower_image_quality(image_path, output_file, 10) 
 
-def add_contents_field(point_feature, station_names, proj, project_field, name_field, cp_field, keyword_field, timestamp_field, type_field = None, type_value = None, query_field = None):
+def add_contents_field(point_feature,
+                       station_names,
+                       proj,
+                       project_field,
+                       name_field,
+                       cp_field,
+                       keyword_field,
+                       timestamp_field,
+                       type_field = None, type_value = None, query_field = None):
+      
     #--- Add type: image or video
     if type_field:
         with arcpy.da.UpdateCursor(point_feature, [name_field, type_field]) as cursor:
@@ -608,6 +617,7 @@ class GenerateDronePoints(object):
             keyword_field = 'Keyword'
             id_field = 'id'
             cp_field = 'CP'
+            type_field = 'Type'
             query_field = 'Query'
             ref_fields = [station_name_field, piern_field, chainage_point_field]
 
@@ -640,7 +650,18 @@ class GenerateDronePoints(object):
                     cursor.insertRow(row)
 
             # Add contents to fields (project, CP, station name, pier number, depot, time stamp) based on the file name
-            add_contents_field(media_point, ref_names[0], proj, project_field, name_field, cp_field, keyword_field, timestamp_field, query_field='Query')          
+            add_contents_field(media_point,
+                               ref_names[0],
+                               proj,
+                               project_field,
+                               name_field,
+                               cp_field,
+                               keyword_field,
+                               timestamp_field,
+                               type_field,
+                               media_type,
+                               query_field)
+            # add_contents_field(media_point, ref_names[0], proj, project_field, name_field, cp_field, keyword_field, timestamp_field, query_field='Query')          
 
             #--- Add xy coordinates based on reference names:
             kwds = [f[0] for f in arcpy.da.SearchCursor(media_point, [keyword_field])]

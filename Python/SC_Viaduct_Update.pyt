@@ -2306,8 +2306,10 @@ class AddEditFieldsToBuildingLayerStation(object):
             r'^Bored Pile|^Bore Pile|^BoredPile|^BorePile|Bored Pile': 1,
             r'^PileCap|^Pile Cap|^Pilecap|Pile Cap': 2,
             r'^Pier Head|^PierHead|Pier Head': 4,
+            r'Portal Beam|^Portal Beam|^portal beam|^Portal beam|^portal Beam': 4,
             r'Pier|^Pier$|^Pier Column|^PierColumn|Pier Column': 3,
-            r'^VIA-PCS|^VIA Type|Viaduct|BR|Viaduct-PCS': 5,
+            r'^VIA Type BC': 6,
+            r'^VIA Type BR': 9,
             r'Abutment[s]': 0
         }
 
@@ -2316,7 +2318,13 @@ class AddEditFieldsToBuildingLayerStation(object):
             r'Abutment[s]': 0
         }
 
-        #--- Use description_field first
+        search_via = {
+            r'^VIA-PCS|^VIA Type|Viaduct|Viaduct-PCS': 5,
+        }
+
+        #------------------------#
+        #     Update Types       #
+        #------------------------#
         for layer in layers:
             field_list = [f.name for f in arcpy.ListFields(layer)]
             if description_field in field_list:
@@ -2330,7 +2338,7 @@ class AddEditFieldsToBuildingLayerStation(object):
             else:
                 arcpy.AddMessage(f"{os.path.basename(layer)} does not have {description_field} field. Please check.")
 
-        #--- Then category field for pier wall
+        #--- Search for category field for pier wall
         for layer in layers:
             field_list = [f.name for f in arcpy.ListFields(layer)]
             if category_field in field_list:
@@ -2338,6 +2346,18 @@ class AddEditFieldsToBuildingLayerStation(object):
                     for row in cursor:
                         if row[0] and row[1] is None:
                             row[1] = return_matching_value_using_boolean(row[0], search_pierwall)
+                        cursor.updateRow(row)
+            else:
+                arcpy.AddMessage(f"{os.path.basename(layer)} does not have {category_field} field. Please check.")
+
+        #--- Finally search for pier head
+        for layer in layers:
+            field_list = [f.name for f in arcpy.ListFields(layer)]
+            if description_field in field_list:
+                with arcpy.da.UpdateCursor(layer, [description_field, types_field]) as cursor:
+                    for row in cursor:
+                        if row[0] and row[1] is None:
+                            row[1] = return_matching_value_using_boolean(row[0], search_via)
                         cursor.updateRow(row)
             else:
                 arcpy.AddMessage(f"{os.path.basename(layer)} does not have {description_field} field. Please check.")
@@ -2350,7 +2370,9 @@ class AddEditFieldsToBuildingLayerStation(object):
                         row[0] = 0
                     cursor.updateRow(row)
 
-        #--- Add CP
+        #------------------------#
+        #     Update CP          #
+        #------------------------#
         search_array = {
             r'[S]0\d+?[abcABC]|[S]0\d+'
         }
@@ -2371,7 +2393,9 @@ class AddEditFieldsToBuildingLayerStation(object):
                     row[1] = cp_name
                     cursor.updateRow(row)
 
-        #--- Add Pier Number
+        #------------------------#
+        #     Add Pier Number    #
+        #------------------------#
         search_array = {
             r"PR[-_]?\d+|P[-_]?\d+[-]\d+|P[-_]?\d+[NS]?[SB]?|P[-_]?\d+[-]?[AB]?|BUE[-_]?P\d+[NS]?|DAT[-_]?\d+[NS]?|MT[-_]?\d+-\d+|MT[-_]?\d+-[ABUT]|SCT[-_]?P\d+[NS]?|STR[-_]?[Pp]\d+[NS]?"
         }
@@ -2400,8 +2424,24 @@ class AddEditFieldsToBuildingLayerStation(object):
                         cursor.updateRow(row)
             else:
                arcpy.AddMessage(f"{os.path.basename(layer)} does not have {description_field} field. Please check.") 
+        
+        #--- Clean pier numbers (e.g., P-12-13 -> P-12)
+        for layer in layers:
+            field_list = [f.name for f in arcpy.ListFields(layer)]
+            if piern_field in field_list:
+                with arcpy.da.UpdateCursor(layer, [piern_field]) as cursor:
+                    for i, row in enumerate(cursor):
+                        if row[0]:
+                            match = re.match(r'^[A-Za-z]-\d+[NMS]|^[A-Za-z]-\d+', row[0])
+                            if match:
+                                row[0] = match.group(0)
+                        cursor.updateRow(row)
+            else:
+               arcpy.AddMessage(f"{os.path.basename(layer)} does not have {piern_field} field. Please check.") 
 
-        #--- Update status using extracted dates
+        #------------------------#
+        #     Update Status       #
+        #------------------------#
         for layer in layers:
             update_status_using_date_fields(layer,
                                             progress_dates_array,

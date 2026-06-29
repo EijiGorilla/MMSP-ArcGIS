@@ -2310,7 +2310,8 @@ class AddEditFieldsToBuildingLayerStation(object):
             r'Pier|^Pier$|^Pier Column|^PierColumn|Pier Column': 3,
             r'^VIA Type BC': 6,
             r'^VIA Type BR': 9,
-            r'Abutment[s]': 0
+            r'Abutment[s]': 0,
+            r'Parapet wall': 8
         }
 
         search_pierwall = {

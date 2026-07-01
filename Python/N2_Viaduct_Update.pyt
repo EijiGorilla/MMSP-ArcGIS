@@ -475,7 +475,54 @@ class summaryStatistics():
         s_table = calculate_differene_before_after()
         return s_table
 
+def assign_via_types(x, types, type_field, pileno_field, pierno_field, pierno_id):
+    """
+    Assign viaduct types to the GIS ML based on the 'Type' field. The function updates the 'Type' field in the DataFrame 'x' based on the provided 'type' and 'type_field'.
+    x: pandas DataFrame containing the GIS ML data
+    types: [1, 2, 3, 4, 5]: a list of values corresponding to ['BoredPile', 'PileCap', 'PierColumn', 'PierHead', 'Precast'])
+    type_field: string representing the name of the 'Type' field in the DataFrame
+    """
+    for type in types:
+        if type == 1:
+            idx = x.query(f"{type_field} == {type} and {pileno_field}.notna()").index
+            x.loc[idx, pierno_id] = x.loc[idx, pierno_field] + "-" + x.loc[idx, pileno_field] + "-" + x.loc[idx, type_field]
 
+            # Monopile
+            idx = x.query(f"{type_field} == {type} and {pileno_field}.isna()").index
+            x.loc[idx, pierno_id] = x.loc[idx, pierno_field] + "-" + x.loc[idx, type_field]
+
+        else:
+            idx = x.query(f"{type_field} == {type}").index
+            x.loc[idx, pierno_id] = x.loc[idx, pierno_field] + "-" + x.loc[idx, type_field]
+        
+    return x
+
+def replace_status_using_table(y, x, status_field, cp_field, target_cp ,pierno_id):
+    """
+    Replace the status in xy using the status in x0 for N-04.
+    y: pandas DataFrame (target)
+    x: pandas DataFrame (input) used to update the status in y
+    status_field: string representing the name of the 'Status' field in the DataFrame
+    cp_field: string representing the name of the 'CP' field in the DataFrame
+    target_cp: string representing the target CP (e.g., 'N-04')
+    pierno_id: string representing the name of the 'PierId' field in the DataFrame
+    """
+    #-- Reset y for N-04
+    idx = y.query(f"{cp_field} == '{target_cp}'").index
+    y.loc[idx, status_field] = 1
+
+    #-- Update by status
+    for i in range(1, 5):
+        #--- Find pier ids in x (input table)
+        idx = x.query(f"{status_field} == {i} and {cp_field} == '{target_cp}'").index
+        pierids = x.loc[idx, pierno_id].values
+
+        #--- Replace status in y (target table) using the pier ids from x (input table)
+        idx = y.query(f"{pierno_id}.isin({list(pierids)})").index
+        y.loc[idx, status_field] = i
+
+    return y
+        
 class Toolbox(object):
     def __init__(self):
         self.label = "UpdateN2Viaduct"
@@ -639,6 +686,14 @@ class UpdateGISExcelML(object):
             direction = "Input"
         )
 
+        g_portal = arcpy.Parameter(
+            displayName = "N2 Viaduct Portal ML (Excel)",
+            name = "N2 Viaduct Portal ML (Excel)",
+            datatype = "DEFile",
+            parameterType = "Required",
+            direction = "Input"
+        )
+
         civil_ml = arcpy.Parameter(
             displayName = "N2 Viaduct Civil ML compiled (Excel)",
             name = "N2 Viaduct Civil ML compiled",
@@ -647,8 +702,7 @@ class UpdateGISExcelML(object):
             direction = "Input"
         )
 
-
-        params = [gis_dir, gis_ml, civil_ml]
+        params = [gis_dir, gis_ml, g_portal, civil_ml]
         return params
 
     def updateMessages(self, params):
@@ -657,10 +711,12 @@ class UpdateGISExcelML(object):
     def execute(self, params, messages):
         gis_dir = params[0].valueAsText
         gis_ml = params[1].valueAsText
-        civil_ml = params[2].valueAsText
+        g_portal = params[2].valueAsText
+        civil_ml = params[3].valueAsText
 
         arcpy.env.overwriteOutput = True
 
+        cp_field = "CP"
         pierno_id = 'PierId'
         pierno_field = 'PierNumber'
         pileno_field = 'PileNo'
@@ -672,26 +728,14 @@ class UpdateGISExcelML(object):
         dummy_date = '1990-01-01'
 
         x = pd.read_excel(gis_ml)
+        x0 = pd.read_excel(g_portal)
         y = pd.read_excel(civil_ml)
 
         x = toString(x, [type_field, pierno_id, pileno_field])
         x[type_field] = x[type_field].str.replace(r'.0', '')
 
-        for i in range(1, 6):
-            if i == 1:
-                # Multiple piles
-                idx = x.query(f"{type_field} == '{i}' and {pileno_field}.notna() ").index
-                x.loc[idx, pierno_id] = x.loc[idx, pierno_field] + "-" + x.loc[idx, pileno_field] + "-" + x.loc[idx, type_field]
-
-                # Mono pile
-                idx = x.query(f"{type_field} == '{i}' and {pileno_field}.isna()").index
-                x.loc[idx, pierno_id] = x.loc[idx, pierno_field] + "-" + x.loc[idx, type_field]
-
-            else:
-                idx = x.query(f"{type_field} == '{i}'").index
-                x.loc[idx, pierno_id] = x.loc[idx, pierno_field] + "-" + x.loc[idx, type_field]
-
-        # x.to_excel(os.path.join(gis_dir, "N2_Viaduct_MasterList_with_pierID.xlsx"), index=False)
+        #--- Assign viaduct types to the GIS ML based on the 'Type' field
+        x = assign_via_types(x, [1, 2, 3, 4, 5], type_field, pileno_field, pierno_field, pierno_id)
         
         #--- Check duplicated pier ids
         idx = x.query(f"{pierno_id}.notna()").index
@@ -711,9 +755,6 @@ class UpdateGISExcelML(object):
                 arcpy.AddError(f"Please check..")
 
             else:
-                arcpy.AddMessage(no_civil_piers)
-                arcpy.AddMessage(no_gis_piers)
-
                 #--- Filter out: type = 0 or 6
                 x = x.query(f"{pierno_id}.notna()").reset_index(drop=True)
                 x[type_field] = x[type_field].astype(int)
@@ -731,6 +772,13 @@ class UpdateGISExcelML(object):
                 #--- start and finish date ---#
                 xy = xy.reset_index(drop=True)
                 xy = first_row_fill_empty(xy, [startdate_field, finishdate_field], '1990-01-01', 'date')
+
+                #------------------------------------------------------#
+                # Do not update N-04 (no civil tracker is avaialbe)    #
+                # Use the previous status, and Ronnie manually update  #
+                # N-04 in the GIS attribute table.                     #
+                #------------------------------------------------------#
+                xy = replace_status_using_table(xy, x0, status_field, cp_field, 'N-04', pierno_id)
 
                 #--- Export ---#
                 xy.to_excel(os.path.join(gis_dir, "N2_Viaduct_GIS_ML_new.xlsx"), index=False)

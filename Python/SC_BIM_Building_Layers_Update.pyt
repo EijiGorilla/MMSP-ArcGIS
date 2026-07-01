@@ -650,6 +650,7 @@ class AddFieldsToBuildingLayerDepot(object):
     
     def execute(self, params, messages):
         input_layers = params[0].valueAsText
+        arcpy.env.gpuId = None 
         arcpy.env.overwriteOutput = True
 
         layers = list(input_layers.split(";"))
